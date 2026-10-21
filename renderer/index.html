@@ -34,6 +34,10 @@
         <svg viewBox="0 0 24 24"><path d="M21.7 18.6 13.4 10.3a5.5 5.5 0 0 0-7.1-7.1l3.5 3.5-2.8 2.8-3.5-3.5a5.5 5.5 0 0 0 7.1 7.1l8.3 8.3a1.4 1.4 0 0 0 2-1.9Z"/></svg>
         Fix mode<span class="nav-badge hidden" id="fixBadge">0</span>
       </button>
+      <button class="nav-item" data-view="scan">
+        <svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5Zm-1.2 13.6-3.5-3.5 1.4-1.4 2.1 2.1 4.9-4.9 1.4 1.4z"/></svg>
+        Virus scan<span class="nav-badge hidden" id="scanBadge">0</span>
+      </button>
       <button class="nav-item" data-view="chat">
         <svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm4 6.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>
         AI Chat
@@ -253,6 +257,62 @@
       <div class="repair-grid" id="repairGrid"></div>
     </section>
 
+    <!-- ================= VIRUS SCAN ================= -->
+    <section class="view hidden" id="view-scan">
+      <div class="fix-head">
+        <div>
+          <h1 class="page-title">Virus scan</h1>
+          <p class="muted">Finds viruses, trojans, ransomware, spyware, password stealers, crypto-miners and unwanted programs with Microsoft Defender’s antivirus engine — built into Windows and updated by Microsoft several times a day. Then FrameForge checks every detection for false positives, and nothing is touched until you choose.</p>
+        </div>
+        <button class="ghost small" id="scanResultsBtn">Last results</button>
+      </div>
+      <div class="engine-line" id="engineLine"><span class="dot"></span><span id="engineText">Checking Windows’ antivirus…</span></div>
+
+      <div class="scan-cards" id="scanCards">
+        <div class="scan-card">
+          <div class="sc-top"><h2>Quick scan</h2><span class="sc-time" id="estQuick">about 3 min</span></div>
+          <p>Everything malware uses to run: running programs, startup items, scheduled tasks and services — plus Downloads, Desktop, Temp, AppData and browser extensions, and Defender’s memory and boot check.</p>
+          <button class="primary heat" data-start="quick">Start quick scan</button>
+        </div>
+        <div class="scan-card">
+          <div class="sc-top"><h2>Full scan</h2><span class="sc-time" id="estFull">about 40 min</span></div>
+          <p>Every single file on every internal drive, including games and archives — plus the memory and boot check. Counts the files first so the time left is accurate.</p>
+          <button class="primary" data-start="full">Start full scan</button>
+        </div>
+        <div class="scan-card">
+          <div class="sc-top"><h2>Custom scan</h2><span class="sc-time">you pick</span></div>
+          <p>One folder or drive — a USB stick, a download you’re not sure about, a game mod folder.</p>
+          <button class="ghost" data-start="custom">Pick a folder…</button>
+        </div>
+      </div>
+
+      <div class="scan-run hidden" id="scanRun" aria-live="polite">
+        <div class="sr-head">
+          <span class="spin" id="srSpin"></span>
+          <div><b id="srTitle">Quick scan</b><span id="srPhase">Getting ready…</span></div>
+          <button class="ghost small stop" id="scanStop">Stop</button>
+        </div>
+        <div class="bar big"><i id="srFill"></i></div>
+        <div class="sr-stats">
+          <div><b id="srFiles">0</b><span id="srFilesLbl">files checked</span></div>
+          <div><b id="srEta">—</b><span>left (estimated)</span></div>
+          <div><b id="srElapsed">0:00</b><span>elapsed</span></div>
+          <div class="t-real"><b id="srFound">0</b><span>detections so far</span></div>
+        </div>
+        <div class="sr-current" id="srCurrent"></div>
+        <p class="sr-note">Each detection is checked for false positives when the scan finishes — then you choose what happens to it.</p>
+      </div>
+
+      <h2 class="fix-sub">Found on this PC so far <span class="counts" id="totCounts"></span></h2>
+      <div class="tot-grid" id="totGrid"></div>
+
+      <h2 class="fix-sub">Windows protection <span class="counts" id="secCounts"></span></h2>
+      <div class="sec-list" id="secList"><p class="muted">Checking…</p></div>
+
+      <h2 class="fix-sub">Quarantine <span class="counts" id="qCounts"></span></h2>
+      <div class="q-list" id="qList"></div>
+    </section>
+
     <!-- ================= AI CHAT ================= -->
     <section class="view hidden chat-view" id="view-chat">
       <div class="chat-head">
@@ -450,6 +510,30 @@
         </section>
 
         <section class="set-group">
+          <div class="set-head"><h2>Windows</h2></div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Windows animations</h3>
+              <p><b>Off:</b> every animation in Windows is switched off — windows opening, closing, minimizing and maximizing, menus, tooltips, the taskbar, smooth-scrolling lists and the “Animation effects” switch in Windows Settings. Windows feels snappier and it frees a little CPU and GPU time. <b>On:</b> all of them come back. Works right away, no sign-out needed. FrameForge keeps your choice: if the Chris Titus tool, Windows Settings or another app changes it, FrameForge switches it back.</p>
+              <p class="why" id="animLine">Reading Windows’ settings…</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="animSwitch" aria-label="Windows animations" /><span></span></label>
+          </div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>Virus scan</h2></div>
+          <div class="set-row">
+            <div class="set-text"><h3>Quick scan once a week</h3><p>Runs by itself while you’re away from the PC (never during a game). If it finds something you get a notification, and nothing is removed until you choose.</p></div>
+            <label class="switch"><input type="checkbox" data-key="autoScan" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>Check detections against the known-software database</h3><p>Part of the false-positive check: looks up a flagged file’s SHA-256 fingerprint in CIRCL’s hashlookup (NIST’s National Software Reference Library and official Windows builds). Only the fingerprint of flagged files is sent — never the file.</p></div>
+            <label class="switch"><input type="checkbox" data-key="scanHashLookup" /><span></span></label>
+          </div>
+        </section>
+
+        <section class="set-group">
           <div class="set-head"><h2>Fix mode</h2></div>
           <div class="set-row">
             <div class="set-text"><h3>Fix problems by itself</h3><p>FrameForge checks the PC every 2 minutes and fixes what it safely can without a click: tweaks Windows switched off, a display stuck at 60 Hz, a hot graphics card, missing tools. Mid-game it only does things you won’t notice; cleanups and the Chris Titus tool wait until you’ve been away for 10 minutes. You get a notification for everything it fixed.</p></div>
@@ -587,6 +671,33 @@
         <span class="spacer"></span>
         <button class="ghost" id="ocNo">Keep it off</button>
         <button class="primary heat" id="ocYes">Turn on overclocking</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Virus scan results: every detection, with Quarantine / Delete / Keep -->
+  <div class="modal hidden" id="scanModal" role="dialog" aria-modal="true" aria-labelledby="resTitle">
+    <div class="modal-card scan-res">
+      <div class="res-top">
+        <div>
+          <h2 id="resTitle">Scan finished</h2>
+          <p class="muted" id="resSub"></p>
+        </div>
+        <button class="icon-x" id="resClose" aria-label="Close">×</button>
+      </div>
+      <div class="res-tiles" id="resTiles"></div>
+      <div class="res-bulk" id="resBulk">
+        <span class="muted">For all threats:</span>
+        <button class="ghost small" data-bulk="quarantine">Quarantine all</button>
+        <button class="ghost small" data-bulk="delete">Delete all</button>
+        <button class="ghost small" data-bulk="reset">Use FrameForge’s picks</button>
+      </div>
+      <div class="res-list" id="resList"></div>
+      <div class="modal-actions">
+        <span class="res-plan" id="resPlan"></span>
+        <span class="spacer"></span>
+        <button class="ghost" id="resLater">Decide later</button>
+        <button class="primary heat" id="resApply">Do it</button>
       </div>
     </div>
   </div>

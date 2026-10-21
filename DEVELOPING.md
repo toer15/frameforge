@@ -128,6 +128,37 @@ DISM + SFC, turn on System Protection.
   reboot). **AMD Software**: `tools.amdDriverInstall` reads the download link from AMD's page for the card, downloads
   from drivers.amd.com (Referer required), checks the Authenticode signature is AMD's, and starts AMD's installer.
 
+## Virus scan
+
+`src/scanner.js` + `src/scanjob.js`. The engine is Microsoft Defender's, driven through `MpCmdRun.exe` (newest copy
+under `ProgramData\Microsoft\Windows Defender\Platform\<version>`):
+
+- **Quick**: files from running processes, Run/RunOnce keys, scheduled tasks and services (outside `C:\Windows`),
+  plus Downloads, Desktop, Temp, AppData\Roaming, Startup, Public and browser extension folders; then Defender's
+  own quick scan (`-ScanType 1`) for memory/boot/registry. **Full**: every fixed drive (`Win32_LogicalDisk`
+  DriveType 3). **Custom**: one folder.
+- Files are counted first (`walk`, skipping junctions/symlinks and cloud placeholders) and split into scan jobs
+  (`planChunks`, ~120 jobs). Each job is `MpCmdRun -Scan -ScanType 3 -File <path> -DisableRemediation` (detect only:
+  nothing is changed; detections are printed and parsed by `parseMp`). Progress and ETA come from the counted
+  files and a learned files-per-second rate (`settings.scanRate`).
+- **False-positive check** (`verdict`): signature (Get-AuthenticodeSignature), CIRCL hashlookup of the SHA-256
+  (NSRL + Windows builds; setting `scanHashLookup`), detection name (named family vs generic/`!ml`), file location.
+  Verdicts: real, unsure, pua (unwanted), fp (false positive), test (EICAR).
+- Results include Defender's history (`Get-MpThreatDetection`). The results window lets the user pick per item:
+  quarantine (FrameForge's own: XOR-encoded in `ProgramData\FrameForge\Quarantine`, SYSTEM/Admins only), delete
+  (running copies stopped first; locked files via `PendingFileRenameOperations`), keep, keep & allow (Defender
+  exclusion for that exact file), or for Defender-quarantined items leave/restore.
+- Protection checks (`checks`/`fixCheck`): real-time protection, Defender-off policies, risky exclusions, hosts-file
+  hijacks, proxy, firewall, UAC. Also shown in Fix mode (`security`, `threats`).
+- Weekly background quick scan (`autoScan`) when idle 10+ min and no game.
+
+## Windows animations
+
+`src/animations.js`: SystemParametersInfo (via a small C# helper run with PowerShell `Add-Type`) for minimize/
+maximize animation, client-area "Animation effects", menu/tooltip/combo/list animations and fades, UI effects;
+plus TaskbarAnimations, MinAnimate, VisualFXSetting=3 and the DWM `DisallowAnimations` policy. Setting
+`animations` ('on'/'off'); `enforceAnimations()` re-applies it at start, every 2 minutes and after Auto Mode.
+
 ## AI chat
 
 A chat tab powered by Claude (Anthropic) with your own API key from console.anthropic.com (stored
@@ -176,6 +207,8 @@ Set `FRAMEFORGE_DEMO=1` on Windows to try the UI without touching the system.
 - `src/tools.js` – downloads PresentMon and LibreHardwareMonitor from their GitHub releases, runs winutil,
   winget installs, verified big downloads (SHA-256 / Authenticode), AMD Software installer
 - `src/localai.js` – installs and starts Ollama and downloads local AI models for the chat
+- `src/scanner.js`, `src/scanjob.js` – virus scan (Defender engine), false-positive check, quarantine, protection checks
+- `src/animations.js` – the Windows animations switch
 - `src/guides.js` – step-by-step instructions for what no app can do (BIOS, cables, dust)
 - `src/updater.js` – update checks, download, fingerprint check, popup events
 - `src/games.js` – finds installed Steam and Epic games

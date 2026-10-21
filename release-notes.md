@@ -1,12 +1,21 @@
-**Fix mode now fixes things for you — no clicking**
+**New: Virus scan tab**
 
-- **Fixes problems by itself in the background.** Every 2 minutes FrameForge checks your PC and fixes what it safely can, then tells you with a notification. Examples: tweaks Windows switched off, a display stuck at 60 Hz, a graphics card running hot, missing tools. While you're gaming it only does things you won't notice. Bigger jobs, like cleanup or the Chris Titus tool, wait until you've been away from the PC for 10 minutes. You can turn this off with a switch at the top of Fix mode.
-- **Restarts the PC by itself when a fix needs it.** A 60-second countdown shows **Restart now** and **Cancel**. After the restart FrameForge opens by itself, checks that everything worked and finishes the job. Apps with unsaved work can still stop the restart, so nothing gets lost. It never restarts twice within 3 hours.
-- **Chris Titus tool failing?** FrameForge finds the one tweak that fails on your PC, leaves it out, and runs the rest of the preset.
-- **Graphics card running hot (NVIDIA):** FrameForge lowers the power limit to 90 %. That usually costs only a few percent FPS and runs much cooler. Heat now has to last 30 seconds before it counts, so a quick spike doesn't trigger it, and the limit is higher for CPUs built to run hot (Ryzen 7000/9000, Intel 12th–14th gen).
-- **No AMD Software?** FrameForge downloads AMD's own installer from amd.com and has Windows check AMD's digital signature on it. It then starts the installer, so all you do is click Install.
-- **RAM at the slow default:** a new **Restart into BIOS** button restarts straight into the BIOS, so you don't have to tap any keys. Back in Windows, FrameForge checks the new RAM speed by itself. The BIOS setting itself can't be changed from Windows, so that one step stays yours.
+- **Quick scan, Full scan and Custom scan.** Uses Microsoft Defender's antivirus engine, which is built into Windows and updated by Microsoft several times a day. It finds viruses, trojans, ransomware, spyware, password stealers, crypto-miners and unwanted programs.
+  - **Quick scan** checks running programs, startup items, scheduled tasks, services, Downloads, Desktop, Temp, AppData and browser extensions, plus Defender's memory and boot check.
+  - **Full scan** checks every file on every internal drive.
+  - **Custom scan** checks any folder you pick.
+- **Estimated time before you start, and a live count while it runs.** For example: 312,455 of 1,204,880 files checked, about 18 min left. The estimate learns how fast your PC scans.
+- **False-positive check.** Every detection is checked for whether it's a real threat or a false alarm:
+  - Is the file digitally signed?
+  - Is it a known, legitimate file? FrameForge looks up its fingerprint in NIST's software database. Only the fingerprint is sent, never the file.
+  - Is the detection a known malware family, or just a machine-learning guess?
+  - Where does the file sit?
+  You see how many **real threats** and how many **false positives** were found, and why for each one.
+- **Results window when the scan is done.** It shows every detection, including ones Windows' antivirus found on your PC before. For each one: what it is, where it is, who signed it, whether it's running, and a link to a VirusTotal second opinion. You pick **Quarantine**, **Delete** or **Keep** for each, press **Do it**, and FrameForge does it. Running threats are stopped first. Locked files are removed at the next restart.
+- **Quarantine.** Files are stored encoded so they can't run, and can be restored or deleted for good.
+- **Windows protection checks.** FrameForge checks for things malware switches off or changes: real-time protection, policies that turn Defender off, risky Defender exclusions, hijacked hosts files, proxies, the firewall and UAC. Each one can be fixed with one click or from Fix mode.
+- **Weekly quick scan.** It runs by itself while you're away from the PC. Nothing is removed until you choose.
 
-**AI chat: pick a model, press Install**
-- An **AI model** menu at the top right of the chat lists Claude Opus, Sonnet and Haiku, plus free models that run on your PC: Llama 3.1, Llama 3.2, Qwen 2.5, Gemma 3 and Mistral.
-- If a free model isn't installed yet, an **Install** button appears beside the menu. FrameForge installs the free Ollama app from Microsoft's verified store, starts it and downloads the model, with a progress bar. Each part of the download is checked against its fingerprint.
+**New: Windows animations switch (Settings)**
+- **Off** turns every Windows animation off: windows opening, closing, minimizing and maximizing, menus, tooltips, the taskbar and the "Animation effects" switch. **On** brings them all back. Takes effect right away.
+- FrameForge keeps your choice. If the Chris Titus tool, Windows Settings or another app changes it, FrameForge switches it back.

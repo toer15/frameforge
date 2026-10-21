@@ -18,6 +18,9 @@ const { Sensors } = require('./src/sensors');
 const updater = require('./src/updater');
 const ai = require('./src/ai');
 const localAi = require('./src/localai');
+const scanner = require('./src/scanner');
+const scanjob = require('./src/scanjob');
+const animations = require('./src/animations');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -72,6 +75,7 @@ async function boot() {
 
   createMainWindow(process.argv.includes('--hidden'));
   createTray();
+  scanjob.init({ send, onFinished: onScanFinished });
   updates = updater.setup({ send, getSettings: settings.get, onEvent: onUpdateEvent });
 
   reclassifyOldCttProblem();
@@ -86,6 +90,7 @@ async function boot() {
   setInterval(() => detectExtra().then(() => {
     send('fix:changed', true);
     backgroundFix('check');
+    enforceAnimations('check');
   }).catch(() => {}), 2 * 60 * 1000);
   const resuming = settings.get().resumeFixAll || process.argv.includes('--resume-fix');
   if (resuming) removeResumeTask();
@@ -100,6 +105,10 @@ async function boot() {
     // Fix mode works on its own: a little after start, and after every re-check, it fixes what it safely can.
     setTimeout(() => backgroundFix('start'), DEMO ? 8000 : 25000);
   }
+  // Keep the user's animation choice, and check Windows' protection a little after start.
+  setTimeout(() => enforceAnimations('start'), 6000);
+  setTimeout(() => refreshSecurity().then(() => send('fix:changed', true)).catch(() => {}), DEMO ? 4000 : 30000);
+  setInterval(() => refreshSecurity().catch(() => {}), 30 * 60 * 1000);
   // NVIDIA resets power limits on every restart: put back the cooler limit Fix mode set for a hot card.
   if (backup.get('gpu_cool') && !DEMO && admin) {
     const t = tweakById('gpu_cool');
@@ -699,6 +708,7 @@ async function runAuto(on, { quiet = false } = {}) {
     busy = false;
     runState = null;
     detectExtra().then(() => send('fix:changed', true)).catch(() => {}); // re-check: Auto Mode may have fixed things
+    enforceAnimations('auto');
     rebuildTrayMenu();
     send('auto:done', { on: settings.get().autoMode, needsReboot, active: optimizer.activeCount(), quiet, stopped });
   }
@@ -867,6 +877,8 @@ function fixedTitleFor(it) {
       hot_cpu: 'Cooled the CPU down',
       hot_gpu: backup.get('gpu_power_limit') ? 'Cooled the graphics card down (power limit back to normal)' : 'Cooled the graphics card down (power limit 90 %)',
       not_admin: 'FrameForge runs as administrator',
+      security: 'Windows protection is set up right again',
+      threats: 'Threats from the virus scan are handled',
       insight_ram_speed: 'RAM runs at full speed',
       insight_single_stick: 'RAM runs in dual channel',
       insight_laptop: 'Laptop is set up for gaming',
@@ -985,6 +997,12 @@ function fixList() {
       add({ id: `insight_${ins.id}`, level: ins.level, title: ins.title, body: ins.body, manual, bios: ins.id === 'ram_speed', actions: ins.id === 'ram_speed' ? [A('bios', 'Restart into BIOS')] : [] });
     }
   }
+  // Windows protection (from the Virus scan tab's checks) and threats the user hasn't handled yet.
+  const sec = (secChecks || []).filter((c) => ['big', 'medium'].includes(c.level) && c.fix && c.id !== 'proxy' && c.fix !== 'open_defender');
+  if (sec.length) add({ id: 'security', level: 'big', title: `Windows protection: ${sec.length} problem${sec.length === 1 ? '' : 's'}`, body: sec.map((c) => c.title).join(' · '), details: sec.flatMap((c) => c.details || []), actions: [A('sec_fix', 'Fix them'), A('goto:scan', 'Open Virus scan')], strategies: [A('sec_fix', 'Fix Windows protection settings')] });
+  const lr = scanjob.last();
+  const openThreats = lr ? lr.items.filter((i) => i.status === 'active' && ['real', 'unsure', 'pua', 'test'].includes(i.verdict) && !i.done) : [];
+  if (openThreats.length) add({ id: 'threats', level: 'big', title: `${openThreats.length} detection${openThreats.length === 1 ? '' : 's'} from the virus scan ${openThreats.length === 1 ? 'is' : 'are'} waiting for your choice`, body: openThreats.map((i) => `${i.threat} — ${i.file}`).slice(0, 3).join(' · '), actions: [A('scan_results', 'Choose what to do')], manual: ['Open the scan results and pick Quarantine, Delete or Keep for each one — FrameForge does the rest.'], manualAction: null });
   const pending = restartNeededFor();
   if (extra.rebootPending || pending.length) add({ id: 'restart', level: 'info', title: 'A restart is needed', body: pending.length ? `To finish: ${pending.join(', ')}.` : 'Windows has updates waiting for a restart.', actions: [A('restart', 'Restart now')], manual: guides.restartPending(), manualAction: null, restartItem: true });
   if (app.isPackaged && updates && updates.state.status === 'unconfigured') add({ id: 'updates', level: 'info', title: 'In-app updates aren’t set up', body: 'FrameForge can’t find where new versions come from.', actions: [A('set_update_source', 'Fix it')], strategies: [A('set_update_source', 'Use the official FrameForge update source')], bg: 'game' });
@@ -1217,6 +1235,22 @@ async function runFixAction(action) {
     case 'goto':
       send('goto', arg);
       return { ok: true };
+    case 'scan_results':
+      send('goto', 'scan');
+      send('scan:showResults', true);
+      return { ok: true };
+    case 'sec_fix': {
+      await refreshSecurity();
+      const todo = (secChecks || []).filter((c) => ['big', 'medium'].includes(c.level) && c.fix && c.id !== 'proxy' && c.fix !== 'open_defender');
+      const out = [];
+      for (const c of todo) {
+        send('fix:line', { line: `${c.fixLabel}: ${c.title}` });
+        const r = await securityFix(c.id);
+        out.push(r.ok);
+      }
+      await refreshSecurity();
+      return { ok: out.every(Boolean), message: `Fixed ${out.filter(Boolean).length} of ${todo.length} Windows protection problem${todo.length === 1 ? '' : 's'}.` };
+    }
   }
   return { ok: false, message: 'Unknown fix' };
 }
@@ -1465,6 +1499,10 @@ async function backgroundFix(why = 'check') {
         send('fix:auto', { fixed: r.fixedTitles, why });
       }
     }
+    // A quick virus scan once a week, while you're away from the PC.
+    if (s.autoScan && (!DEMO || process.env.FRAMEFORGE_TEST_AUTOSCAN) && !scanjob.running() && !game && idle >= 10 && Date.now() - (s.lastScanAt || 0) > 7 * 24 * 3600 * 1000 && engine && engine.available) {
+      scanjob.start('quick', { background: true });
+    }
     // A restart that FrameForge's own changes need: done while you're away (20+ min idle, no game running).
     const pending = restartNeededFor();
     if (pending.length && mayAutoRestart() && !game && idle >= 20 && !fixAllRunning) {
@@ -1475,6 +1513,97 @@ async function backgroundFix(why = 'check') {
     bgRunning = false;
   }
 }
+
+// ---------- Virus scan ----------
+let secChecks = null;
+let engine = null;
+async function refreshSecurity() {
+  engine = await scanner.engineStatus();
+  secChecks = await scanner.checks(engine);
+  return secChecks;
+}
+async function securityFix(id) {
+  const c = (secChecks || []).find((x) => x.id === id);
+  if (!c || !c.fix) return { ok: false, message: 'Nothing to fix.' };
+  const r = await scanner.fixCheck(c.fix, c.data);
+  if (r.ok) {
+    changes.put(`security_${c.id}_${Date.now()}`, { name: `Protection: ${c.fixLabel}`, summary: `${c.title} — ${r.message}`, details: c.details || [], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: !!r.reboot });
+    send('changes', changeList());
+  }
+  await refreshSecurity();
+  send('fix:changed', true);
+  return r;
+}
+function onScanFinished(r) {
+  const s = scanjob.summary(r);
+  send('fix:changed', true);
+  if ((s.open || r.background) && Notification.isSupported() && windowHidden()) {
+    const n = new Notification({
+      title: s.open ? `FrameForge found ${s.open} threat${s.open === 1 ? '' : 's'}` : 'FrameForge’s weekly scan is done — all clear',
+      body: s.open ? 'Click to see them and choose Quarantine, Delete or Keep.' : `${s.filesChecked.toLocaleString()} files checked. ${s.counts.fp ? `${s.counts.fp} false positive${s.counts.fp === 1 ? '' : 's'} left alone.` : ''}`,
+      icon: ICON,
+    });
+    n.on('click', () => {
+      showMain();
+      send('goto', 'scan');
+      send('scan:showResults', true);
+    });
+    n.show();
+  }
+}
+ipcMain.handle('scan:info', async (_e, { refresh = false } = {}) => {
+  if (refresh || !engine) await refreshSecurity().catch(() => {});
+  return { engine, checks: secChecks || [], estimates: await scanjob.estimates(), running: scanjob.snapshot(), last: scanjob.last() ? scanjob.summary(scanjob.last()) : null, totals: scanjob.totals(), quarantine: scanner.quarantineList(), allowed: settings.get().scanAllowed || [], hashLookup: settings.get().scanHashLookup, autoScan: settings.get().autoScan };
+});
+ipcMain.handle('scan:start', (_e, type, folder) => scanjob.start(type, { folder }));
+ipcMain.handle('scan:cancel', () => scanjob.cancel());
+ipcMain.handle('scan:last', () => scanjob.last());
+ipcMain.handle('scan:apply', async (_e, choices) => {
+  const r = await scanjob.apply(choices || {});
+  send('changes', changeList());
+  send('fix:changed', true);
+  return r;
+});
+ipcMain.handle('scan:fixCheck', (_e, id) => securityFix(id));
+ipcMain.handle('scan:qRestore', (_e, id, allow) => scanner.restoreQuarantined(id, { allow: !!allow }));
+ipcMain.handle('scan:qDelete', (_e, id) => scanner.deleteQuarantined(id));
+ipcMain.handle('scan:pickFolder', async () => {
+  const r = await dialog.showOpenDialog(mainWin, { title: 'Pick a folder to scan', properties: ['openDirectory'] });
+  return r.canceled ? null : r.filePaths[0];
+});
+ipcMain.handle('scan:showFile', (_e, f) => {
+  if (f && fs.existsSync(f)) shell.showItemInFolder(f);
+});
+ipcMain.handle('scan:virusTotal', (_e, sha) => {
+  if (/^[a-f0-9]{64}$/i.test(sha || '')) shell.openExternal(`https://www.virustotal.com/gui/file/${sha}`);
+});
+
+// ---------- Windows animations: one switch, kept the way the user set it ----------
+async function enforceAnimations(why) {
+  const want = settings.get().animations;
+  if (want !== 'on' && want !== 'off') return false;
+  const fixed = await animations.enforce(want).catch(() => false);
+  if (fixed && why !== 'start') {
+    changes.put('animations', { name: `Windows animations ${want}`, summary: `Something changed Windows’ animations (a tweak tool, a preset or Windows Settings), so FrameForge switched them ${want} again — your choice in Settings wins.`, details: [], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+    send('changes', changeList());
+  }
+  if (fixed) send('anim:changed', await animations.get());
+  return fixed;
+}
+ipcMain.handle('anim:get', async () => ({ want: settings.get().animations, ...(await animations.get()) }));
+ipcMain.handle('anim:set', async (_e, on) => {
+  settings.set({ animations: on ? 'on' : 'off' });
+  // Animations on wins over the older "Performance visual effects" boost: switch that off so the two don't fight.
+  if (on && backup.get('visual_effects')) {
+    const userOff = { ...(settings.get().userOff || {}), visual_effects: true };
+    settings.set({ userOff });
+    await revertPhase(tweakById('visual_effects'), 'Windows animations switched on in Settings')();
+  }
+  const r = await animations.set(!!on);
+  changes.put('animations', { name: `Windows animations ${on ? 'on' : 'off'}`, summary: on ? 'Every Windows animation is on. FrameForge keeps it that way, even if a tweak tool or Windows Settings turns them off.' : 'Every Windows animation is off for a snappier, faster-feeling PC. FrameForge keeps it that way, even if a tweak tool or Windows Settings turns them back on.', details: r.details || [], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+  send('changes', changeList());
+  return { ...r, want: settings.get().animations, ...(await animations.get()) };
+});
 
 ipcMain.handle('fix:list', async () => {
   if (Date.now() - extra.at > 30000) await detectExtra();

@@ -23,12 +23,16 @@ Pick a goal — **Competitive**, **Best performance**, **Balanced** or **Best gr
 - A driver checklist for AMD Software / the NVIDIA app made for your goal
 - FPS counter with 1% lows, real CPU and GPU temperatures, in-game overlay (Ctrl+Shift+F)
 - **Fix mode** that fixes problems by itself — in the background, without a click (display refresh rate, reverted tweaks, failed steps, a hot graphics card, missing tools, full drive…). It restarts the PC itself when a fix needs it (with a countdown you can cancel) and finishes afterwards. For what no app can reach it gives exact steps, like the BIOS menu for XMP/EXPO on your motherboard, with a one-click **Restart into BIOS**
+- **Virus scan** — Quick, Full and Custom scans with Microsoft Defender's engine, a time estimate and live file count, a **false-positive check** for every detection (real threats vs. false positives, with the reasons), and a results window where you pick Quarantine, Delete or Keep for each one. Plus checks for things malware switches off (real-time protection, exclusions, hosts file, firewall)
+- **Windows animations switch** — all Windows animations off for a snappier PC (or all on), kept that way even if another tool changes it
 - **AI chat** that knows your PC and what was changed — Claude (your own API key) or free models that run on your PC: pick one and press **Install**, FrameForge sets it up
 
 Every change is listed with its exact before → after value, and **Undo all changes** puts your PC back.
 FrameForge makes a Windows restore point before it changes anything.
 
 ![Fix mode](images/fixmode.png)
+
+![Virus scan results](images/virusscan.png)
 
 ## Installing
 

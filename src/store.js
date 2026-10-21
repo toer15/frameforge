@@ -53,6 +53,13 @@ const DEFAULT_SETTINGS = {
   lastAutoRestart: 0, // never restart by itself twice within a few hours (no restart loops)
   cttSkip: [], // Chris Titus tweaks that fail on this PC — left out of the preset
   biosCheck: null, // RAM speed before "Restart into BIOS", to check the change worked
+  scanHashLookup: true, // false-positive check: look up flagged files' SHA-256 in the known-software database
+  autoScan: true, // a quick virus scan once a week, while you're away from the PC
+  scanAllowed: [], // files the user kept and allowed (Defender exclusions FrameForge added)
+  scanRate: null, // files per second this PC scans at (learned)
+  scanStats: {}, // last quick/full scan: seconds, files
+  lastScanAt: 0,
+  animations: null, // null = leave Windows alone; 'on' / 'off' = FrameForge keeps all animations that way
 };
 
 function file(name) {

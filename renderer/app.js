@@ -36,6 +36,7 @@ $$('.nav-item').forEach((b) =>
     $$('.view').forEach((v) => v.classList.toggle('hidden', v.id !== `view-${b.dataset.view}`));
     if (b.dataset.view === 'fix' && typeof refreshFix === 'function') refreshFix();
     if (b.dataset.view === 'tweaks') refreshTweaks();
+    if (b.dataset.view === 'scan') refreshScan(true);
   })
 );
 $('#wMin').onclick = () => ff.win.min();
@@ -614,6 +615,7 @@ const FIX_ASK = (it) => `Help me fix this problem on my PC: “${it.title}”. $
 function showView(name) {
   $$('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === name));
   $$('.view').forEach((v) => v.classList.toggle('hidden', v.id !== `view-${name}`));
+  if (name === 'scan') refreshScan(true);
 }
 
 // Problems that were in the list and then disappeared = fixed (by Fix everything, a button, Auto Mode or the AI).
@@ -1288,6 +1290,296 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') $$('.modal').forEach((m) => m.classList.add('hidden'));
 });
 
+/* ---------- Virus scan ---------- */
+let SCAN = null;
+let RES = null; // last results (with items)
+let CHOICE = {}; // item id -> action
+let applying = false;
+const VLABEL = { real: 'Real threat', unsure: 'Probably a threat', pua: 'Unwanted program', fp: 'False positive', test: 'Test file' };
+const ALABEL = { quarantine: 'Quarantine', delete: 'Delete', keep: 'Keep', allow: 'Keep & allow', keepq: 'Leave in quarantine', restore: 'Restore' };
+const STLABEL = { active: 'On the disk', quarantined: 'In Defender’s quarantine', removed: 'Already removed by Defender', gone: 'No longer on the disk', allowed: 'Allowed', ffquarantined: 'Quarantined by FrameForge', deleted: 'Deleted' };
+const mins = (sec) => {
+  if (sec == null) return '—';
+  if (sec < 60) return `${Math.max(1, Math.round(sec))} s`;
+  const m = Math.round(sec / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+};
+const clock = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+const sizeStr = (b) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(1)} MB` : b ? `${Math.max(1, Math.round(b / 1024))} KB` : '—');
+const SCANNAME = { quick: 'Quick scan', full: 'Full scan', custom: 'Custom scan' };
+
+async function refreshScan(refresh = false) {
+  SCAN = await ff.scan.info({ refresh });
+  const e = SCAN.engine || {};
+  const line = $('#engineLine');
+  line.classList.toggle('ok', !!e.available);
+  line.classList.toggle('bad', !e.available);
+  $('#engineText').textContent = e.available
+    ? `Microsoft Defender engine ${e.engine || ''}${e.sigVersion ? ` · virus definitions ${e.sigVersion}` : ''}${e.sigAgeHours != null ? ` (updated ${e.sigAgeHours < 1 ? 'less than an hour' : `${e.sigAgeHours} h`} ago)` : ''} · real-time protection ${e.rtp ? 'on' : 'OFF'}`
+    : e.reason || 'Microsoft Defender isn’t available.';
+  const est = SCAN.estimates || {};
+  $('#estQuick').textContent = `about ${mins(est.quick && est.quick.sec)}${est.quick && est.quick.learned ? '' : ''}`;
+  $('#estFull').textContent = `about ${mins(est.full && est.full.sec)}`;
+  $('#estFull').title = est.full ? `${est.full.learned ? 'Based on your last full scan' : `Estimated from ${est.full.gb} GB used (about ${est.full.files.toLocaleString()} files)`} — the exact time left shows once the files are counted.` : '';
+  $('#scanCards').classList.toggle('busy', !!SCAN.running || !e.available);
+  $('#scanResultsBtn').classList.toggle('hidden', !SCAN.last);
+  // Everything found on this PC so far (FrameForge scans + Defender's history)
+  const t = SCAN.totals || {};
+  $('#totCounts').innerHTML = cnt(t.all, 'detections in total');
+  $('#totGrid').innerHTML = [
+    ['real', (t.real || 0) + (t.unsure || 0), 'real threats'],
+    ['fp', t.fp || 0, 'false positives'],
+    ['pua', t.pua || 0, 'unwanted programs'],
+    ['test', t.test || 0, 'test files'],
+  ]
+    .map(([c, n, l]) => `<div class="tot ${c}"><b>${n}</b><span>${l}</span></div>`)
+    .join('');
+  // Windows protection
+  const checks = SCAN.checks || [];
+  const bad = checks.filter((c) => ['big', 'medium'].includes(c.level));
+  $('#secCounts').innerHTML = bad.length ? cnt(bad.length, bad.length === 1 ? 'problem' : 'problems', 'warn') : '<span class="cnt on"><b>✓</b>all good</span>';
+  $('#secList').innerHTML = checks
+    .map((c) => `<div class="sec ${c.level}"><div><b>${esc(c.title)}</b><p>${esc(c.body || '')}</p>${(c.details || []).map((d) => `<code>${esc(d)}</code>`).join('')}</div>${c.fix ? `<button class="${c.level === 'big' ? 'primary' : 'ghost'} small" data-secfix="${esc(c.id)}">${esc(c.fixLabel)}</button>` : ''}</div>`)
+    .join('') || '<p class="muted">Checking…</p>';
+  // Quarantine
+  const qs = SCAN.quarantine || [];
+  $('#qCounts').innerHTML = cnt(qs.length, qs.length === 1 ? 'file' : 'files');
+  $('#qList').innerHTML = qs.length
+    ? qs.map((x) => `<div class="q-item"><div><b>${esc(x.threat)}</b><code>${esc(x.file)}</code></div><span class="muted">${new Date(x.at).toLocaleDateString()}</span><button class="ghost small" data-qrestore="${esc(x.id)}">Restore</button><button class="ghost small stop" data-qdelete="${esc(x.id)}">Delete for good</button></div>`).join('')
+    : '<p class="muted">Nothing in FrameForge’s quarantine. Quarantined files are stored encoded in a folder only Windows and administrators can open, so they can’t run.</p>';
+  if (SCAN.running) showScanRun(SCAN.running);
+  const open = SCAN.last ? SCAN.last.open : 0;
+  $('#scanBadge').textContent = open;
+  $('#scanBadge').classList.toggle('hidden', !open);
+}
+
+function showScanRun(p) {
+  $('#scanRun').classList.remove('hidden');
+  $('#scanCards').classList.add('busy');
+  $('#srTitle').textContent = `${SCANNAME[p.type] || 'Scan'}${p.background ? ' (weekly, in the background)' : ''}`;
+  $('#srPhase').textContent = p.phaseText || '';
+  const counting = p.phase === 'count' || p.phase === 'update';
+  $('#srFiles').textContent = counting ? (p.counted || 0).toLocaleString() : `${(p.filesDone || 0).toLocaleString()}`;
+  $('#srFilesLbl').textContent = counting ? 'files found so far' : `of ${(p.filesTotal || 0).toLocaleString()} files checked`;
+  $('#srEta').textContent = counting ? 'counting…' : p.etaSec == null ? '—' : `about ${mins(p.etaSec)}`;
+  $('#srElapsed').textContent = clock(p.elapsedSec || 0);
+  $('#srFound').textContent = p.found || 0;
+  $('#srFill').style.width = `${Math.round((p.pct || 0) * 100)}%`;
+  $('#srCurrent').textContent = p.current ? `Now: ${p.current}` : '';
+}
+ff.scan.onProgress((p) => {
+  if (!p) return;
+  showScanRun(p);
+});
+ff.scan.onDone(async (d) => {
+  $('#scanRun').classList.add('hidden');
+  $('#scanCards').classList.remove('busy');
+  if (!d.ok) {
+    toast(`The scan couldn’t run: ${d.message}`, 8000);
+    refreshScan(true);
+    return;
+  }
+  await refreshScan(true);
+  openResults();
+});
+$$('[data-start]').forEach((b) =>
+  b.addEventListener('click', async () => {
+    let folder = null;
+    if (b.dataset.start === 'custom') {
+      folder = await ff.scan.pickFolder();
+      if (!folder) return;
+    }
+    const r = await ff.scan.start(b.dataset.start, folder);
+    if (r && (r.busy || r.ok === false)) return toast(r.message || 'A scan is already running.');
+    showScanRun({ type: b.dataset.start, phase: 'prepare', phaseText: 'Getting ready…', elapsedSec: 0 });
+  })
+);
+$('#scanStop').onclick = async () => {
+  $('#scanStop').disabled = true;
+  await ff.scan.cancel();
+  setTimeout(() => ($('#scanStop').disabled = false), 1500);
+};
+$('#scanResultsBtn').onclick = () => openResults();
+ff.scan.onShowResults(() => openResults());
+
+document.addEventListener('click', async (e) => {
+  const sf = e.target.closest('[data-secfix]');
+  if (sf) {
+    sf.disabled = true;
+    sf.textContent = 'Fixing…';
+    const r = await ff.scan.fixCheck(sf.dataset.secfix);
+    toast(r.message, 5000);
+    refreshScan(true);
+    return;
+  }
+  const qr = e.target.closest('[data-qrestore]');
+  if (qr) {
+    const r = await ff.scan.qRestore(qr.dataset.qrestore, true);
+    toast(r.message, 5000);
+    return refreshScan();
+  }
+  const qd = e.target.closest('[data-qdelete]');
+  if (qd) {
+    const r = await ff.scan.qDelete(qd.dataset.qdelete);
+    toast(r.message);
+    return refreshScan();
+  }
+  const vt = e.target.closest('[data-vt]');
+  if (vt) return ff.scan.virusTotal(vt.dataset.vt);
+  const sh = e.target.closest('[data-showfile]');
+  if (sh) return ff.scan.showFile(sh.dataset.showfile);
+  const bulk = e.target.closest('[data-bulk]');
+  if (bulk && RES && !applying) {
+    for (const it of RES.items) {
+      if (!it.actions.length || it.done) continue;
+      if (bulk.dataset.bulk === 'reset') CHOICE[it.id] = it.defaultAction;
+      else if (['real', 'unsure', 'pua', 'test'].includes(it.verdict) && it.actions.includes(bulk.dataset.bulk)) CHOICE[it.id] = bulk.dataset.bulk;
+    }
+    renderResults();
+  }
+});
+document.addEventListener('change', (e) => {
+  const r = e.target.closest('[data-act]');
+  if (r && !applying) {
+    CHOICE[r.dataset.act] = r.value;
+    renderPlan();
+  }
+});
+
+async function openResults() {
+  RES = await ff.scan.last();
+  if (!RES) return toast('No scan results yet.');
+  CHOICE = {};
+  for (const it of RES.items) if (it.actions.length && !it.done) CHOICE[it.id] = it.defaultAction;
+  applying = false;
+  $('#resApply').disabled = false;
+  $('#resApply').textContent = 'Do it';
+  $('#resLater').textContent = 'Decide later';
+  renderResults();
+  $('#scanModal').classList.remove('hidden');
+}
+function renderPlan() {
+  const n = {};
+  for (const [id, a] of Object.entries(CHOICE)) {
+    const it = RES.items.find((i) => i.id === id);
+    if (!it || it.done) continue;
+    n[a] = (n[a] || 0) + 1;
+  }
+  const parts = ['quarantine', 'delete', 'restore', 'allow', 'keep', 'keepq'].filter((a) => n[a]).map((a) => `${n[a]} ${a === 'quarantine' ? 'to quarantine' : a === 'delete' ? 'to delete' : a === 'restore' ? 'to restore' : a === 'allow' ? 'to keep & allow' : a === 'keepq' ? 'left in quarantine' : 'kept'}`);
+  $('#resPlan').textContent = parts.length ? parts.join(' · ') : 'Nothing to do.';
+  $('#resApply').classList.toggle('hidden', !parts.length);
+}
+function renderResults() {
+  const r = RES;
+  const c = r.counts || {};
+  const h = r.historyCounts || {};
+  const scanFound = r.items.filter((i) => i.source !== 'defender').length;
+  $('#resTitle').textContent = r.cancelled ? 'Scan stopped' : scanFound ? `${SCANNAME[r.type]} finished — ${scanFound} detection${scanFound === 1 ? '' : 's'}` : `${SCANNAME[r.type]} finished — no threats found`;
+  $('#resSub').textContent = `${r.filesChecked.toLocaleString()} file${r.filesChecked === 1 ? '' : 's'} checked in ${mins(r.durationSec)}${r.folder ? ` · ${r.folder}` : ''} · ${new Date(r.endedAt).toLocaleString()}${(r.notes || []).length ? ` · ${r.notes.join(' ')}` : ''}`;
+  $('#resTiles').innerHTML = [
+    ['real', (c.real || 0) + (c.unsure || 0), 'real threats'],
+    ['fp', c.fp || 0, 'false positives'],
+    ['pua', c.pua || 0, 'unwanted programs'],
+    ['test', c.test || 0, 'test files'],
+    ['', r.items.filter((i) => i.source === 'defender').length, 'found by Defender before'],
+  ]
+    .map(([k, n, l]) => `<div class="tot ${k}"><b>${n}</b><span>${l}</span></div>`)
+    .join('');
+  $('#resBulk').classList.toggle('hidden', !r.items.some((i) => i.actions.length && ['real', 'unsure', 'pua', 'test'].includes(i.verdict)));
+  if (!r.items.length) {
+    $('#resList').innerHTML = `<div class="res-empty"><b>All clear</b>Microsoft Defender’s engine found nothing in ${r.filesChecked.toLocaleString()} files, and Defender has no earlier detections on this PC.</div>`;
+  } else {
+    $('#resList').innerHTML = r.items
+      .map((it) => {
+        const status = STLABEL[it.status] || it.status;
+        const found = it.source === 'defender' ? `by Microsoft Defender on ${new Date(it.detectedAt).toLocaleDateString()}` : it.source === 'memory' ? 'by Defender’s memory check in this scan' : 'by this scan';
+        const facts = [
+          `Signed by: <b>${it.signer ? esc(it.signer) : it.status === 'active' ? 'nobody (not signed)' : 'unknown'}</b>`,
+          `Size: <b>${sizeStr(it.size)}</b>`,
+          `Known-software database: <b>${it.known ? `listed (${esc(it.known.source)})` : it.sha256 ? 'not listed' : 'not checked'}</b>`,
+          `Found: <b>${found}</b>`,
+          it.sha256 ? `SHA-256: <b>${it.sha256.slice(0, 12)}…${it.sha256.slice(-6)}</b> · <a data-vt="${it.sha256}">Second opinion on VirusTotal</a>` : '',
+          it.file && it.status === 'active' ? `<a data-showfile="${esc(it.file)}">Show in folder</a>` : '',
+        ].filter(Boolean);
+        const acts = it.done
+          ? ''
+          : it.actions.length
+            ? `<div class="seg" role="radiogroup" aria-label="What to do">${it.actions.map((a) => `<label><input type="radio" name="act-${esc(it.id)}" data-act="${esc(it.id)}" value="${a}" ${CHOICE[it.id] === a ? 'checked' : ''}/><span class="a-${a}">${ALABEL[a]}</span></label>`).join('')}</div>`
+            : `<span class="muted">${it.status === 'removed' ? 'Nothing to do — Defender already removed it.' : 'Nothing to do.'}</span>`;
+        return `<div class="ri v-${it.verdict}" data-ri="${esc(it.id)}">
+          <div class="ri-head"><span class="vbadge ${it.verdict}">${VLABEL[it.verdict]}</span><b class="ri-name">${esc(it.threat)}</b><span class="ri-status ${it.running ? 'hot' : ''}">${esc(status)}${it.running ? ' · running now' : ''}</span></div>
+          <p class="ri-type"><b>${it.verdict === 'fp' ? 'What Defender thinks it is' : 'What it is'}:</b> ${esc(it.typeInfo)}</p>
+          ${it.file ? `<code class="ri-path">${esc(it.file)}</code>` : `<code class="ri-path">${esc((it.other || []).join(' · ') || 'No file (memory or registry)')}</code>`}
+          <div class="ri-facts">${facts.map((f) => `<span>${f}</span>`).join('')}</div>
+          <details ${['fp', 'unsure'].includes(it.verdict) ? 'open' : ''}><summary>Why FrameForge says “${VLABEL[it.verdict].toLowerCase()}”</summary><ul>${it.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>
+          ${acts}
+          <div class="ri-result ${it.done ? 'ok' : ''}">${it.done ? `✓ ${esc(it.doneMessage || ALABEL[it.done])}` : ''}</div>
+        </div>`;
+      })
+      .join('');
+  }
+  renderPlan();
+}
+ff.scan.onApplying((a) => {
+  const el = $(`[data-ri="${CSS.escape(a.id)}"] .ri-result`);
+  if (el) {
+    el.className = 'ri-result';
+    el.textContent = `${ALABEL[a.action]}…`;
+  }
+});
+ff.scan.onApplied((a) => {
+  const card = $(`[data-ri="${CSS.escape(a.id)}"]`);
+  if (!card) return;
+  const el = card.querySelector('.ri-result');
+  el.className = `ri-result ${a.ok ? 'ok' : 'err'}`;
+  el.textContent = `${a.ok ? '✓' : '✗'} ${a.message}`;
+  if (a.ok) {
+    const seg = card.querySelector('.seg');
+    if (seg) seg.remove();
+    const st = card.querySelector('.ri-status');
+    if (st) st.textContent = STLABEL[a.status] || a.status;
+  }
+});
+$('#resApply').onclick = async () => {
+  if (applying) return;
+  applying = true;
+  $$('#resList .seg').forEach((s) => s.classList.add('locked'));
+  $('#resApply').disabled = true;
+  $('#resApply').textContent = 'Working…';
+  const r = await ff.scan.apply(CHOICE);
+  applying = false;
+  $('#resApply').classList.add('hidden');
+  $('#resLater').textContent = 'Close';
+  $$('#resList .seg').forEach((s) => s.classList.remove('locked'));
+  const ok = r.results.filter((x) => x.ok).length;
+  $('#resPlan').textContent = `Done — ${ok} of ${r.results.length} handled.${r.reboot ? ' A locked file is removed at the next restart (Fix mode restarts the PC for you).' : ''}`;
+  RES = await ff.scan.last();
+  refreshScan();
+  refreshChanges();
+  refreshFix();
+};
+$('#resLater').onclick = () => $('#scanModal').classList.add('hidden');
+$('#resClose').onclick = () => $('#scanModal').classList.add('hidden');
+
+/* ---------- Windows animations (Settings) ---------- */
+async function refreshAnim(st) {
+  st = st || (await ff.anim.get());
+  const sw = $('#animSwitch');
+  sw.checked = st.want ? st.want === 'on' : st.on;
+  const now = st.on ? 'all on' : st.off ? 'all off' : 'some on, some off';
+  $('#animLine').textContent = st.want ? `Right now: ${now}. FrameForge keeps them ${st.want} — even if another tool or Windows Settings changes them.` : `Right now in Windows: ${now}. Flip the switch and FrameForge takes over.`;
+}
+$('#animSwitch').addEventListener('change', async (e) => {
+  const on = e.target.checked;
+  e.target.disabled = true;
+  const r = await ff.anim.set(on);
+  e.target.disabled = false;
+  toast(r.ok ? (on ? 'Windows animations are on — FrameForge keeps them on.' : 'All Windows animations are off — FrameForge keeps them off.') : r.message || 'Windows didn’t accept every part of the change.', 5000);
+  refreshAnim(r);
+  refreshChanges();
+});
+ff.anim.onChanged(() => refreshAnim());
+
 /* ---------- Boot ---------- */
 (async () => {
   INFO = await ff.info();
@@ -1298,6 +1590,8 @@ document.addEventListener('keydown', (e) => {
   await loadChatHistory();
   await refreshFix();
   setInterval(refreshFix, 15000); // temperatures and tools can change
+  refreshScan().catch(() => {});
+  refreshAnim().catch(() => {});
   slide = Math.max(0, PRESETS.findIndex((p) => p.id === S.preset));
   renderPresets();
   await refreshChanges();
