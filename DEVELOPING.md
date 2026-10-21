@@ -149,8 +149,21 @@ under `ProgramData\Microsoft\Windows Defender\Platform\<version>`):
   (running copies stopped first; locked files via `PendingFileRenameOperations`), keep, keep & allow (Defender
   exclusion for that exact file), or for Defender-quarantined items leave/restore.
 - Protection checks (`checks`/`fixCheck`): real-time protection, Defender-off policies, risky exclusions, hosts-file
-  hijacks, proxy, firewall, UAC. Also shown in Fix mode (`security`, `threats`).
-- Weekly background quick scan (`autoScan`) when idle 10+ min and no game.
+  hijacks, proxy, firewall, UAC, plus Defender features (behaviour monitoring, IOAV/script/archive scanning, cloud
+  protection `MAPSReporting`, PUA blocking, Tamper Protection, optional Controlled folder access). Also shown in Fix
+  mode (`security`, `threats`). The protection banner on the tab is computed in `renderProtBanner()` (app.js) from the
+  engine status, these checks, open detections and the age of the last scan.
+- **Pause / resume** (`pause`, `resume`, `autoPause` in scanjob.js): workers stop picking new jobs (running ones finish);
+  paused time is left out of elapsed time and the speed estimate. main.js auto-pauses a *background* scan every 15 s
+  while a game runs or the user is active (idle < 1 min). The scan holds a `powerSaveBlocker` so Windows doesn't sleep.
+- **Live feed**: `snapshot().recent` has the newest 6 detections. **History**: `scan-history.json` (40 newest scans,
+  `scanjob.history()`); **report**: `scanjob.report()` → text saved from the results window (`scan:export`).
+- Custom scan takes a folder, a drive (`scan:drives`) or one file (`scan:pickFile` → one scan job).
+- **Scheduled scans** (`autoScanTick` in main.js, every 2 min): settings `scanSchedule` (quick: off/daily/weekly/biweekly/
+  monthly; `autoScan === false` from older versions also means off) and `scanFullSchedule` (full). Needs 10+ min idle,
+  no game, charger plugged in, no Auto Mode/Fix run; a due full scan covers the quick scan; after an attempt nothing
+  starts again for 6 hours. Background scans use 1–2 scan processes at below-normal priority. Independent of Fix mode.
+- Known-software lookup returns `listed | notlisted | off | failed | nohash` (`knownLookup`); only real answers are cached.
 
 ## Windows animations
 

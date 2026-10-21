@@ -54,7 +54,9 @@ const DEFAULT_SETTINGS = {
   cttSkip: [], // Chris Titus tweaks that fail on this PC — left out of the preset
   biosCheck: null, // RAM speed before "Restart into BIOS", to check the change worked
   scanHashLookup: true, // false-positive check: look up flagged files' SHA-256 in the known-software database
-  autoScan: true, // a quick virus scan once a week, while you're away from the PC
+  autoScan: true, // false = no scheduled quick scan (older versions' switch; the schedule menu below replaced it)
+  scanSchedule: 'weekly', // scheduled quick scan while you're away: off | daily | weekly | biweekly | monthly
+  scanFullSchedule: 'off', // scheduled full scan while you're away: off | weekly | biweekly | monthly
   scanAllowed: [], // files the user kept and allowed (Defender exclusions FrameForge added)
   scanRate: null, // files per second this PC scans at (learned)
   scanStats: {}, // last quick/full scan: seconds, files

@@ -89,9 +89,15 @@ const TOOLS = [
   },
   {
     name: 'fix_problem',
-    description: 'Fix one problem from the Fix mode list (see fixModeProblems in the snapshot). Pass its id, and optionally which of its fixActions to use (default: the first).',
+    description: 'Actually fix one problem from the Fix mode list (see fixModeProblems in the snapshot). Pass its id. FrameForge tries every fix it knows for that problem in order, checks after each one whether the problem is really gone, and the problem disappears from the list when it is. The result says fixed true/false; if false, explain manualSteps to the user. Optionally pass one specific action id from the problem’s fixActions.',
     input_schema: { type: 'object', properties: { problem_id: { type: 'string' }, action: { type: 'string' } }, required: ['problem_id'] },
     approve: (i) => `Fix this problem: ${i.problem_id.replace(/^(step|insight|tool)_/, '').replace(/_/g, ' ')}${i.action ? ` (${i.action.split(':')[0]})` : ''}`,
+  },
+  {
+    name: 'fix_everything',
+    description: 'Run Fix mode’s “Fix everything automatically”: fix every problem in the list that FrameForge can fix, verify each one, and report what was fixed and what still needs the user. May restart the app as administrator or the PC (with a cancellable countdown) if a fix needs it. Use when the user asks you to fix everything / all problems.',
+    input_schema: { type: 'object', properties: {} },
+    approve: () => 'Fix everything FrameForge can fix on your PC (it may need to restart the app or the PC)',
   },
   {
     name: 'run_repair',
@@ -125,7 +131,7 @@ How to answer:
 - Be clear, friendly and specific. Use short paragraphs and lists. Explain technical terms simply. Match the user's language (they may write in Norwegian or English).
 - Be honest about limits: RAM speed (XMP/EXPO) can only be set in the BIOS; FrameForge never applies made-up overclock/undervolt/voltage numbers — it uses vendors' own auto-tuners (NVIDIA Automatic Tuning, AMD Auto Undervolt/Overclock); it never raises voltages. Don't claim FrameForge did something that isn't in the snapshot.
 - If a temperature is high, say what's normal (CPU under ~85 °C, GPU core under ~83 °C while gaming is typically fine; AMD hot spot can run ~20 °C above core) and suggest real fixes (dust, fan curve, airflow, undervolting via the vendor auto-tuner).
-- When something failed or is wrong (see fixModeProblems), explain the cause in plain words and offer to fix it with fix_problem or run_repair. For things only fixable in the BIOS (RAM XMP/EXPO, single RAM stick), give exact, step-by-step BIOS instructions for their motherboard brand if known.
+- When something failed or is wrong (see fixModeProblems), explain the cause in plain words and offer to fix it with fix_problem (fixes one problem for real and verifies it — fixed true means it is gone from the Fix mode list), fix_everything (all of them), or run_repair. When the user asks you to fix something, do it with the tool right away instead of only explaining, then tell them honestly whether the result says it is fixed. For things only fixable in the BIOS (RAM XMP/EXPO, single RAM stick), give exact, step-by-step BIOS instructions for their motherboard brand if known.
 - You can take actions with your tools, but only when the user asks for that kind of change (or agrees to your offer). The user approves each one in the app. Never suggest disabling security features or running unknown "FPS booster" software.
 
 Live snapshot of this PC (JSON, taken just now):

@@ -266,7 +266,31 @@
         </div>
         <button class="ghost small" id="scanResultsBtn">Last results</button>
       </div>
+      <div class="prot-banner checking" id="protBanner">
+        <div class="pb-icon" id="pbIcon" aria-hidden="true">…</div>
+        <div class="pb-text"><h2 id="pbTitle">Checking your protection…</h2><p id="pbSub"></p></div>
+        <div class="pb-actions"><button class="primary small hidden" id="pbAction"></button><button class="ghost small" id="updSigsBtn">Update definitions</button></div>
+      </div>
       <div class="engine-line" id="engineLine"><span class="dot"></span><span id="engineText">Checking Windows’ antivirus…</span></div>
+
+      <div class="scan-run hidden" id="scanRun" aria-live="polite">
+        <div class="sr-head">
+          <span class="spin" id="srSpin"></span>
+          <div><b id="srTitle">Quick scan</b><span id="srPhase">Getting ready…</span></div>
+          <button class="ghost small hidden" id="scanPause">Pause</button>
+          <button class="ghost small stop" id="scanStop">Stop</button>
+        </div>
+        <div class="bar big"><i id="srFill"></i></div>
+        <div class="sr-stats">
+          <div><b id="srFiles">0</b><span id="srFilesLbl">files checked</span></div>
+          <div><b id="srEta">—</b><span>left (estimated)</span></div>
+          <div><b id="srElapsed">0:00</b><span>elapsed</span></div>
+          <div class="t-real"><b id="srFound">0</b><span>detections so far</span></div>
+        </div>
+        <div class="sr-current" id="srCurrent"></div>
+        <div class="sr-recent hidden" id="srRecent"></div>
+        <p class="sr-note">Each detection is checked for false positives when the scan finishes — then you choose what happens to it.</p>
+      </div>
 
       <div class="scan-cards" id="scanCards">
         <div class="scan-card">
@@ -281,26 +305,10 @@
         </div>
         <div class="scan-card">
           <div class="sc-top"><h2>Custom scan</h2><span class="sc-time">you pick</span></div>
-          <p>One folder or drive — a USB stick, a download you’re not sure about, a game mod folder.</p>
-          <button class="ghost" data-start="custom">Pick a folder…</button>
+          <p>One file, folder or drive — a USB stick, a download you’re not sure about, a game mod folder.</p>
+          <div class="sc-btns"><button class="ghost" data-start="custom">Pick a folder…</button><button class="ghost" data-start="file">Pick a file…</button></div>
+          <div class="drive-chips" id="driveChips"></div>
         </div>
-      </div>
-
-      <div class="scan-run hidden" id="scanRun" aria-live="polite">
-        <div class="sr-head">
-          <span class="spin" id="srSpin"></span>
-          <div><b id="srTitle">Quick scan</b><span id="srPhase">Getting ready…</span></div>
-          <button class="ghost small stop" id="scanStop">Stop</button>
-        </div>
-        <div class="bar big"><i id="srFill"></i></div>
-        <div class="sr-stats">
-          <div><b id="srFiles">0</b><span id="srFilesLbl">files checked</span></div>
-          <div><b id="srEta">—</b><span>left (estimated)</span></div>
-          <div><b id="srElapsed">0:00</b><span>elapsed</span></div>
-          <div class="t-real"><b id="srFound">0</b><span>detections so far</span></div>
-        </div>
-        <div class="sr-current" id="srCurrent"></div>
-        <p class="sr-note">Each detection is checked for false positives when the scan finishes — then you choose what happens to it.</p>
       </div>
 
       <h2 class="fix-sub">Found on this PC so far <span class="counts" id="totCounts"></span></h2>
@@ -311,6 +319,9 @@
 
       <h2 class="fix-sub">Quarantine <span class="counts" id="qCounts"></span></h2>
       <div class="q-list" id="qList"></div>
+
+      <h2 class="fix-sub">Scan history <span class="counts" id="histCounts"></span></h2>
+      <div class="h-list" id="histList"></div>
     </section>
 
     <!-- ================= AI CHAT ================= -->
@@ -524,8 +535,12 @@
         <section class="set-group">
           <div class="set-head"><h2>Virus scan</h2></div>
           <div class="set-row">
-            <div class="set-text"><h3>Quick scan once a week</h3><p>Runs by itself while you’re away from the PC (never during a game). If it finds something you get a notification, and nothing is removed until you choose.</p></div>
-            <label class="switch"><input type="checkbox" data-key="autoScan" /><span></span></label>
+            <div class="set-text"><h3>Scheduled quick scan</h3><p>Runs by itself while you’re away from the PC (10+ minutes idle, no game running, laptops only on the charger). It steps aside the moment you’re back. If it finds something you get a notification, and nothing is removed until you choose.</p></div>
+            <select data-key="scanSchedule" class="select" aria-label="Scheduled quick scan"><option value="off">Never</option><option value="daily">Every day</option><option value="weekly">Every week</option><option value="biweekly">Every 2 weeks</option><option value="monthly">Every month</option></select>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>Scheduled full scan</h3><p>Checks every file on every internal drive the same way — it takes a while, so it only runs when you’re away, at low priority. A full scan also counts as the quick scan.</p></div>
+            <select data-key="scanFullSchedule" class="select" aria-label="Scheduled full scan"><option value="off">Never</option><option value="weekly">Every week</option><option value="biweekly">Every 2 weeks</option><option value="monthly">Every month</option></select>
           </div>
           <div class="set-row">
             <div class="set-text"><h3>Check detections against the known-software database</h3><p>Part of the false-positive check: looks up a flagged file’s SHA-256 fingerprint in CIRCL’s hashlookup (NIST’s National Software Reference Library and official Windows builds). Only the fingerprint of flagged files is sent — never the file.</p></div>
@@ -686,6 +701,7 @@
         <button class="icon-x" id="resClose" aria-label="Close">×</button>
       </div>
       <div class="res-tiles" id="resTiles"></div>
+      <div class="res-filters" id="resFilters" role="tablist" aria-label="Show"></div>
       <div class="res-bulk" id="resBulk">
         <span class="muted">For all threats:</span>
         <button class="ghost small" data-bulk="quarantine">Quarantine all</button>
@@ -696,6 +712,7 @@
       <div class="modal-actions">
         <span class="res-plan" id="resPlan"></span>
         <span class="spacer"></span>
+        <button class="ghost" id="resExport" title="Save everything on this screen as a text file">Save report</button>
         <button class="ghost" id="resLater">Decide later</button>
         <button class="primary heat" id="resApply">Do it</button>
       </div>

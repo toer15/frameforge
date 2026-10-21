@@ -2,7 +2,7 @@
 // check → false-positive analysis → results. Also applies what the user picked for each detection.
 const fs = require('fs');
 const path = require('path');
-const { app } = require('electron');
+const { app, powerSaveBlocker } = require('electron');
 const { ps, IS_WIN, DEMO } = require('./util');
 const { settings, changes } = require('./store');
 const scanner = require('./scanner');
@@ -55,10 +55,14 @@ async function estimates() {
 }
 
 // ---------------------------------------------------------------- Progress
+/** Milliseconds this scan has spent paused (so pausing doesn't wreck the elapsed time or the speed estimate). */
+function pausedMs(now = Date.now()) {
+  return (job.pausedMs || 0) + (job.paused ? now - job.pauseStarted : 0);
+}
 function snapshot() {
   if (!job) return null;
   const now = Date.now();
-  const scanSec = job.scanStart ? (now - job.scanStart) / 1000 : 0;
+  const scanSec = job.scanStart ? Math.max(0, now - job.scanStart - pausedMs(now)) / 1000 : 0;
   // Live speed: blend this PC's learned speed with what this scan measures, trusting the measurement more over time.
   const measured = scanSec > 10 && job.filesDone > 0 ? job.filesDone / scanSec : null;
   const w = measured ? Math.min(1, scanSec / 90) : 0;
@@ -66,7 +70,7 @@ function snapshot() {
   job.liveRate = r;
   // Files in scans that are running right now count as they go.
   let inFlight = 0;
-  for (const c of job.running.values()) inFlight += Math.min(c.count * 0.95, ((now - c.at) / 1000) * (r / Math.max(1, job.running.size)));
+  for (const c of job.running.values()) inFlight += Math.min(c.count * 0.95, (Math.max(0, now - c.at - (job.paused ? now - job.pauseStarted : 0)) / 1000) * (r / Math.max(1, job.running.size)));
   const done = Math.min(job.filesTotal, job.filesDone + inFlight);
   const left = Math.max(0, job.filesTotal - done);
   const extra = job.memoryPending ? 90 : job.phase === 'memory' ? Math.max(10, 90 - (now - job.memoryAt) / 1000) : job.phase === 'analyze' ? 10 : 0;
@@ -82,11 +86,15 @@ function snapshot() {
     filesTotal: job.filesTotal,
     counted: job.counted,
     pct,
-    elapsedSec: Math.round((now - job.startedAt) / 1000),
+    elapsedSec: Math.round(Math.max(0, now - job.startedAt - pausedMs(now)) / 1000),
     etaSec: eta,
     current: job.current,
     counts: job.counts,
     found: job.detections.size,
+    paused: !!job.paused,
+    autoPaused: !!job.autoPaused,
+    pausable: job.phase === 'scan' && !job.cancelled,
+    recent: job.recent,
   };
 }
 function setPhase(phase, text) {
@@ -104,17 +112,26 @@ function addDetection(d) {
   const k = scanner.kindOf(d.threat);
   const quick = k === 'test' ? 'test' : k === 'unwanted' ? 'pua' : 'real';
   job.counts[quick] = (job.counts[quick] || 0) + 1;
+  // The newest few, shown live while the scan runs.
+  job.recent = [{ threat: d.threat, file: d.file || (d.other || [])[0] || '', kind: quick }, ...(job.recent || [])].slice(0, 6);
+}
+
+/** Wait while the scan is paused (the scan jobs already running finish first). */
+async function whilePaused() {
+  while (job && job.paused && !job.cancelled) await sleep(300);
 }
 
 async function runJobs(list, concurrency) {
   let i = 0;
   const worker = async () => {
     while (i < list.length && !job.cancelled) {
+      await whilePaused();
+      if (job.cancelled) break;
       const j = list[i++];
       const token = {};
       job.running.set(token, { count: j.count, at: Date.now() });
       job.current = j.path;
-      const r = await scanner.runMp(['-Scan', '-ScanType', '3', '-File', j.path, '-DisableRemediation']);
+      const r = await scanner.runMp(['-Scan', '-ScanType', '3', '-File', j.path, '-DisableRemediation'], { lowPriority: job.background });
       job.running.delete(token);
       if (job.cancelled) break;
       const { dets, hr } = scanner.parseMp(r.out);
@@ -174,6 +191,7 @@ async function demoRun() {
   const folders = quick ? ['C:\\Users\\Tommy\\Downloads', 'C:\\Users\\Tommy\\AppData\\Roaming', 'C:\\Users\\Tommy\\Desktop', 'C:\\Program Files\\Discord'] : ['C:\\Program Files', 'C:\\Games\\SteamLibrary\\steamapps\\common', 'C:\\Users\\Tommy\\AppData', 'C:\\Windows\\System32', 'D:\\Games'];
   settings.set({ scanRate: settings.get().scanRate || total / (steps * 0.25) });
   for (let i = 1; i <= steps && !job.cancelled; i++) {
+    await whilePaused();
     job.filesDone = Math.round((total * i) / steps);
     job.current = `${folders[i % folders.length]}\\…`;
     for (const d of DEMO_FOUND) if (Math.abs(d.at - i / steps) < 0.5 / steps && (!quick || !d.file.includes('SteamLibrary'))) addDetection({ threat: d.threat, file: d.file, source: 'scan' });
@@ -217,6 +235,8 @@ async function realRun() {
       const node = await scanner.walk(dir, st);
       scanner.planChunks(node, 20000, folderJobs);
     }
+  } else if (job.type === 'custom' && fs.existsSync(job.folder) && fs.statSync(job.folder).isFile()) {
+    fileJobs.push({ path: job.folder, count: 1 }); // one file picked
   } else {
     const roots = job.type === 'full' ? await fixedDrives() : [job.folder];
     let nodes = [];
@@ -234,8 +254,8 @@ async function realRun() {
   if (job.cancelled) return;
   setPhase('scan', 'Scanning files with Microsoft Defender’s engine…');
   job.scanStart = Date.now();
-  await runJobs(fileJobs, 4);
-  await runJobs(folderJobs, 2);
+  await runJobs(fileJobs, job.background ? 2 : 4); // a background scan uses fewer scan processes and runs at low priority
+  await runJobs(folderJobs, job.background ? 1 : 2);
   if (job.memoryPending && !job.cancelled) {
     // Defender's own quick scan covers what file scans can't: programs in memory, boot sectors, registry startup
     // entries. It removes active threats in memory right away; they're listed with the results.
@@ -244,7 +264,7 @@ async function realRun() {
     setPhase('memory', 'Microsoft Defender is checking memory, boot sectors and startup entries…');
     const since = Date.now() - 5000;
     job.current = 'Memory, boot sectors and startup entries';
-    await scanner.runMp(['-Scan', '-ScanType', '1'], { timeout: 60 * 60 * 1000 });
+    await scanner.runMp(['-Scan', '-ScanType', '1'], { timeout: 60 * 60 * 1000, lowPriority: job.background });
     for (const h of await scanner.history()) if (Date.parse(h.at) >= since) addDetection({ ...h, source: 'memory' });
   }
 }
@@ -262,7 +282,8 @@ async function analyze(dets) {
       while (k < files.length) {
         const f = files[k++];
         if (DEMO) {
-          facts[f.toLowerCase()] = demoSignals.get(f.toLowerCase());
+          const s = demoSignals.get(f.toLowerCase());
+          facts[f.toLowerCase()] = { ...s, sha256: require('crypto').createHash('sha256').update(f).digest('hex'), lookup: s.known ? 'listed' : 'notlisted' };
           continue;
         }
         let size = 0;
@@ -271,7 +292,8 @@ async function analyze(dets) {
         } catch {}
         const hash = size < 2 * 1024 ** 3 ? await scanner.sha256(f) : null;
         const sig = sigs[f.toLowerCase()] || {};
-        facts[f.toLowerCase()] = { exists: fs.existsSync(f), size, sha256: hash, signed: sig.status === 'Valid', signer: sig.signer, sigStatus: sig.status || '', known: await scanner.knownGood(hash), running: running.has(f.toLowerCase()) };
+        const look = await scanner.knownLookup(hash);
+        facts[f.toLowerCase()] = { exists: fs.existsSync(f), size, sha256: hash, signed: sig.status === 'Valid', signer: sig.signer, sigStatus: sig.status || '', known: look.info, lookup: look.state, running: running.has(f.toLowerCase()) };
       }
     })
   );
@@ -313,6 +335,7 @@ async function analyze(dets) {
       signer: fact.signed ? fact.signer || 'a valid publisher' : '',
       sigStatus: fact.sigStatus || (fact.signed ? 'Valid' : fact.exists ? 'NotSigned' : ''),
       known: fact.known || null,
+      lookup: fact.lookup || (fact.known ? 'listed' : fact.sha256 ? 'notlisted' : 'nohash'),
       source: d.source,
       detectedAt: d.at || new Date().toISOString(),
       actions,
@@ -350,8 +373,13 @@ function totals() {
 async function start(type, { folder = null, background = false } = {}) {
   if (job) return { busy: true, message: 'A scan is already running.' };
   if (type === 'custom' && (!folder || (!DEMO && !fs.existsSync(folder)))) return { ok: false, message: 'Pick a folder to scan.' };
-  job = { type, folder, background, startedAt: Date.now(), cancelled: false, phase: 'prepare', phaseText: 'Getting ready…', filesTotal: 0, filesDone: 0, counted: 0, current: '', counts: { real: 0, fp: 0, pua: 0, unsure: 0, test: 0 }, detections: new Map(), running: new Map(), notes: [], memoryWeight: 0 };
+  job = { type, folder, background, startedAt: Date.now(), cancelled: false, paused: false, pausedMs: 0, phase: 'prepare', phaseText: 'Getting ready…', filesTotal: 0, filesDone: 0, counted: 0, current: '', counts: { real: 0, fp: 0, pua: 0, unsure: 0, test: 0 }, detections: new Map(), running: new Map(), recent: [], notes: [], memoryWeight: 0 };
   const tick = setInterval(() => send('scan:progress', snapshot()), 700);
+  // A long scan must not be cut short by Windows going to sleep.
+  let blocker = null;
+  try {
+    blocker = powerSaveBlocker.start('prevent-app-suspension');
+  } catch {}
   send('scan:progress', snapshot());
   (async () => {
     try {
@@ -399,19 +427,49 @@ async function start(type, { folder = null, background = false } = {}) {
         background,
       };
       writeJson('scan-last.json', result);
+      addHistory(result);
       send('scan:done', { ok: true, ...summary(result) });
       onFinished(result);
     } catch (e) {
       send('scan:done', { ok: false, message: String(e.message || e) });
     } finally {
       clearInterval(tick);
+      if (blocker != null) {
+        try {
+          powerSaveBlocker.stop(blocker);
+        } catch {}
+      }
       job = null;
     }
   })();
   return { ok: true };
 }
+/** Pause: no new scan jobs start (the ones running finish first); resume carries on. */
+function pause(auto = false) {
+  if (!job || job.paused || job.cancelled || job.phase !== 'scan') return false;
+  job.paused = true;
+  job.autoPaused = auto;
+  job.pauseStarted = Date.now();
+  send('scan:progress', snapshot());
+  return true;
+}
+function resume(onlyAuto = false) {
+  if (!job || !job.paused || (onlyAuto && !job.autoPaused)) return false;
+  job.pausedMs += Date.now() - job.pauseStarted;
+  job.paused = false;
+  job.autoPaused = false;
+  send('scan:progress', snapshot());
+  return true;
+}
+/** What a running background scan should be doing right now (set by main.js from game / idle checks). */
+function autoPause(shouldPause) {
+  if (!job || !job.background) return;
+  if (shouldPause) pause(true);
+  else resume(true);
+}
 async function cancel() {
   if (!job) return false;
+  if (job.paused) resume();
   job.cancelled = true;
   scanner.killAll();
   if (job.phase === 'memory' && !DEMO) await scanner.runMp(['-Scan', '-Cancel'], { timeout: 30000 });
@@ -424,6 +482,61 @@ function summary(r) {
 }
 function last() {
   return readJson('scan-last.json', null);
+}
+
+// ---------------------------------------------------------------- History of scans
+function history() {
+  return readJson('scan-history.json', []);
+}
+function addHistory(r) {
+  const found = r.items.filter((i) => i.source !== 'defender');
+  const list = history();
+  list.unshift({
+    type: r.type,
+    folder: r.folder,
+    background: !!r.background,
+    cancelled: !!r.cancelled,
+    startedAt: r.startedAt,
+    endedAt: r.endedAt,
+    durationSec: r.durationSec,
+    filesChecked: r.filesChecked,
+    found: found.length,
+    threats: (r.counts.real || 0) + (r.counts.unsure || 0),
+    unwanted: r.counts.pua || 0,
+  });
+  writeJson('scan-history.json', list.slice(0, 40));
+}
+
+// ---------------------------------------------------------------- Report (plain text, to save or send to support)
+const VERDICT_TEXT = { real: 'REAL THREAT', unsure: 'PROBABLY A THREAT', pua: 'UNWANTED PROGRAM', fp: 'FALSE POSITIVE', test: 'TEST FILE' };
+function report(engine) {
+  const r = last();
+  if (!r) return null;
+  const e = engine || {};
+  const L = [];
+  const date = (t) => new Date(t).toLocaleString();
+  L.push('FrameForge virus scan report', '============================');
+  L.push(`Scan:      ${{ quick: 'Quick scan', full: 'Full scan', custom: 'Custom scan' }[r.type] || r.type}${r.folder ? ` (${r.folder})` : ''}${r.background ? ' — scheduled, in the background' : ''}${r.cancelled ? ' — stopped early' : ''}`);
+  L.push(`Finished:  ${date(r.endedAt)} (took ${Math.floor(r.durationSec / 60)} min ${r.durationSec % 60} s)`);
+  L.push(`Files:     ${r.filesChecked.toLocaleString('en-US')} checked`);
+  if (e.engine) L.push(`Engine:    Microsoft Defender engine ${e.engine}, definitions ${e.sigVersion || '?'}`);
+  const c = r.counts || {};
+  L.push(`This scan: ${(c.real || 0) + (c.unsure || 0)} threats · ${c.pua || 0} unwanted programs · ${c.fp || 0} false positives · ${c.test || 0} test files`);
+  L.push('');
+  if (!r.items.length) L.push('No detections. Microsoft Defender found nothing and has no earlier detections on this PC.');
+  r.items.forEach((it, i) => {
+    L.push(`${i + 1}. [${VERDICT_TEXT[it.verdict] || it.verdict}] ${it.threat}`);
+    L.push(`   What it is: ${it.typeInfo}`);
+    if (it.file) L.push(`   File:       ${it.file}`);
+    else if ((it.other || []).length) L.push(`   Where:      ${it.other.join(' · ')}`);
+    L.push(`   Status:     ${it.status}${it.running ? ' (running)' : ''}${it.done ? ` — you chose: ${it.done}${it.doneMessage ? ` (${it.doneMessage})` : ''}` : ''}`);
+    L.push(`   Signed by:  ${it.signer || 'nobody / unknown'}   Size: ${it.size || 0} bytes`);
+    if (it.sha256) L.push(`   SHA-256:    ${it.sha256}`);
+    L.push(`   Found:      ${it.source === 'defender' ? `by Defender on ${new Date(it.detectedAt).toLocaleDateString()}` : it.source === 'memory' ? 'by Defender’s memory check' : 'by this scan'}`);
+    for (const x of it.reasons) L.push(`     ${x}`);
+    L.push('');
+  });
+  return L.join('\r\n');
 }
 
 // ---------------------------------------------------------------- Do what the user picked
@@ -473,4 +586,4 @@ async function apply(choices) {
   return { ok: results.every((x) => x.ok), results, reboot, summary: summary(r) };
 }
 
-module.exports = { init, start, cancel, snapshot: () => snapshot(), running: () => !!job, last, summary, estimates, totals, remember, apply, analyze };
+module.exports = { init, start, cancel, pause: () => pause(false), resume: () => resume(false), autoPause, background: () => !!(job && job.background), history, report, snapshot: () => snapshot(), running: () => !!job, last, summary, estimates, totals, remember, apply, analyze };

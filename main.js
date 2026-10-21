@@ -109,6 +109,12 @@ async function boot() {
   setTimeout(() => enforceAnimations('start'), 6000);
   setTimeout(() => refreshSecurity().then(() => send('fix:changed', true)).catch(() => {}), DEMO ? 4000 : 30000);
   setInterval(() => refreshSecurity().catch(() => {}), 30 * 60 * 1000);
+  // Scheduled virus scans: checked a minute after start and every 2 minutes; a background scan steps aside for games and for you.
+  setTimeout(() => autoScanTick(), DEMO ? 12000 : 60000);
+  setInterval(() => autoScanTick(), 2 * 60 * 1000);
+  setInterval(() => {
+    if (scanjob.background()) scanjob.autoPause(gameRunning() || idleMinutes() < 1);
+  }, 15000);
   // NVIDIA resets power limits on every restart: put back the cooler limit Fix mode set for a hot card.
   if (backup.get('gpu_cool') && !DEMO && admin) {
     const t = tweakById('gpu_cool');
@@ -833,6 +839,7 @@ async function detectExtra() {
       const b = await si.battery();
       out.onBattery = !!(b && b.hasBattery && b.acConnected === false);
     } catch {}
+    if (!out.onBattery) held.delete('insight_laptop'); // plugged in: if it's unplugged again, the problem is back
     // Auto Mode is on, but some of the preset's settings aren't active (e.g. new tweaks from an update,
     // or ones that failed). Settings the user switched off by hand in the Tweaks tab are left alone.
     const st = settings.get();
@@ -1002,17 +1009,28 @@ function fixList() {
   if (sec.length) add({ id: 'security', level: 'big', title: `Windows protection: ${sec.length} problem${sec.length === 1 ? '' : 's'}`, body: sec.map((c) => c.title).join(' · '), details: sec.flatMap((c) => c.details || []), actions: [A('sec_fix', 'Fix them'), A('goto:scan', 'Open Virus scan')], strategies: [A('sec_fix', 'Fix Windows protection settings')] });
   const lr = scanjob.last();
   const openThreats = lr ? lr.items.filter((i) => i.status === 'active' && ['real', 'unsure', 'pua', 'test'].includes(i.verdict) && !i.done) : [];
-  if (openThreats.length) add({ id: 'threats', level: 'big', title: `${openThreats.length} detection${openThreats.length === 1 ? '' : 's'} from the virus scan ${openThreats.length === 1 ? 'is' : 'are'} waiting for your choice`, body: openThreats.map((i) => `${i.threat} — ${i.file}`).slice(0, 3).join(' · '), actions: [A('scan_results', 'Choose what to do')], manual: ['Open the scan results and pick Quarantine, Delete or Keep for each one — FrameForge does the rest.'], manualAction: null });
+  if (openThreats.length) add({ id: 'threats', level: 'big', title: `${openThreats.length} detection${openThreats.length === 1 ? '' : 's'} from the virus scan ${openThreats.length === 1 ? 'is' : 'are'} waiting for your choice`, body: openThreats.map((i) => `${i.threat} — ${i.file}`).slice(0, 3).join(' · '), actions: [A('scan_results', 'Choose what to do')], strategies: openThreats.some((i) => i.verdict === 'real') ? [A('quarantine_real', 'Quarantine the clear-cut threats (they can be restored from the Virus scan tab)')] : [], manual: ['Open the scan results and pick Quarantine, Delete or Keep for each one — FrameForge does the rest.'], manualAction: null });
   const pending = restartNeededFor();
   if (extra.rebootPending || pending.length) add({ id: 'restart', level: 'info', title: 'A restart is needed', body: pending.length ? `To finish: ${pending.join(', ')}.` : 'Windows has updates waiting for a restart.', actions: [A('restart', 'Restart now')], manual: guides.restartPending(), manualAction: null, restartItem: true });
   if (app.isPackaged && updates && updates.state.status === 'unconfigured') add({ id: 'updates', level: 'info', title: 'In-app updates aren’t set up', body: 'FrameForge can’t find where new versions come from.', actions: [A('set_update_source', 'Fix it')], strategies: [A('set_update_source', 'Use the official FrameForge update source')], bg: 'game' });
+  // Problems FrameForge fixed but can't re-check right away (e.g. the laptop is still on battery) stay hidden.
+  const shown = items.filter((it) => {
+    const h = held.get(it.id);
+    if (!h) return true;
+    if (Date.now() > h.until) {
+      held.delete(it.id);
+      return true;
+    }
+    return false;
+  });
   // A problem is fixable automatically when it has strategies. A restart counts too: FrameForge does it.
-  for (const it of items) {
+  for (const it of shown) {
     it.auto = it.strategies.length > 0 || (it.restartItem && settings.get().autoRestart);
     it.fixedTitle = fixedTitleFor(it);
   }
-  return items;
+  return shown;
 }
+const held = new Map(); // problem id -> { until }: fixed, but the condition can't be checked until it changes
 
 let fixBusy = false;
 async function runRepair(name) {
@@ -1092,8 +1110,12 @@ async function runFixAction(action) {
       return { ok: true, message: `Switched off ${ids.map((id) => tweakById(id).name).join(', ')}. Give it a few minutes of gaming to see the difference.` };
     }
     case 'laptop_power': {
-      if (!DEMO) await run('powercfg', ['/overlaysetactive', 'ded574b5-45a0-4f42-8737-46345c09c238']);
+      if (!DEMO) {
+        const r = await run('powercfg', ['/overlaysetactive', 'ded574b5-45a0-4f42-8737-46345c09c238']);
+        if (r.code !== 0) return { ok: false, message: 'Windows didn’t accept the power mode change.' };
+      }
       await detectExtra();
+      held.set('insight_laptop', { until: Date.now() + 12 * 3600 * 1000 }); // still on battery, but the mode is set; back when plugged in and unplugged again
       return { ok: true, message: 'Windows power mode is set to Best performance.' };
     }
     case 'restore_check': {
@@ -1239,6 +1261,18 @@ async function runFixAction(action) {
       send('goto', 'scan');
       send('scan:showResults', true);
       return { ok: true };
+    case 'quarantine_real': {
+      // Only detections that are clearly real (known malware family) — never "probably", unwanted programs or false positives.
+      const lr = scanjob.last();
+      const choices = {};
+      for (const i of lr ? lr.items : []) if (i.status === 'active' && !i.done && i.verdict === 'real' && i.actions.includes('quarantine')) choices[i.id] = 'quarantine';
+      const n = Object.keys(choices).length;
+      if (!n) return { ok: false, message: 'No detection is clear-cut enough for FrameForge to quarantine by itself — open the scan results and choose.' };
+      const res = await scanjob.apply(choices);
+      send('changes', changeList());
+      const okN = res.results.filter((x) => x.ok).length;
+      return { ok: okN === n, message: `Quarantined ${okN} of ${n} confirmed threat${n === 1 ? '' : 's'} — they can’t run any more. Restore any of them from the Virus scan tab.${res.reboot ? ' A locked file is removed at the next restart.' : ''}` };
+    }
     case 'sec_fix': {
       await refreshSecurity();
       const todo = (secChecks || []).filter((c) => ['big', 'medium'].includes(c.level) && c.fix && c.id !== 'proxy' && c.fix !== 'open_defender');
@@ -1363,6 +1397,49 @@ function mayAutoRestart() {
  *   only   – limit the run to these problem ids
  */
 let fixAllRunning = false;
+
+/**
+ * Try one problem's fixes in order, checking after each one whether it's really gone — the problem then leaves
+ * the list. Heat can't drop in a second: a cooling fix that worked counts, and if the part is still hot after a
+ * few minutes the problem simply shows up again.
+ */
+async function tryFix(it, ev = () => {}) {
+  let fixed = false;
+  let last = null;
+  for (const [n, st] of it.strategies.entries()) {
+    ev({ type: 'try', id: it.id, text: st.label, n: n + 1, of: it.strategies.length });
+    last = await runFixAction(st.id).catch((e) => ({ ok: false, message: String(e.message || e) }));
+    await detectExtra();
+    fixed = !fixList().some((x) => x.id === it.id) || (it.verifyLater && last && last.ok);
+    if (fixed) break;
+  }
+  if (fixed && it.verifyLater) heat[it.id === 'hot_gpu' ? 'gpu' : 'cpu'].last = 0; // start measuring again from now
+  send('fix:changed', true);
+  return { fixed, last };
+}
+
+/**
+ * One problem, fixed by a click or by the AI. Problems with fixes are tried in order and checked; the rest run
+ * their single button. Returns what happened, plus the manual steps when only the user can finish it.
+ */
+async function fixOne(id) {
+  if (fixAllRunning || fixBusy) return { ok: false, busy: true, message: 'FrameForge is already fixing something — hang on a moment.' };
+  await detectExtra();
+  const it = fixList().find((i) => i.id === id);
+  if (!it) return { ok: true, fixed: true, message: 'That problem is already gone.' };
+  if (!it.strategies.length) {
+    const a = it.actions[0];
+    if (!a) return { ok: false, fixed: false, message: 'FrameForge can’t fix this one from Windows.', steps: it.manual || [] };
+    const last = await runFixAction(a.id).catch((e) => ({ ok: false, message: String(e.message || e) }));
+    await detectExtra();
+    send('fix:changed', true);
+    const gone = !fixList().some((x) => x.id === id);
+    return { ok: !!(last && last.ok !== false), fixed: gone, message: (last && last.message) || '', steps: gone ? [] : it.manual || [] };
+  }
+  const { fixed, last } = await tryFix(it);
+  if (fixed) return { ok: true, fixed: true, title: it.fixedTitle || it.title, message: (last && last.message) || it.fixedTitle || 'Fixed.' };
+  return { ok: false, fixed: false, message: (last && last.message) || 'It didn’t work after trying every fix FrameForge knows.', steps: it.manual || [] };
+}
 async function fixEverything({ silent = false, only = null, resumed = false } = {}) {
   if (fixAllRunning) return { busy: true };
   if (busy) return { busy: true, message: 'Auto Mode is running — wait for it to finish.' };
@@ -1400,21 +1477,10 @@ async function fixEverything({ silent = false, only = null, resumed = false } = 
         continue;
       }
       ev({ type: 'item', id: it.id, title: it.title, outcome: 'working' });
-      let fixed = false;
-      let last = null;
-      for (const [n, st] of it.strategies.entries()) {
-        ev({ type: 'try', id: it.id, text: st.label, n: n + 1, of: it.strategies.length });
-        last = await runFixAction(st.id).catch((e) => ({ ok: false, message: String(e.message || e) }));
-        await detectExtra();
-        // Check: is the problem really gone? (Heat can't drop in a second — a cooling fix that worked counts,
-        // and if the part is still hot after a few minutes the problem simply shows up again.)
-        fixed = !fixList().some((x) => x.id === it.id) || (it.verifyLater && last && last.ok);
-        if (fixed) break;
-      }
+      const { fixed, last } = await tryFix(it, ev);
       if (fixed) {
         tally.fixed++;
         tally.fixedTitles.push(it.fixedTitle || it.title);
-        if (it.verifyLater) heat[it.id === 'hot_gpu' ? 'gpu' : 'cpu'].last = 0; // start measuring again from now
         ev({ type: 'item', id: it.id, title: it.title, outcome: 'fixed', message: last && last.message });
         send('fix:changed', true); // the problem leaves the list and the count goes down right away
       } else if (silent) {
@@ -1499,10 +1565,6 @@ async function backgroundFix(why = 'check') {
         send('fix:auto', { fixed: r.fixedTitles, why });
       }
     }
-    // A quick virus scan once a week, while you're away from the PC.
-    if (s.autoScan && (!DEMO || process.env.FRAMEFORGE_TEST_AUTOSCAN) && !scanjob.running() && !game && idle >= 10 && Date.now() - (s.lastScanAt || 0) > 7 * 24 * 3600 * 1000 && engine && engine.available) {
-      scanjob.start('quick', { background: true });
-    }
     // A restart that FrameForge's own changes need: done while you're away (20+ min idle, no game running).
     const pending = restartNeededFor();
     if (pending.length && mayAutoRestart() && !game && idle >= 20 && !fixAllRunning) {
@@ -1534,6 +1596,35 @@ async function securityFix(id) {
   send('fix:changed', true);
   return r;
 }
+const DAY = 24 * 3600 * 1000;
+const SCHEDULE_DAYS = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
+/**
+ * Scheduled scans (Settings › Virus scan). Runs only while the user is away (10+ min idle), no game is running,
+ * and — on a laptop — the charger is plugged in. A full scan that is due also covers the quick scan.
+ */
+function autoScanTick() {
+  const s = settings.get();
+  if (!engine || !engine.available || scanjob.running() || busy || fixAllRunning) return null;
+  if (DEMO && !process.env.FRAMEFORGE_TEST_AUTOSCAN) return null;
+  if (gameRunning() || idleMinutes() < 10) return null;
+  try {
+    if (powerMonitor.isOnBatteryPower()) return null;
+  } catch {}
+  const quickEvery = s.autoScan === false ? 0 : SCHEDULE_DAYS[s.scanSchedule || 'weekly'] || 0;
+  const fullEvery = SCHEDULE_DAYS[s.scanFullSchedule] || 0;
+  const stats = s.scanStats || {};
+  const now = Date.now();
+  if (now - lastAutoScanTry < 6 * 3600 * 1000) return null; // a stopped or failed scan isn't retried in a loop
+  const due = (days, at) => days && now - (at || 0) > days * DAY;
+  let type = null;
+  if (due(fullEvery, stats.full && stats.full.at)) type = 'full';
+  else if (due(quickEvery, s.lastScanAt)) type = 'quick';
+  if (!type) return null;
+  lastAutoScanTry = now;
+  scanjob.start(type, { background: true });
+  return type;
+}
+let lastAutoScanTry = 0;
 function onScanFinished(r) {
   const s = scanjob.summary(r);
   send('fix:changed', true);
@@ -1553,10 +1644,33 @@ function onScanFinished(r) {
 }
 ipcMain.handle('scan:info', async (_e, { refresh = false } = {}) => {
   if (refresh || !engine) await refreshSecurity().catch(() => {});
-  return { engine, checks: secChecks || [], estimates: await scanjob.estimates(), running: scanjob.snapshot(), last: scanjob.last() ? scanjob.summary(scanjob.last()) : null, totals: scanjob.totals(), quarantine: scanner.quarantineList(), allowed: settings.get().scanAllowed || [], hashLookup: settings.get().scanHashLookup, autoScan: settings.get().autoScan };
+  const s = settings.get();
+  return { engine, checks: secChecks || [], estimates: await scanjob.estimates(), running: scanjob.snapshot(), last: scanjob.last() ? scanjob.summary(scanjob.last()) : null, totals: scanjob.totals(), quarantine: scanner.quarantineList(), allowed: s.scanAllowed || [], hashLookup: s.scanHashLookup, autoScan: s.autoScan, history: scanjob.history(), lastScanAt: s.lastScanAt || 0, stats: s.scanStats || {} };
 });
 ipcMain.handle('scan:start', (_e, type, folder) => scanjob.start(type, { folder }));
 ipcMain.handle('scan:cancel', () => scanjob.cancel());
+ipcMain.handle('scan:pause', () => scanjob.pause());
+ipcMain.handle('scan:resume', () => scanjob.resume());
+ipcMain.handle('scan:drives', () => scanner.drives());
+ipcMain.handle('scan:updateSigs', async () => {
+  const r = await scanner.fixCheck('update_sigs');
+  await refreshSecurity().catch(() => {});
+  return r;
+});
+ipcMain.handle('scan:pickFile', async () => {
+  const r = await dialog.showOpenDialog(mainWin, { title: 'Pick a file to scan', properties: ['openFile'] });
+  return r.canceled ? null : r.filePaths[0];
+});
+ipcMain.handle('scan:export', async () => {
+  const text = scanjob.report(engine);
+  if (!text) return { ok: false, message: 'No scan results yet.' };
+  const def = path.join(app.getPath('documents'), `FrameForge-scan-report-${new Date().toISOString().slice(0, 10)}.txt`);
+  const r = await dialog.showSaveDialog(mainWin, { title: 'Save the scan report', defaultPath: def, filters: [{ name: 'Text file', extensions: ['txt'] }] });
+  if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+  fs.writeFileSync(r.filePath, '﻿' + text, 'utf8');
+  shell.showItemInFolder(r.filePath);
+  return { ok: true, path: r.filePath };
+});
 ipcMain.handle('scan:last', () => scanjob.last());
 ipcMain.handle('scan:apply', async (_e, choices) => {
   const r = await scanjob.apply(choices || {});
@@ -1611,6 +1725,7 @@ ipcMain.handle('fix:list', async () => {
   return { items: fixList(), repairs: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, desc: r.desc, reboot: !!r.reboot })), busy: fixBusy || fixAllRunning, autoFix: s.autoFix, autoRestart: s.autoRestart, restart: restartInfo };
 });
 ipcMain.handle('fix:action', (_e, action) => runFixAction(action));
+ipcMain.handle('fix:one', (_e, id) => fixOne(String(id)));
 ipcMain.handle('fix:all', () => fixEverything());
 ipcMain.handle('fix:background', () => backgroundFix('manual'));
 
@@ -1640,7 +1755,7 @@ function aiContext() {
     pcRestartedSinceLastRun: changeList().restartedNotice,
     boostsInCurrentPreset: prof && Object.entries(prof.tweaks).map(([id, on]) => ({ boost: (optimizer.TWEAKS.find((t) => t.id === id) || {}).name || id, on, why: prof.reasons[id] })),
     thingsToFixFoundOnThisPC: rig ? profile.insights(rig) : [],
-    fixModeProblems: fixList().map((i) => ({ id: i.id, title: i.title, body: i.body, details: i.details, fixActions: i.actions.map((a) => a.id) })),
+    fixModeProblems: fixList().map((i) => ({ id: i.id, title: i.title, body: i.body, details: i.details, fixableByFrameForge: !!i.auto, fixActions: i.actions.map((a) => a.id), manualSteps: i.auto ? undefined : i.manual })),
     tweaksTab: tweaksTab.tabTweaks().map((t) => ({ id: t.id, category: t.cat, name: t.name, whatItDoes: t.desc, appliedByFrameForge: !!backup.get(t.id), needsRestart: !!t.reboot })),
     repairTools: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, what: r.desc })),
     driverChecklistForPreset: vg ? vg[s.preset] : [],
@@ -1657,7 +1772,16 @@ function aiEvent(ev) {
   send('ai:event', ev);
 }
 
+/** Whatever the AI does, the app's lists (Fix mode, changes) are refreshed right after. */
 async function aiTool(name, input) {
+  try {
+    return await aiToolRun(name, input);
+  } finally {
+    send('fix:changed', true);
+    send('changes', changeList());
+  }
+}
+async function aiToolRun(name, input) {
   switch (name) {
     case 'set_preset': {
       if (!presets.PRESETS[input.preset]) throw new Error('Unknown preset');
@@ -1686,11 +1810,23 @@ async function aiTool(name, input) {
       else if (!DEMO) shell.openExternal(rig.vendorApp.download);
       return { opened: rig.vendorApp.name };
     case 'fix_problem': {
+      await detectExtra();
       const it = fixList().find((i) => i.id === input.problem_id);
-      if (!it) return { note: 'That problem is no longer in the list — it may already be fixed.' };
-      const a = it.actions.find((x) => x.id === input.action) || it.actions[0];
-      if (!a) return { note: 'This one can’t be fixed from Windows; explain the manual steps to the user.' };
-      return { action: a.label, result: await runFixAction(a.id) };
+      if (!it) return { fixed: true, note: 'That problem is no longer in the list — it is fixed.' };
+      // A specific button was asked for: run that one. Otherwise try the problem's fixes in order and check each.
+      const a = input.action && it.actions.find((x) => x.id === input.action);
+      if (a) {
+        const result = await runFixAction(a.id);
+        await detectExtra();
+        send('fix:changed', true);
+        return { action: a.label, result, fixed: !fixList().some((x) => x.id === it.id) };
+      }
+      const r = await fixOne(it.id);
+      return { ...r, manualSteps: r.fixed ? undefined : r.steps };
+    }
+    case 'fix_everything': {
+      const r = await fixEverything();
+      return r && r.busy ? { note: r.message || 'FrameForge is already fixing.' } : { ...r, stillOpen: fixList().filter((i) => i.id !== 'restart').map((i) => ({ id: i.id, title: i.title })) };
     }
     case 'run_repair':
       return runRepair(input.repair);
@@ -1877,6 +2013,7 @@ ipcMain.handle('tweaks:list', () => optimizer.list());
 ipcMain.handle('settings:get', () => settings.get());
 ipcMain.handle('settings:set', async (_e, patch) => {
   if (patch.tweaks) patch.tweaksCustomized = true;
+  if ('scanSchedule' in patch) patch.autoScan = true; // the old on/off switch is replaced by the schedule menu
   const before = settings.get();
   const s = settings.set(patch);
   if ('startWithWindows' in patch && IS_WIN && !DEMO) {

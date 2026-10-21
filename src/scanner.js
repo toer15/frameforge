@@ -56,13 +56,18 @@ function decode(buf) {
   const u = buf.toString('utf8');
   return u.includes('\uFFFD') ? buf.toString('latin1') : u;
 }
-function runMp(args, { timeout = 12 * 3600 * 1000 } = {}) {
+function runMp(args, { timeout = 12 * 3600 * 1000, lowPriority = false } = {}) {
   return new Promise((resolve) => {
     const exe = mpCmdRun();
     if (!exe) return resolve({ code: -1, out: '', error: 'Microsoft Defender’s command-line tool wasn’t found on this PC.' });
     const isScript = /\.(js|cjs)$/i.test(exe); // test stand-in
     const ch = spawn(isScript ? process.execPath : exe, isScript ? [exe, ...args] : args, { windowsHide: true, env: isScript ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env });
     children.add(ch);
+    if (lowPriority && ch.pid) {
+      try {
+        os.setPriority(ch.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); // background scans stay out of the way
+      } catch {}
+    }
     const chunks = [];
     ch.stdout.on('data', (d) => chunks.push(d));
     ch.stderr.on('data', (d) => chunks.push(d));
@@ -265,31 +270,40 @@ async function signatures(files) {
   return out;
 }
 const knownCache = new Map();
-async function knownGood(hash) {
-  if (!hash || !settings.get().scanHashLookup) return null;
+/**
+ * Known-software database lookup. state: 'listed' | 'notlisted' | 'off' (turned off in Settings) |
+ * 'failed' (offline or the service didn't answer — not cached, so the next scan tries again) | 'nohash'.
+ */
+async function knownLookup(hash) {
+  if (!hash) return { state: 'nohash', info: null };
+  if (!settings.get().scanHashLookup) return { state: 'off', info: null };
   if (knownCache.has(hash)) return knownCache.get(hash);
-  let res = null;
+  let res = { state: 'failed', info: null };
   try {
     const r = await net.fetch(`https://hashlookup.circl.lu/lookup/sha256/${hash}`, { headers: { accept: 'application/json', 'User-Agent': 'FrameForge' }, signal: AbortSignal.timeout(8000) });
     if (r.ok) {
       const j = await r.json();
       const trust = Number(j['hashlookup:trust'] || 50);
-      if (trust >= 50) res = { source: /nsrl/i.test(JSON.stringify(j.source || j.ProductCode || '')) || j.ProductCode ? 'NIST NSRL' : String(j.source || 'CIRCL hashlookup').split(':')[0], name: j.FileName || '', trust };
-    }
+      res = trust >= 50 ? { state: 'listed', info: { source: /nsrl/i.test(JSON.stringify(j.source || j.ProductCode || '')) || j.ProductCode ? 'NIST NSRL' : String(j.source || 'CIRCL hashlookup').split(':')[0], name: j.FileName || '', trust } } : { state: 'notlisted', info: null };
+    } else if (r.status === 404) res = { state: 'notlisted', info: null };
   } catch {}
-  knownCache.set(hash, res);
+  if (res.state !== 'failed') knownCache.set(hash, res);
   return res;
+}
+async function knownGood(hash) {
+  return (await knownLookup(hash)).info;
 }
 
 // ---------------------------------------------------------------- Status of Windows' protection
 async function engineStatus() {
   if (DEMO) {
-    return { available: true, version: '4.18.25090.3009', engine: '1.1.25090.3001', sigVersion: '1.439.112.0', sigAgeHours: 3, rtp: true, tamper: true, mode: 'Normal', otherAv: [], purgeDays: 90, demo: true, exclusions: { path: [], proc: [], ext: [] } };
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    return { available: true, version: '4.18.25090.3009', engine: '1.1.25090.3001', sigVersion: '1.439.112.0', sigAgeHours: 3, rtp: true, tamper: true, mode: 'Normal', otherAv: [], purgeDays: 90, demo: true, exclusions: { path: [], proc: [], ext: [] }, lastQuick: { at: ago(30), sec: 212 }, lastFull: { at: ago(24 * 9), sec: 2410 } };
   }
   if (!IS_WIN && !process.env.FRAMEFORGE_MPCMDRUN) return { available: false, reason: 'Virus scanning works on Windows only.' };
   const r = await ps(
     `${UTF8}$o=@{}; $s=Get-MpComputerStatus; if($s){ $o.am=$s.AMServiceEnabled; $o.av=$s.AntivirusEnabled; $o.rtp=$s.RealTimeProtectionEnabled; $o.mode="$($s.AMRunningMode)"; $o.ver="$($s.AMProductVersion)"; $o.eng="$($s.AMEngineVersion)"; $o.sig="$($s.AntivirusSignatureVersion)"; $o.sigAt=if($s.AntivirusSignatureLastUpdated){$s.AntivirusSignatureLastUpdated.ToString('o')}else{''}; $o.tamper=$s.IsTamperProtected; $o.qs=if($s.QuickScanStartTime){$s.QuickScanStartTime.ToString('o')}else{''}; $o.qe=if($s.QuickScanEndTime){$s.QuickScanEndTime.ToString('o')}else{''}; $o.fs=if($s.FullScanStartTime){$s.FullScanStartTime.ToString('o')}else{''}; $o.fe=if($s.FullScanEndTime){$s.FullScanEndTime.ToString('o')}else{''} }; ` +
-      `$p=Get-MpPreference; if($p){ $o.ex=@{path=@($p.ExclusionPath|?{$_}); proc=@($p.ExclusionProcess|?{$_}); ext=@($p.ExclusionExtension|?{$_})}; $o.purge=$p.QuarantinePurgeItemsAfterDelay; $o.pua=$p.PUAProtection }; ` +
+      `$p=Get-MpPreference; if($p){ $o.ex=@{path=@($p.ExclusionPath|?{$_}); proc=@($p.ExclusionProcess|?{$_}); ext=@($p.ExclusionExtension|?{$_})}; $o.purge=$p.QuarantinePurgeItemsAfterDelay; $o.pua=$p.PUAProtection; $o.maps=$p.MAPSReporting; $o.cfa=$p.EnableControlledFolderAccess; $o.noBeh=$p.DisableBehaviorMonitoring; $o.noIoav=$p.DisableIOAVProtection; $o.noScript=$p.DisableScriptScanning; $o.noArch=$p.DisableArchiveScanning }; ` +
       `$o.avs=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct | %{ @{name="$($_.displayName)"; state=[int]$_.productState} }); ` +
       `$pol='HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender'; $o.polAS=(Get-ItemProperty $pol -Name DisableAntiSpyware).DisableAntiSpyware; $o.polAV=(Get-ItemProperty $pol -Name DisableAntiVirus).DisableAntiVirus; $o.polRTP=(Get-ItemProperty "$pol\\Real-Time Protection" -Name DisableRealtimeMonitoring).DisableRealtimeMonitoring; ` +
       `$o.fw=@(Get-NetFirewallProfile | %{ @{name="$($_.Name)"; on=("$($_.Enabled)" -ne 'False')} }); ` +
@@ -365,8 +379,12 @@ async function checks(eng) {
   if (eng.demo) {
     add({ id: 'sig_ok', level: 'ok', title: 'Virus definitions are up to date', body: 'Updated 3 hours ago.' });
     add({ id: 'rtp_ok', level: 'ok', title: 'Real-time protection is on', body: 'Microsoft Defender checks every file as it’s opened.' });
-    if (!settings.get().demoHostsFixed) add({ id: 'hosts', level: 'big', title: 'Your hosts file redirects 2 well-known sites', body: 'Malware edits the hosts file to send you to fake sites or to block antivirus updates.', details: ['0.0.0.0 www.malwarebytes.com', '185.243.5.12 steamcommunity.com'], fix: 'fix_hosts', fixLabel: 'Remove those lines' });
+    const df = settings.get().demoFixed || {};
+    if (!df.fix_hosts) add({ id: 'hosts', level: 'big', title: 'Your hosts file redirects 2 well-known sites', body: 'Malware edits the hosts file to send you to fake sites or to block antivirus updates.', details: ['0.0.0.0 www.malwarebytes.com', '185.243.5.12 steamcommunity.com'], fix: 'fix_hosts', fixLabel: 'Remove those lines' });
+    if (!df.enable_pua) add({ id: 'pua', level: 'medium', title: 'Blocking of unwanted programs is off', body: 'Defender ignores adware, bundled “offers” and fake PC cleaners unless this is on.', fix: 'enable_pua', fixLabel: 'Turn it on' });
+    if (!df.enable_cfa) add({ id: 'cfa', level: 'info', title: 'Ransomware protection (Controlled folder access) is off', body: 'When on, only trusted apps can change your Documents, Pictures and Desktop. It can also block some games from saving there — turn it on only if you want that.', fix: 'enable_cfa', fixLabel: 'Turn it on' });
     add({ id: 'fw_ok', level: 'ok', title: 'Windows Firewall is on', body: 'For all network types.' });
+    add({ id: 'cloud_ok', level: 'ok', title: 'Cloud protection and behaviour monitoring are on', body: 'Defender checks new files against Microsoft’s cloud and watches what programs do.' });
     return out;
   }
   if (!eng.available) {
@@ -376,6 +394,20 @@ async function checks(eng) {
   if (eng.available && !eng.rtp && !(eng.otherAv || []).some((a) => a.on)) add({ id: 'rtp', level: 'big', title: 'Real-time protection is off', body: 'Defender only checks files when you scan. Real-time protection checks every file as it’s opened.', fix: 'enable_rtp', fixLabel: 'Turn it on' });
   if (eng.available && eng.sigAgeHours != null && eng.sigAgeHours > 48) add({ id: 'sigs', level: 'medium', title: `Virus definitions are ${Math.round(eng.sigAgeHours / 24)} days old`, body: 'New malware appears every day — old definitions miss it.', fix: 'update_sigs', fixLabel: 'Update now' });
   else if (eng.available) add({ id: 'sig_ok', level: 'ok', title: 'Virus definitions are up to date', body: eng.sigAgeHours != null ? `Updated ${eng.sigAgeHours < 1 ? 'less than an hour' : `${eng.sigAgeHours} hour${eng.sigAgeHours === 1 ? '' : 's'}`} ago.` : '' });
+  // Defender features: off means a whole kind of attack goes unnoticed. (Unknown values are treated as fine.)
+  if (eng.available) {
+    const off = [];
+    if (o.noBeh === true) off.push('Behaviour monitoring (catches programs that act like malware)');
+    if (o.noIoav === true) off.push('Scanning of downloaded files and attachments');
+    if (o.noScript === true) off.push('Script scanning (PowerShell, JavaScript, VBScript)');
+    if (o.noArch === true) off.push('Scanning inside .zip and other archives');
+    if (off.length) add({ id: 'features', level: 'big', title: `${off.length} Defender protection${off.length === 1 ? ' is' : 's are'} switched off`, body: 'These are on by default. Malware switches them off so it can run unseen.', details: off, fix: 'enable_features', fixLabel: 'Turn them on' });
+    if (o.maps === 0) add({ id: 'cloud', level: 'medium', title: 'Cloud-delivered protection is off', body: 'Defender can’t ask Microsoft’s cloud about brand-new files, so new malware is caught later.', fix: 'enable_cloud', fixLabel: 'Turn it on' });
+    if (o.pua === 0) add({ id: 'pua', level: 'medium', title: 'Blocking of unwanted programs is off', body: 'Defender ignores adware, bundled “offers” and fake PC cleaners unless this is on.', fix: 'enable_pua', fixLabel: 'Turn it on' });
+    if (o.cfa === 0) add({ id: 'cfa', level: 'info', title: 'Ransomware protection (Controlled folder access) is off', body: 'When on, only trusted apps can change your Documents, Pictures and Desktop. It can also block some games from saving there — turn it on only if you want that.', fix: 'enable_cfa', fixLabel: 'Turn it on' });
+    if (!eng.tamper && !(eng.otherAv || []).some((a) => a.on) && o.tamper === false) add({ id: 'tamper', level: 'medium', title: 'Tamper Protection is off', body: 'Tamper Protection stops malware from switching Defender off. It can only be turned on in Windows Security.', fix: 'open_defender', fixLabel: 'Open Windows Security' });
+    if (!off.length && o.maps !== 0 && o.noBeh !== true) add({ id: 'cloud_ok', level: 'ok', title: 'Cloud protection and behaviour monitoring are on', body: 'Defender checks new files against Microsoft’s cloud and watches what programs do.' });
+  }
   const ex = eng.exclusions || {};
   const badEx = [
     ...(ex.path || []).filter((p) => SUSPICIOUS_EXCL(p) && !ownAllowed.has(p.toLowerCase())).map((p) => ({ kind: 'path', v: p })),
@@ -396,10 +428,26 @@ async function checks(eng) {
 async function fixCheck(id, data) {
   if (DEMO) {
     await sleep(600);
-    if (id === 'fix_hosts') settings.set({ demoHostsFixed: true });
+    settings.set({ demoFixed: { ...(settings.get().demoFixed || {}), [id]: true } });
     return { ok: true, message: 'Fixed.' };
   }
   switch (id) {
+    case 'enable_features': {
+      const r = await ps('Set-MpPreference -DisableBehaviorMonitoring $false -DisableIOAVProtection $false -DisableScriptScanning $false -DisableArchiveScanning $false');
+      return r.code === 0 ? { ok: true, message: 'Those protections are on again.' } : { ok: false, message: 'Windows blocked the change (Tamper Protection or a policy). Change them in Windows Security › Virus & threat protection.' };
+    }
+    case 'enable_cloud': {
+      const r = await ps('Set-MpPreference -MAPSReporting Advanced');
+      return r.code === 0 ? { ok: true, message: 'Cloud-delivered protection is on.' } : { ok: false, message: 'Windows blocked the change. Turn it on in Windows Security › Virus & threat protection › Manage settings.' };
+    }
+    case 'enable_pua': {
+      const r = await ps('Set-MpPreference -PUAProtection Enabled');
+      return r.code === 0 ? { ok: true, message: 'Unwanted programs are blocked now.' } : { ok: false, message: 'Windows blocked the change. Turn on “Potentially unwanted app blocking” in Windows Security › App & browser control › Reputation-based protection.' };
+    }
+    case 'enable_cfa': {
+      const r = await ps('Set-MpPreference -EnableControlledFolderAccess Enabled');
+      return r.code === 0 ? { ok: true, message: 'Ransomware protection is on. If a game or app can’t save any more, allow it in Windows Security › Ransomware protection.' } : { ok: false, message: 'Windows blocked the change. Turn it on in Windows Security › Virus & threat protection › Ransomware protection.' };
+    }
     case 'enable_rtp': {
       const r = await ps('Set-MpPreference -DisableRealtimeMonitoring $false');
       return r.code === 0 ? { ok: true, message: 'Real-time protection is on.' } : { ok: false, message: 'Windows blocked the change (Tamper Protection). Turn it on in Windows Security › Virus & threat protection.' };
@@ -521,7 +569,19 @@ function quickFolders() {
   return existing.filter((p) => !existing.some((o) => o !== p && p.toLowerCase().startsWith(o.toLowerCase() + '\\')));
 }
 
-const SKIP_FILE = /^(pagefile|hiberfil|swapfile)\.sys$|^dumpstack\.log(\.tmp)?$/i;
+/** Drives the user can pick for a custom scan: internal disks and USB sticks / external drives. */
+async function drives() {
+  if (DEMO) return [{ letter: 'C:', label: 'Windows', removable: false, sizeGB: 953, usedGB: 512 }, { letter: 'D:', label: 'Games', removable: false, sizeGB: 1863, usedGB: 1204 }, { letter: 'E:', label: 'USB stick', removable: true, sizeGB: 29, usedGB: 11 }];
+  if (!IS_WIN) return [];
+  const r = await ps(`${UTF8}@(Get-CimInstance Win32_LogicalDisk | ?{ $_.DriveType -in 2,3 -and $_.Size } | %{ @{ letter=$_.DeviceID; label="$($_.VolumeName)"; removable=($_.DriveType -eq 2); sizeGB=[math]::Round($_.Size/1GB); usedGB=[math]::Round(($_.Size-$_.FreeSpace)/1GB) } }) | ConvertTo-Json -Compress`, { timeout: 20000 });
+  try {
+    return [].concat(JSON.parse(r.stdout || '[]'));
+  } catch {
+    return [];
+  }
+}
+
+const SKIP_FILE =/^(pagefile|hiberfil|swapfile)\.sys$|^dumpstack\.log(\.tmp)?$/i;
 /** Count every file under a folder (skips links/junctions and cloud-only files). Keeps the tree for planning. */
 async function walk(root, st) {
   const node = { p: root, files: 0, total: 0, kids: [], names: [] };
@@ -744,6 +804,8 @@ module.exports = {
   sha256,
   signatures,
   knownGood,
+  knownLookup,
+  drives,
   engineStatus,
   checks,
   fixCheck,

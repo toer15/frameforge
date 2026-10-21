@@ -705,3 +705,51 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .ri-result.err { color: #ff8ca1; }
 .res-plan { color: #c6d0ec; font-weight: 600; }
 @media (max-width: 760px) { .res-tiles { grid-template-columns: repeat(2, 1fr); } .sr-stats { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---- Virus scan: protection banner, live feed, drives, history, filters ---- */
+.prot-banner { display: flex; align-items: center; gap: 16px; padding: 16px 18px; margin: 0 0 12px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--line-2); }
+.prot-banner.ok { border-left-color: #35e08f; background: linear-gradient(90deg, rgba(53, 224, 143, 0.09), var(--panel) 55%); }
+.prot-banner.warn { border-left-color: var(--warn); background: linear-gradient(90deg, rgba(255, 179, 71, 0.09), var(--panel) 55%); }
+.prot-banner.bad { border-left-color: var(--bad); background: linear-gradient(90deg, rgba(255, 77, 109, 0.12), var(--panel) 55%); }
+.pb-icon { flex: none; width: 46px; height: 46px; display: grid; place-items: center; font: 800 24px var(--display); border: 2px solid var(--line-2); border-radius: 50%; color: var(--muted); }
+.prot-banner.ok .pb-icon { color: #35e08f; border-color: #35e08f; box-shadow: 0 0 16px rgba(53, 224, 143, 0.35); }
+.prot-banner.warn .pb-icon { color: var(--warn); border-color: var(--warn); }
+.prot-banner.bad .pb-icon { color: var(--bad); border-color: var(--bad); box-shadow: 0 0 16px rgba(255, 77, 109, 0.35); }
+.pb-text { flex: 1; min-width: 0; }
+.pb-text h2 { margin: 0; font: 700 20px var(--display); }
+.pb-text p { margin: 3px 0 0; color: #b9c4e2; font-size: 14.5px; }
+.pb-actions { display: flex; gap: 8px; flex: none; }
+.sc-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.drive-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.drive-chips:empty { display: none; }
+.drive-chips button { padding: 4px 10px; font-size: 13.5px; border: 1px solid var(--line-2); background: #0f1628; font-weight: 700; color: #c6d0ec; cursor: pointer; }
+.drive-chips button:hover { border-color: var(--coolant); color: var(--coolant); }
+.drive-chips button small { color: var(--muted); font-weight: 600; margin-left: 4px; }
+.drive-chips button.usb { border-color: rgba(178, 141, 255, 0.5); }
+.scan-run.paused { border-color: var(--warn); box-shadow: 0 0 30px rgba(255, 179, 71, 0.08) inset; }
+.scan-run.paused .spin { animation-play-state: paused; opacity: 0.4; }
+.sr-recent { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.sr-recent div { display: flex; gap: 8px; align-items: baseline; padding: 5px 9px; background: #0f1628; border: 1px solid var(--line); border-left: 3px solid var(--bad); font-size: 13.5px; animation: srIn 0.25s ease-out; }
+.sr-recent div.pua { border-left-color: var(--warn); }
+.sr-recent div.test { border-left-color: var(--prism); }
+.sr-recent b { flex: none; }
+.sr-recent code { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes srIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.h-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+.h-item { display: grid; grid-template-columns: 110px 1fr auto; gap: 12px; align-items: center; padding: 8px 14px; background: var(--panel); border: 1px solid var(--line); font-size: 14.5px; }
+.h-item b { font-weight: 700; }
+.h-item .h-when { color: var(--muted); text-align: right; white-space: nowrap; }
+.h-item .h-what { color: #b9c4e2; }
+.h-item .h-res { font-weight: 700; }
+.h-item .h-res.clean { color: #35e08f; }
+.h-item .h-res.found { color: var(--bad); }
+.h-item .h-res.unw { color: var(--warn); }
+.res-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.res-filters:empty { display: none; }
+.res-filters button { padding: 4px 11px; font-size: 13.5px; font-weight: 700; border: 1px solid var(--line-2); background: #0f1628; color: var(--muted); cursor: pointer; }
+.res-filters button.on { background: #22305a; color: var(--text); border-color: var(--coolant); }
+.res-filters button span { margin-left: 5px; opacity: 0.7; }
+@media (max-width: 760px) { .prot-banner { flex-wrap: wrap; } .h-item { grid-template-columns: 1fr; } .h-item .h-when { text-align: left; } }
+/* ---- Fix mode: result of a single "Fix it" ---- */
+.fix-result { margin-top: 10px; padding: 9px 12px; background: #0f1628; border: 1px solid var(--line); border-left: 3px solid var(--warn); font-size: 14.5px; color: #c6d0ec; }
+.fix-result .fr-steps { margin: 6px 0 0; }

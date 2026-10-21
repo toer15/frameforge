@@ -1,3 +1,21 @@
+**Fix mode: problems really go away when they're fixed**
+
+- **A "Fix it" button on every problem FrameForge can fix.** It tries every fix it knows, in order, checks after each one that the problem is truly gone, and then the problem leaves the list and shows under "Fixed just now". Before, some problems (a hot CPU or graphics card, a laptop on battery) had no button at all or stayed on the list after they were handled.
+- **If a fix doesn't work**, you see what happened and exact steps for the part only you can do — no silent failures.
+- **The AI chat now really fixes things.** "Fix this" fixes one problem the same way, with a check; the new "Fix everything" action does what the button in Fix mode does. Fix mode and the changes list refresh right after the AI acts, and the AI tells you honestly whether the problem is gone.
+- **Fix everything automatically** can now quarantine clear-cut virus-scan threats (only confirmed malware families — never "probably" or unwanted programs). Quarantined files can be restored from the Virus scan tab. Background fixing never does this on its own.
+- The problem list no longer flickers or loses track of what was fixed when several refreshes overlap.
+**Virus scan: smarter, safer, easier to follow**
+
+- **Protection banner.** One glance tells you if the PC is protected, has detections waiting for you, or has Windows protection problems — with a button to fix or review them. There's also an **Update definitions** button.
+- **Live detections.** Threats show up in the scan window the moment they're found, not just at the end.
+- **Pause and resume** a scan any time. A scheduled scan pauses by itself while you use the PC or play, and carries on when you're away. Scans keep Windows awake so a long full scan isn't cut short by sleep.
+- **Scan a single file, or a whole drive in one click** — including USB sticks and external drives.
+- **Scheduled scans you control.** Pick quick scans daily / weekly / every 2 weeks / monthly and an optional scheduled full scan (Settings › Virus scan). They run only when you're away, never during a game, and on laptops only on the charger. They run at low priority and no longer depend on Fix mode being on.
+- **More Defender checks:** behaviour monitoring, downloaded-file and script scanning, cloud-delivered protection, blocking of unwanted programs, Tamper Protection and optional ransomware protection — each with a one-click fix.
+- **Scan history** and a **Save report** button (a plain-text file with every detection and the reasons behind each verdict).
+- Results open on what needs your decision, with filters (threats, unwanted, false positives, found before). A scheduled scan that finds nothing no longer pops a window up.
+- The false-positive check now says honestly when the known-software database was off or couldn't be reached, instead of "not listed".
 **New: Virus scan tab**
 
 - **Quick scan, Full scan and Custom scan.** Uses Microsoft Defender's antivirus engine, which is built into Windows and updated by Microsoft several times a day. It finds viruses, trojans, ransomware, spyware, password stealers, crypto-miners and unwanted programs.
