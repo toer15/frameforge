@@ -1,13 +1,16 @@
 # Builds FrameForge on a real Windows machine and publishes it as a GitHub Release.
-# Every copy of FrameForge checks this repo's releases and shows the update popup.
+# Every installed copy of FrameForge checks this repo's releases and shows the update popup.
 #
-# To release a new version:  git tag v1.1.0  &&  git push origin v1.1.0
-# Then edit the release on GitHub to write "what's new" — that text appears in the popup.
+# To release a new version: raise "version" in package.json, write what's new in release-notes.md,
+# and push to main. If that version hasn't been released yet, this builds and publishes it.
+# (It can also be started by hand from the Actions tab.)
 name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['package.json']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -18,18 +21,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Skip if this version is already released
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "v$v" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$v is already released — nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip != 'true'
         with:
           node-version: 20
           cache: npm
 
-      - name: Set app version from the tag
-        shell: bash
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
-
       - run: npm ci
+        if: steps.check.outputs.skip != 'true'
 
       - name: Build installer and publish release
+        if: steps.check.outputs.skip != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
