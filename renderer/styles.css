@@ -553,3 +553,16 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 
 .panel-head { flex-wrap: wrap; row-gap: 8px; }
 .panel-head h2 { white-space: nowrap; }
+
+/* ---------- Fix mode: counts and what was just fixed ---------- */
+.fix-sub { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fix-sub .counts { font-family: var(--body); }
+.fix-done { margin: 4px 0 26px; }
+.fix-done-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fix-done-list li { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center; padding: 10px 14px; background: rgba(63, 216, 255, 0.05); border-left: 3px solid var(--coolant); }
+.fix-done-list .ico { color: var(--coolant); display: grid; place-items: center; }
+.fix-done-list .ico svg { width: 18px; height: 18px; }
+.fix-done-list b { font-weight: 700; }
+.fix-done-list small { color: var(--muted); font-weight: 600; }
+.fix-item.leaving { animation: leave 0.45s ease forwards; }
+@keyframes leave { to { opacity: 0; transform: translateX(24px); } }

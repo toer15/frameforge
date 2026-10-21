@@ -616,12 +616,52 @@ function showView(name) {
   $$('.view').forEach((v) => v.classList.toggle('hidden', v.id !== `view-${name}`));
 }
 
+// Problems that were in the list and then disappeared = fixed (by Fix everything, a button, Auto Mode or the AI).
+const FIXED_NOW = new Map(); // id -> { title, at }
+const FIRST_SEEN = new Map(); // id -> fixedTitle from when the problem first showed up (keeps e.g. "19 settings")
+let lastFixIds = null;
+function renderFixedNow() {
+  const list = [...FIXED_NOW.values()].sort((a, b) => b.at - a.at);
+  $('#fixDone').classList.toggle('hidden', !list.length);
+  $('#fixDoneCount').innerHTML = cnt(list.length, 'fixed', 'on');
+  $('#fixDoneList').innerHTML = list
+    .map((f) => `<li><span class="ico">${ICONS.done}</span><b>${esc(f.title)}</b><small>${new Date(f.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small></li>`)
+    .join('');
+}
+
 async function refreshFix() {
+  const prev = FIX ? new Map(FIX.items.map((i) => [i.id, i])) : null;
   FIX = await ff.fix.list();
   const items = FIX.items;
+  const ids = new Set(items.map((i) => i.id));
+  // Anything that left the list since last time got fixed: animate it out and log it under "Fixed just now".
+  if (prev && lastFixIds) {
+    for (const [id, it] of prev) {
+      if (ids.has(id) || id === 'restart') continue;
+      FIXED_NOW.set(id, { title: FIRST_SEEN.get(id) || it.fixedTitle || it.title, at: Date.now() });
+      FIRST_SEEN.delete(id);
+      const card = $(`#fixList [data-fix="${CSS.escape(id)}"]`);
+      if (card) card.classList.add('leaving');
+    }
+    if ($$('#fixList .leaving').length) await new Promise((r) => setTimeout(r, 420));
+  }
+  for (const it of items) {
+    FIXED_NOW.delete(it.id); // it came back: not fixed after all
+    if (!FIRST_SEEN.has(it.id)) FIRST_SEEN.set(it.id, it.fixedTitle);
+  }
+  lastFixIds = ids;
+  renderFixedNow();
+  // A pending restart is a follow-up step, not a problem: it doesn't count toward the open problems.
+  const open = items.filter((i) => i.id !== 'restart');
+  const auto = open.filter((i) => i.auto).length;
+  const you = open.filter((i) => !i.auto).length;
+  const restart = items.some((i) => i.id === 'restart');
+  $('#fixCounts').innerHTML =
+    (open.length ? cnt(open.length, 'open', 'warn') + cnt(auto, 'fixable automatically', 'on') + cnt(you, you === 1 ? 'needs you' : 'need you') : '<span class="cnt on"><b>0</b>open — all good</span>') +
+    (restart ? '<span class="cnt"><b>1</b>restart pending</span>' : '');
   const badge = $('#fixBadge');
-  badge.textContent = items.length;
-  badge.classList.toggle('hidden', !items.length);
+  badge.textContent = open.length;
+  badge.classList.toggle('hidden', !open.length);
   $('#fixAllBtn').disabled = fixAllRunning || !items.length;
   $('#fixList').innerHTML = items.length
     ? items.map((it) => `<div class="fix-item ${it.level}" data-fix="${esc(it.id)}">

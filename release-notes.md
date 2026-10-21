@@ -1,6 +1,12 @@
-**Easier to see what FrameForge has done**
+**Fix mode: fixed things disappear, and the numbers go down**
 
-- **Check for updates** is now at the very top of Settings, with your version number. When an update is waiting, the button turns into **Download update** / **Update now**.
-- **What FrameForge changed on your PC** shows counters beside the name: how many changes are **turned on**, how many were **done once** (like cleanups), and how many **need a restart**.
-- **What FrameForge did** shows how many steps are **done**, **working**, **skipped** and **failed** — live while Auto Mode runs.
-- "Needs a restart" now disappears by itself once you've restarted.
+- When a problem gets fixed — by "Fix everything", a single button, Auto Mode or the AI chat — it leaves the list right away, the Fix mode number in the sidebar goes down, and it shows up under **Fixed just now** with a ✓ (e.g. "Display switched to 165 Hz").
+- Counters beside "Problems on this PC": how many are open, how many FrameForge can fix by itself, and how many need you.
+- A pending restart is shown on its own (with a Restart now button) and no longer counts as a problem.
+
+**Fix mode switches more things on and off by itself**
+- If Auto Mode is on but some settings from your preset aren't active yet — like new tweaks from recent updates — it turns them on. Tweaks you switched off yourself in the Tweaks tab stay off.
+- CPU running hot: it first switches off FrameForge's heat-adding CPU tweaks, then gives cooling steps.
+- Laptop on battery: sets Windows power mode to Best performance, and only asks you to plug in when it's really unplugged.
+
+Also in 1.0.8: **Check for updates** at the top of Settings, and counters beside "What FrameForge changed on your PC" and "What FrameForge did".

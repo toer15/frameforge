@@ -664,9 +664,15 @@ async function tweakCatalog() {
   };
 }
 
-async function setTweak(id, on) {
+async function setTweak(id, on, { byUser = false } = {}) {
   const t = tweaksTab.tabTweaks().find((x) => x.id === id);
   if (!t) return { ok: false, message: 'Unknown tweak.' };
+  if (byUser) {
+    const userOff = { ...(settings.get().userOff || {}) };
+    if (on) delete userOff[id];
+    else userOff[id] = true;
+    settings.set({ userOff });
+  }
   if (busy) return { ok: false, message: 'FrameForge is busy with another change — try again in a moment.', on: await tweaksTab.stateOf(t) };
   if (t.admin && !admin) return { ok: false, message: 'This one needs FrameForge to run as administrator.', on: await tweaksTab.stateOf(t) };
   busy = true;
@@ -700,7 +706,7 @@ async function setTweak(id, on) {
 }
 
 ipcMain.handle('tweaks:catalog', () => tweakCatalog());
-ipcMain.handle('tweaks:set', (_e, id, on) => setTweak(id, !!on));
+ipcMain.handle('tweaks:set', (_e, id, on) => setTweak(id, !!on, { byUser: true }));
 
 // ---------- Fix mode ----------
 // The built-in fixer: it finds problems, knows several ways to fix each one, tries them in order and checks
@@ -717,7 +723,7 @@ let extraRunning = null;
 async function detectExtra() {
   if (extraRunning) return extraRunning;
   extraRunning = (async () => {
-    const out = { display: null, disk: null, reverted: [], rebootPending: false, at: Date.now() };
+    const out = { display: null, disk: null, reverted: [], presetOff: [], onBattery: false, rebootPending: false, at: Date.now() };
     const locked = settings.get().lockedTweaks || {};
     try {
       if (DEMO) out.display = { res: '2560 × 1440', cur: backup.get('max_refresh') ? 165 : 60, max: 165 };
@@ -735,6 +741,22 @@ async function detectExtra() {
       const rr = await run('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired']);
       out.rebootPending = rr.code === 0;
     }
+    try {
+      const b = await si.battery();
+      out.onBattery = !!(b && b.hasBattery && b.acConnected === false);
+    } catch {}
+    // Auto Mode is on, but some of the preset's settings aren't active (e.g. new tweaks from an update,
+    // or ones that failed). Settings the user switched off by hand in the Tweaks tab are left alone.
+    const st = settings.get();
+    if (st.autoMode && rig) {
+      const userOff = st.userOff || {};
+      const tab = new Set(tweaksTab.tabTweaks().map((t) => t.id));
+      for (const t of optimizer.planned({ quiet: true, rig })) {
+        if (!tab.has(t.id) || locked[t.id] || userOff[t.id] || out.reverted.includes(t.id) || t.id === 'max_refresh') continue;
+        if (problems.all()[t.id]) continue; // already listed as a failed step
+        if (!(await tweaksTab.stateOf(t))) out.presetOff.push(t.id);
+      }
+    }
     extra = out;
     return out;
   })();
@@ -749,6 +771,31 @@ async function detectExtra() {
 function restartNeededFor() {
   const boot = Date.now() - os.uptime() * 1000;
   return Object.values(changes.all()).filter((c) => c.reboot && c.at > boot).map((c) => c.name);
+}
+
+/** How a problem reads once it's fixed (shown under "Fixed just now"). */
+function fixedTitleFor(it) {
+  const n = (it.title.match(/^(\d+)/) || [])[1];
+  if (it.id.startsWith('step_')) return it.title.replace(/ didn’t finish$/, ' now works');
+  return (
+    {
+      preset_off: `Turned on ${n || 'the'} missing preset setting${n === '1' ? '' : 's'}`,
+      reverted: 'Turned your tweaks back on after Windows switched them off',
+      display: extra.display ? `Display switched to ${extra.display.max} Hz` : 'Display runs at its highest refresh rate',
+      disk: 'Freed up space on drive C:',
+      tool_presentmon: 'Installed PresentMon — the FPS counter works',
+      tool_lhm: 'Installed LibreHardwareMonitor — temperatures can be read',
+      vendor_app: 'Driver app installed',
+      hot_cpu: 'CPU temperature is back to normal',
+      hot_gpu: 'Graphics card temperature is back to normal',
+      not_admin: 'FrameForge runs as administrator',
+      insight_ram_speed: 'RAM runs at full speed',
+      insight_single_stick: 'RAM runs in dual channel',
+      insight_laptop: 'Laptop is set up for gaming',
+      updates: 'In-app updates are set up',
+      restart: 'Restart done',
+    }[it.id] || `${it.title} — fixed`
+  );
 }
 
 /**
@@ -796,6 +843,11 @@ function fixList() {
     const names = extra.reverted.map((id) => (tweakById(id) || {}).name).filter(Boolean);
     add({ id: 'reverted', level: 'medium', title: `Windows switched off ${names.length} of your tweak${names.length === 1 ? '' : 's'}`, body: `Windows updates sometimes reset settings: ${names.join(', ')}.`, actions: [A('reapply', 'Turn them back on')], strategies: [A('reapply', 'Turn them back on')] });
   }
+  if (extra.presetOff.length) {
+    const names = extra.presetOff.map((id) => (tweakById(id) || {}).name).filter(Boolean);
+    const pn = presets.PRESETS[s.preset].name;
+    add({ id: 'preset_off', level: 'medium', title: `${names.length} setting${names.length === 1 ? '' : 's'} from your ${pn} preset ${names.length === 1 ? 'isn’t' : 'aren’t'} on yet`, body: `${names.join(', ')}.`, actions: [A('preset_apply', 'Turn them on')], strategies: [A('preset_apply', `Turn on the missing ${pn} settings`)] });
+  }
   if (extra.display && extra.display.cur < extra.display.max) {
     const d = extra.display;
     add({ id: 'display', level: 'big', title: `Your display runs at ${d.cur} Hz, but it can do ${d.max} Hz`, body: `Windows is only using ${Math.round((d.cur / d.max) * 100)}% of what your monitor can show at ${d.res}.`, actions: [A('tweak:max_refresh', `Switch to ${d.max} Hz`)], strategies: [A('tweak:max_refresh', `Switch the display to ${d.max} Hz`)], manual: guides.displayCable(d) });
@@ -810,7 +862,10 @@ function fixList() {
     const amd = rig.gpu.vendor === 'amd';
     add({ id: 'vendor_app', level: 'medium', title: `${rig.vendorApp.name} isn’t installed`, body: 'The driver checklist and the vendor’s own auto-overclock and undervolt live in it.', actions: [A(amd ? 'vendor' : 'vendor_install', 'Get it')], strategies: amd ? [] : [A('vendor_install', `Install ${rig.vendorApp.name} from Microsoft’s verified app store`)], manual: amd ? guides.amdDriverApp() : null, manualAction: amd ? 'vendor' : null });
   }
-  if (lastStats && lastStats.cpuTemp >= 90) add({ id: 'hot_cpu', level: 'big', title: `CPU is hot (${lastStats.cpuTemp} °C)`, body: 'Above 90 °C the CPU slows itself down. Usually dust, a weak fan setting or old thermal paste.', manual: guides.hotCpu(rig, lastStats.cpuTemp) });
+  if (lastStats && lastStats.cpuTemp >= 90) {
+    const heat = ['cpu_min', 'cpu_boost', 'core_parking'].filter((id) => backup.get(id));
+    add({ id: 'hot_cpu', level: 'big', title: `CPU is hot (${lastStats.cpuTemp} °C)`, body: heat.length ? 'FrameForge’s CPU speed tweaks add some heat. Usually it’s dust, a weak fan setting or old thermal paste.' : 'Above 90 °C the CPU slows itself down. Usually dust, a weak fan setting or old thermal paste.', strategies: heat.length ? [A('cool_cpu', 'Switch off FrameForge’s heat-adding CPU tweaks')] : [], manual: guides.hotCpu(rig, lastStats.cpuTemp) });
+  }
   if (lastStats && lastStats.gpuTemp >= 87) {
     const oc = !!backup.get('gpu_power_limit');
     add({ id: 'hot_gpu', level: 'big', title: `Graphics card is hot (${lastStats.gpuTemp} °C)`, body: oc ? 'FrameForge raised its power limit for overclocking — that’s the likely cause.' : 'It may be lowering its clocks to protect itself.', strategies: oc ? [A('revert_oc', 'Put the graphics card power limit back to normal')] : [], manual: guides.hotGpu(rig, lastStats.gpuTemp) });
@@ -818,7 +873,12 @@ function fixList() {
   if (rig) {
     for (const ins of profile.insights(rig)) {
       if (ins.level === 'info') continue;
-      const manual = ins.id === 'ram_speed' ? guides.ramSpeed(rig) : ins.id === 'single_stick' ? guides.singleStick(rig) : ins.id === 'laptop' ? guides.laptop() : null;
+      if (ins.id === 'laptop') {
+        if (!extra.onBattery) continue; // plugged in: nothing to fix
+        add({ id: 'insight_laptop', level: 'medium', title: 'Your laptop is running on battery', body: 'Most laptops cut graphics power by half or more on battery.', actions: [A('laptop_power', 'Set Best performance mode')], strategies: [A('laptop_power', 'Set Windows power mode to Best performance')], manual: guides.laptop() });
+        continue;
+      }
+      const manual = ins.id === 'ram_speed' ? guides.ramSpeed(rig) : ins.id === 'single_stick' ? guides.singleStick(rig) : null;
       add({ id: `insight_${ins.id}`, level: ins.level, title: ins.title, body: ins.body, manual, bios: ins.id === 'ram_speed' });
     }
   }
@@ -826,7 +886,10 @@ function fixList() {
   if (extra.rebootPending || pending.length) add({ id: 'restart', level: 'info', title: 'A restart is needed', body: pending.length ? `To finish: ${pending.join(', ')}.` : 'Windows has updates waiting for a restart.', actions: [A('restart', 'Restart now')], manual: guides.restartPending(), manualAction: null });
   if (app.isPackaged && updates && updates.state.status === 'unconfigured') add({ id: 'updates', level: 'info', title: 'In-app updates aren’t set up', body: 'FrameForge can’t find where new versions come from.', actions: [A('set_update_source', 'Fix it')], strategies: [A('set_update_source', 'Use the official FrameForge update source')] });
   // A problem is fixable automatically when it has strategies.
-  for (const it of items) it.auto = it.strategies.length > 0;
+  for (const it of items) {
+    it.auto = it.strategies.length > 0;
+    it.fixedTitle = fixedTitleFor(it);
+  }
   return items;
 }
 
@@ -891,6 +954,26 @@ async function runFixAction(action) {
       for (const id of ids) if ((await setTweak(id, true)).ok) ok++;
       await detectExtra();
       return { ok: ok === ids.length, message: `Turned ${ok} of ${ids.length} tweak${ids.length === 1 ? '' : 's'} back on.` };
+    }
+    case 'preset_apply': {
+      const ids = [...extra.presetOff];
+      let ok = 0;
+      for (const id of ids) {
+        send('fix:line', { line: `Turning on: ${(tweakById(id) || {}).name || id}` });
+        if ((await setTweak(id, true)).ok) ok++;
+      }
+      await detectExtra();
+      return { ok: ok === ids.length, message: `Turned on ${ok} of ${ids.length} preset setting${ids.length === 1 ? '' : 's'}.` };
+    }
+    case 'cool_cpu': {
+      const ids = ['cpu_min', 'cpu_boost', 'core_parking'].filter((id) => backup.get(id));
+      for (const id of ids) await setTweak(id, false, { byUser: true });
+      return { ok: true, message: `Switched off ${ids.map((id) => tweakById(id).name).join(', ')}. Give it a few minutes of gaming to see the difference.` };
+    }
+    case 'laptop_power': {
+      if (!DEMO) await run('powercfg', ['/overlaysetactive', 'ded574b5-45a0-4f42-8737-46345c09c238']);
+      await detectExtra();
+      return { ok: true, message: 'Windows power mode is set to Best performance.' };
     }
     case 'restore_check': {
       if (await recentRestorePoint()) {
@@ -1025,6 +1108,7 @@ async function fixEverything() {
       if (fixed) {
         tally.fixed++;
         ev({ type: 'item', id: it.id, title: it.title, outcome: 'fixed', message: last && last.message });
+        send('fix:changed', true); // the problem leaves the list and the count goes down right away
       } else if (it.manual) {
         if (it.manualAction) await runFixAction(it.manualAction).catch(() => {});
         tally.you++;
@@ -1138,7 +1222,7 @@ async function aiTool(name, input) {
     case 'run_repair':
       return runRepair(input.repair);
     case 'set_tweak': {
-      const r = await setTweak(input.id, input.on);
+      const r = await setTweak(input.id, input.on, { byUser: true });
       send('tweaks:changed', true);
       return r;
     }
