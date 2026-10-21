@@ -1,3 +1,10 @@
+**Fix mode: two problems that could never be fixed now are**
+
+- **Memory compression** now turns off even when Windows' SysMain (Superfetch) service is disabled — which made the command fail with "The service cannot be started". FrameForge starts the service just long enough for the change, then puts it back exactly as it was.
+- **Settings your PC doesn't have** (for example "Aggressive CPU boost" when your power plan lacks that setting) are no longer applied and then reported as "Windows switched it off" forever. FrameForge detects them, undoes the empty change and sets them aside as not available on this PC — and the problem leaves Fix mode.
+- **Tweaks that need a restart** no longer show as problems while they're waiting for the restart.
+- Every fix now checks that Windows really reports the setting as on afterwards; if it can't be made to work, you get the reason instead of a problem that comes back.
+
 **Fix mode: problems really go away when they're fixed**
 
 - **A "Fix it" button on every problem FrameForge can fix.** It tries every fix it knows, in order, checks after each one that the problem is truly gone, and then the problem leaves the list and shows under "Fixed just now". Before, some problems (a hot CPU or graphics card, a laptop on battery) had no button at all or stayed on the list after they were handled.

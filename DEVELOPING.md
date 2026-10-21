@@ -165,6 +165,8 @@ under `ProgramData\Microsoft\Windows Defender\Platform\<version>`):
   starts again for 6 hours. Background scans use 1–2 scan processes at below-normal priority. Independent of Fix mode.
 - Known-software lookup returns `listed | notlisted | off | failed | nohash` (`knownLookup`); only real answers are cached.
 
+
+**Tweaks that can't be verified.** A tweak may define `available()` (power-plan tweaks do: the setting must be readable in the active plan) — if it's false the tweak is reverted quietly and set aside in `lockedTweaks` (`settledOff`/`markUnavailable` in main.js). Fix actions that switch tweaks on go through `applyAndVerify` (re-reads the real state; unverifiable → set aside). Tweaks with `reboot: true` aren't listed as reverted until the restart after they were applied. `mem_compression` runs Enable/Disable-MMAgent through `mmAgent()`, which starts SysMain temporarily when it is disabled.
 ## Windows animations
 
 `src/animations.js`: SystemParametersInfo (via a small C# helper run with PowerShell `Add-Type`) for minimize/

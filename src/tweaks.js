@@ -75,6 +75,13 @@ async function writeAc(scheme, p, value, label = 'this power setting') {
 function powerTweak(items) {
   return {
     what: items.map((i) => `Power plan › ${i.label} (plugged in) = ${i.value}${i.unit || ''}`),
+    /** False when this PC's active power plan doesn't have the setting at all. */
+    async available() {
+      const sch = await currentScheme();
+      if (!sch) return true;
+      for (const i of items) if (!(await readSetting(sch, i.p))) return false;
+      return true;
+    },
     async isOn() {
       const sch = await currentScheme();
       if (!sch) return false;
@@ -92,7 +99,10 @@ function powerTweak(items) {
       const vals = [];
       for (const i of items) {
         const info = await readSetting(sch, i.p);
-        vals.push({ p: i.p, prev: info ? info.ac : null, to: fit(info, i.value) });
+        // Windows can't read the setting back, so it doesn't exist in this power plan on this PC — writing it would
+        // "work" but could never be checked (the switch would flip back off forever).
+        if (!info) throw new LockedSetting(`This power plan has no “${i.label}” setting on this PC, so nothing was changed.`);
+        vals.push({ p: i.p, prev: info.ac, to: fit(info, i.value) });
       }
       // Write everything before saving the backup, so a refused setting leaves nothing half-done.
       const done = [];
@@ -153,6 +163,27 @@ async function setRefresh(hz) {
 }
 
 // ---------- The tweaks ----------
+/**
+ * Enable-/Disable-MMAgent only work while the SysMain (Superfetch) service can start — and "Turn off SysMain" or the
+ * Chris Titus tool leave it disabled ("The service cannot be started, either because it is disabled…"). So: let it
+ * run just long enough for the change, then put its startup type and state back exactly as they were.
+ */
+async function mmAgent(command) {
+  const info = await ps("$s = Get-Service SysMain -ErrorAction SilentlyContinue; if ($s) { \"$($s.Status)|$($s.StartType)\" }");
+  const [status, startType] = info.stdout.trim().split('|');
+  const wasDisabled = /^Disabled$/i.test(startType || '');
+  const wasStopped = !/^Running$/i.test(status || '');
+  if (!startType || (!wasDisabled && !wasStopped)) return ps(command);
+  if (wasDisabled) await ps('Set-Service SysMain -StartupType Manual');
+  await ps('Start-Service SysMain -ErrorAction SilentlyContinue');
+  try {
+    return await ps(command);
+  } finally {
+    await ps('Stop-Service SysMain -Force -ErrorAction SilentlyContinue');
+    if (wasDisabled) await ps('Set-Service SysMain -StartupType Disabled');
+  }
+}
+
 const NEW = [
   // Input lag
   {
@@ -488,12 +519,14 @@ const NEW = [
     what: ['Disable-MMAgent -MemoryCompression (turn back on: Enable-MMAgent -MemoryCompression)'],
     async isOn() {
       const r = await ps('(Get-MMAgent).MemoryCompression');
-      return /^\s*False\s*$/i.test(r.stdout);
+      if (/^\s*False\s*$/i.test(r.stdout)) return true;
+      if (/^\s*True\s*$/i.test(r.stdout)) return false;
+      return !!backup.get(this.id); // couldn't read it: go by what FrameForge did
     },
     async apply() {
       const before = await ps('(Get-MMAgent).MemoryCompression');
       if (!backup.get(this.id)) backup.put(this.id, { wasOn: /True/i.test(before.stdout) });
-      const r = await ps('Disable-MMAgent -MemoryCompression -ErrorAction Stop');
+      const r = await mmAgent('Disable-MMAgent -MemoryCompression -ErrorAction Stop');
       if (r.code !== 0) {
         backup.remove(this.id);
         throw new Error((r.stderr || r.stdout).trim().slice(0, 160) || 'Disable-MMAgent failed');
@@ -502,12 +535,12 @@ const NEW = [
     },
     async revert() {
       const b = backup.get(this.id);
-      if (b && b.wasOn) await ps('Enable-MMAgent -MemoryCompression');
+      if (b && b.wasOn) await mmAgent('Enable-MMAgent -MemoryCompression');
       backup.remove(this.id);
       return { ok: true };
     },
     async forceOff() {
-      await ps('Enable-MMAgent -MemoryCompression');
+      await mmAgent('Enable-MMAgent -MemoryCompression');
       return { ok: true };
     },
   },

@@ -3,7 +3,7 @@ const { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, screen, 
 const path = require('path');
 const fs = require('fs');
 
-const { run, ps, isAdmin, IS_WIN, DEMO } = require('./src/util');
+const { run, ps, isAdmin, sleep, IS_WIN, DEMO } = require('./src/util');
 const os = require('os');
 const { settings, changes, problems, backup } = require('./src/store');
 const fixes = require('./src/fixes');
@@ -811,6 +811,49 @@ const guides = require('./src/guides');
 const A = (id, label) => ({ id, label });
 const tweakById = (id) => optimizer.TWEAKS.find((t) => t.id === id);
 
+/**
+ * A tweak reads "off" but isn't a problem to fix:
+ *  - it needs a restart and FrameForge applied it since Windows last started (it switches on after the restart), or
+ *  - this PC doesn't have the setting at all (e.g. the power plan lacks it) — it can't be applied or checked, so it's
+ *    set aside as unavailable instead of failing forever.
+ */
+async function settledOff(t) {
+  const applied = changes.all()[t.id];
+  if (t.reboot && applied && applied.at > Date.now() - os.uptime() * 1000) return true;
+  if (typeof t.available === 'function' && !(await t.available().catch(() => true))) {
+    await markUnavailable(t, `This PC doesn’t have the setting “${t.name}” uses, so it isn’t available here.`);
+    return true;
+  }
+  return false;
+}
+async function markUnavailable(t, message) {
+  if (backup.get(t.id)) {
+    await optimizer.revertOne(t).catch(() => {});
+    backup.remove(t.id);
+  }
+  changes.remove(t.id);
+  problems.remove(t.id);
+  settings.set({ lockedTweaks: { ...(settings.get().lockedTweaks || {}), [t.id]: message } });
+  send('changes', changeList());
+}
+
+/**
+ * Switch a tweak on and make sure Windows really reports it on afterwards. If it doesn't (a setting Windows won't
+ * show as on), set the tweak aside as unavailable with a clear reason — so it never fails in a loop.
+ */
+async function applyAndVerify(id) {
+  const t = tweakById(id);
+  const r = await setTweak(id, true);
+  if (!r.ok || DEMO || !t) return r;
+  if (await tweaksTab.stateOf(t)) return r;
+  if (t.reboot) return { ...r, message: `${t.name} is set — it switches on after the next restart.` };
+  await sleep(2000);
+  if (await tweaksTab.stateOf(t)) return r;
+  const msg = `Windows doesn’t report “${t.name}” as on after FrameForge sets it, so it can’t be used on this PC.`;
+  await markUnavailable(t, msg);
+  return { ok: true, unavailable: true, message: `${msg} FrameForge put it back and set it aside.` };
+}
+
 /** Checks that take a moment (display, disk, tweaks Windows undid, pending restart). Cached. */
 let extra = { display: null, disk: null, reverted: [], rebootPending: false, at: 0 };
 let extraRunning = null;
@@ -830,7 +873,7 @@ async function detectExtra() {
     if (!DEMO) {
       for (const t of tweaksTab.tabTweaks()) {
         if (!backup.get(t.id) || locked[t.id] || t.id === 'max_refresh') continue;
-        if (!(await tweaksTab.stateOf(t))) out.reverted.push(t.id);
+        if (!(await tweaksTab.stateOf(t)) && !(await settledOff(t))) out.reverted.push(t.id);
       }
       const rr = await run('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired']);
       out.rebootPending = rr.code === 0;
@@ -849,7 +892,7 @@ async function detectExtra() {
       for (const t of optimizer.planned({ quiet: true, rig })) {
         if (!tab.has(t.id) || locked[t.id] || userOff[t.id] || out.reverted.includes(t.id) || t.id === 'max_refresh') continue;
         if (problems.all()[t.id]) continue; // already listed as a failed step
-        if (!(await tweaksTab.stateOf(t))) out.presetOff.push(t.id);
+        if (!(await tweaksTab.stateOf(t)) && !(await settledOff(t))) out.presetOff.push(t.id);
       }
     }
     extra = out;
@@ -944,7 +987,7 @@ function fixList() {
   }
   if (extra.reverted.length) {
     const names = extra.reverted.map((id) => (tweakById(id) || {}).name).filter(Boolean);
-    add({ id: 'reverted', level: 'medium', title: `Windows switched off ${names.length} of your tweak${names.length === 1 ? '' : 's'}`, body: `Windows updates sometimes reset settings: ${names.join(', ')}.`, actions: [A('reapply', 'Turn them back on')], strategies: [A('reapply', 'Turn them back on')], bg: 'quiet' });
+    add({ id: 'reverted', level: 'medium', title: `Windows switched off ${names.length === 1 ? 'one' : names.length} of your tweaks`, body: `Windows updates sometimes reset settings: ${names.join(', ')}.`, actions: [A('reapply', 'Turn them back on')], strategies: [A('reapply', 'Turn them back on')], bg: 'quiet' });
   }
   if (extra.presetOff.length) {
     const names = extra.presetOff.map((id) => (tweakById(id) || {}).name).filter(Boolean);
@@ -1083,14 +1126,14 @@ async function runFixAction(action) {
       return still ? { ok: false, message: still.message } : { ok: true, message: `${t.name} worked this time.` };
     }
     case 'tweak': {
-      const r = await setTweak(arg, true);
+      const r = await applyAndVerify(arg);
       await detectExtra();
       return r;
     }
     case 'reapply': {
       const ids = [...extra.reverted];
       let ok = 0;
-      for (const id of ids) if ((await setTweak(id, true)).ok) ok++;
+      for (const id of ids) if ((await applyAndVerify(id)).ok) ok++;
       await detectExtra();
       return { ok: ok === ids.length, message: `Turned ${ok} of ${ids.length} tweak${ids.length === 1 ? '' : 's'} back on.` };
     }
@@ -1099,7 +1142,7 @@ async function runFixAction(action) {
       let ok = 0;
       for (const id of ids) {
         send('fix:line', { line: `Turning on: ${(tweakById(id) || {}).name || id}` });
-        if ((await setTweak(id, true)).ok) ok++;
+        if ((await applyAndVerify(id)).ok) ok++;
       }
       await detectExtra();
       return { ok: ok === ids.length, message: `Turned on ${ok} of ${ids.length} preset setting${ids.length === 1 ? '' : 's'}.` };
