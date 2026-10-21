@@ -1639,6 +1639,16 @@ document.addEventListener('click', async (e) => {
   }
   const bulk = e.target.closest('[data-bulk]');
   if (bulk && RES && !applying) {
+    if (bulk.dataset.bulk === 'delete') {
+      const deletions = {};
+      for (const it of RES.items) {
+        if (!it.done && ['real', 'unsure', 'pua', 'test'].includes(it.verdict) && it.actions.includes('delete')) deletions[it.id] = 'delete';
+      }
+      if (!Object.keys(deletions).length) return toast('No threats available to delete.');
+      Object.assign(CHOICE, deletions);
+      renderResults();
+      return applyResults(deletions);
+    }
     for (const it of RES.items) {
       if (!it.actions.length || it.done) continue;
       if (bulk.dataset.bulk === 'reset') CHOICE[it.id] = it.defaultAction;
@@ -1656,6 +1666,7 @@ document.addEventListener('change', (e) => {
 });
 
 async function openResults() {
+  if (applying) return $('#scanModal').classList.remove('hidden');
   RES = await ff.scan.last();
   if (!RES) return toast('No scan results yet.');
   CHOICE = {};
@@ -1695,7 +1706,8 @@ function renderResults() {
   ]
     .map(([k, n, l]) => `<div class="tot ${k}"><b>${n}</b><span>${l}</span></div>`)
     .join('');
-  $('#resBulk').classList.toggle('hidden', !r.items.some((i) => i.actions.length && ['real', 'unsure', 'pua', 'test'].includes(i.verdict)));
+  $('#resBulk').classList.toggle('hidden', !r.items.some((i) => !i.done && i.actions.length && ['real', 'unsure', 'pua', 'test'].includes(i.verdict)));
+  $('[data-bulk="delete"]').disabled = applying || !r.items.some((i) => !i.done && ['real', 'unsure', 'pua', 'test'].includes(i.verdict) && i.actions.includes('delete'));
   const chips = RES_FILTERS.map(([id, label, test]) => [id, label, r.items.filter(test).length]).filter(([id, , n]) => id === 'all' || n > 0);
   $('#resFilters').innerHTML = r.items.length > 2 && chips.length > 2 ? chips.map(([id, label, n]) => `<button type="button" class="${id === FILTER ? 'on' : ''}" data-filter="${id}">${label}<span>${n}</span></button>`).join('') : '';
   const test = (RES_FILTERS.find((f) => f[0] === FILTER) || RES_FILTERS[0])[2];
@@ -1727,7 +1739,7 @@ function renderResults() {
           <div class="ri-facts">${facts.map((f) => `<span>${f}</span>`).join('')}</div>
           <details ${['fp', 'unsure'].includes(it.verdict) ? 'open' : ''}><summary>Why FrameForge says “${VLABEL[it.verdict].toLowerCase()}”</summary><ul>${it.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>
           ${acts}
-          <div class="ri-result ${it.done ? 'ok' : ''}">${it.done ? `✓ ${esc(it.doneMessage || ALABEL[it.done])}` : ''}</div>
+          <div class="ri-result ${it.done ? 'ok' : it.doneMessage ? 'err' : ''}">${it.done ? `✓ ${esc(it.doneMessage || ALABEL[it.done])}` : it.doneMessage ? `✕ ${esc(it.doneMessage)}` : ''}</div>
         </div>`;
       })
       .join('');
@@ -1754,24 +1766,39 @@ ff.scan.onApplied((a) => {
     if (st) st.textContent = STLABEL[a.status] || a.status;
   }
 });
-$('#resApply').onclick = async () => {
+async function applyResults(choices) {
   if (applying) return;
   applying = true;
+  const requested = { ...choices };
   $$('#resList .seg').forEach((s) => s.classList.add('locked'));
+  $$('#resList input, #resBulk button').forEach((el) => { el.disabled = true; });
   $('#resApply').disabled = true;
   $('#resApply').textContent = 'Working…';
-  const r = await ff.scan.apply(CHOICE);
-  applying = false;
-  $('#resApply').classList.add('hidden');
-  $('#resLater').textContent = 'Close';
-  $$('#resList .seg').forEach((s) => s.classList.remove('locked'));
-  const ok = r.results.filter((x) => x.ok).length;
-  $('#resPlan').textContent = `Done — ${ok} of ${r.results.length} handled.${r.reboot ? ' A locked file is removed at the next restart (Fix mode restarts the PC for you).' : ''}`;
-  RES = await ff.scan.last();
-  refreshScan();
-  refreshChanges();
-  refreshFix();
-};
+  $('#resPlan').textContent = Object.values(requested).every((a) => a === 'delete') ? `Deleting ${Object.keys(requested).length} threat(s)…` : 'Applying your choices…';
+  try {
+    const r = await ff.scan.apply(requested);
+    if (!r.results) throw new Error(r.message || 'Couldn’t apply your choices.');
+    RES = (await ff.scan.last()) || RES;
+    renderResults();
+    const ok = r.results.filter((x) => x.ok).length;
+    const failed = r.results.length - ok;
+    $('#resPlan').textContent = `${failed ? 'Needs attention' : 'Done'} — ${ok} of ${r.results.length} handled.${failed ? ` ${failed} failed; see the details and retry.` : ''}${r.reboot ? ' A locked file will be removed at the next restart.' : ''}`;
+    $('#resLater').textContent = 'Close';
+    const refreshed = await Promise.allSettled([refreshScan(), refreshChanges(), refreshFix()]);
+    if (refreshed.some((x) => x.status === 'rejected')) toast('Actions finished. Some status panels could not refresh.');
+  } catch (err) {
+    $('#resPlan').textContent = `Couldn’t finish: ${err.message || err}. You can retry.`;
+    toast($('#resPlan').textContent, 5000);
+  } finally {
+    applying = false;
+    $$('#resList .seg').forEach((s) => s.classList.remove('locked'));
+    $$('#resList input, #resBulk button').forEach((el) => { el.disabled = false; });
+    $('#resApply').disabled = false;
+    $('#resApply').textContent = 'Do it';
+    $('[data-bulk="delete"]').disabled = !RES.items.some((i) => !i.done && ['real', 'unsure', 'pua', 'test'].includes(i.verdict) && i.actions.includes('delete'));
+  }
+}
+$('#resApply').onclick = () => applyResults(CHOICE);
 $('#resExport').onclick = async () => {
   const r = await ff.scan.exportReport();
   if (r.ok) toast('Report saved.', 4000);

@@ -547,7 +547,7 @@ async function apply(choices) {
   let reboot = false;
   for (const it of r.items) {
     const a = choices[it.id];
-    if (!a || !it.actions.includes(a)) continue;
+    if (!a || it.done || !it.actions.includes(a)) continue;
     send('scan:applying', { id: it.id, action: a });
     let res;
     try {

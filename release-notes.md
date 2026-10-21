@@ -1,3 +1,10 @@
+**Virus scan: Delete all acts immediately**
+
+- Clicking **Delete all** in the scan results now starts deleting all available threats immediately. You no longer need to click **Do it** afterwards.
+- Progress appears while files are handled, and completed detections leave the pending list. Failures stay visible and can be retried; locked files may need a restart.
+- False positives, already handled detections and items in Defender's quarantine are left alone. Other selected actions are not run by Delete all.
+- Repeat clicks are blocked while deletion runs, and stale requests skip detections that have already been handled.
+
 **Windows animations: live window dragging and missing effects restored**
 
 - **On now enables live window contents while dragging**, plus Windows animations, shadows, smooth fonts, selection effects and thumbnail previews. Previously the switch could say On while moving a window still showed only its outline.

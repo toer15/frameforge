@@ -148,6 +148,13 @@ under `ProgramData\Microsoft\Windows Defender\Platform\<version>`):
   quarantine (FrameForge's own: XOR-encoded in `ProgramData\FrameForge\Quarantine`, SYSTEM/Admins only), delete
   (running copies stopped first; locked files via `PendingFileRenameOperations`), keep, keep & allow (Defender
   exclusion for that exact file), or for Defender-quarantined items leave/restore.
+- **Delete all** immediately calls the shared renderer `applyResults()` with only unfinished, deletable
+  real/unsure/PUA/test detections. It does not apply other choices (including false-positive actions or restores).
+  Other per-item choices still use **Do it**. Both paths lock controls while working, refresh the result list,
+  preserve failed-item messages and permit retries. `scanjob.apply()` skips completed detections, so a stale
+  request cannot delete a replacement file at an already handled path. `node --test tests/scan-results.test.js`
+  runs the Electron demo UI against harmless real files in isolated user data, including a deliberate deletion
+  failure and retry. Set `FRAMEFORGE_TEST_ARTIFACTS` to choose where test data is kept.
 - Protection checks (`checks`/`fixCheck`): real-time protection, Defender-off policies, risky exclusions, hosts-file
   hijacks, proxy, firewall, UAC, plus Defender features (behaviour monitoring, IOAV/script/archive scanning, cloud
   protection `MAPSReporting`, PUA blocking, Tamper Protection, optional Controlled folder access). Also shown in Fix
