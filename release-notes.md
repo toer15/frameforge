@@ -1,3 +1,11 @@
+**AI Chat: edit and delete your messages**
+
+- Each of your sent messages now has a **three-dot menu** beside it, with **Edit message** and **Delete message**.
+- Edit opens an inline editor with **Save changes** and **Cancel**. You can also save with Ctrl+Enter or cancel with Escape. Edits save in place and keep the existing AI replies.
+- Delete removes your message from the chat and removes its original text from saved history. Existing replies stay visible, and future AI requests use your revised conversation.
+- Changes persist after restarting the app. Message actions wait while the AI is replying; messages from failed or stopped requests stay available to edit or delete.
+- Fixed an early-startup error that could stop the AI replying while FrameForge was still checking the PC.
+
 **Auto update toggle in Settings**
 
 - **Auto update** now sits directly under the update button. Turn it on to check for new versions automatically and show the update popup while you use FrameForge.

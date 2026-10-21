@@ -10,6 +10,7 @@
 const { net, safeStorage, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { randomUUID } = require('crypto');
 const { settings } = require('./store');
 
 const API_URL = process.env.FRAMEFORGE_AI_URL || 'https://api.anthropic.com/v1/messages'; // override only for testing
@@ -43,18 +44,52 @@ function getKey() {
 
 // ---------- Saved conversation ----------
 const chatFile = () => path.join(app.getPath('userData'), 'chat.json');
+const userText = (m) => m.role === 'user' && !m.deleted && (typeof m.content === 'string' || (Array.isArray(m.content) && m.content.length > 0 && m.content.every((b) => b.type === 'text')));
+const messageText = (m) => typeof m.content === 'string' ? m.content : m.content.map((b) => b.text || '').join('\n\n');
+function writeChat(c) {
+  fs.mkdirSync(app.getPath('userData'), { recursive: true });
+  fs.writeFileSync(chatFile() + '.tmp', JSON.stringify(c));
+  fs.renameSync(chatFile() + '.tmp', chatFile());
+}
 function loadChat() {
+  let chat;
   try {
-    return JSON.parse(fs.readFileSync(chatFile(), 'utf8'));
+    chat = JSON.parse(fs.readFileSync(chatFile(), 'utf8'));
   } catch {
     return { messages: [] };
   }
+  if (!Array.isArray(chat.messages)) return { messages: [] };
+  let changed = false;
+  for (const m of chat.messages) {
+    if (userText(m) && !m.id) { m.id = randomUUID(); changed = true; }
+  }
+  if (changed) writeChat(chat);
+  return chat;
 }
 function saveChat(c) {
   // Keep the last 60 turns so requests stay fast and cheap.
   c.messages = c.messages.slice(-60);
-  while (c.messages.length && c.messages[0].role !== 'user') c.messages.shift();
-  fs.writeFileSync(chatFile(), JSON.stringify(c));
+  while (c.messages.length && !userText(c.messages[0]) && !c.messages[0].deleted) c.messages.shift();
+  writeChat(c);
+}
+
+function changeMessage(id, text, remove = false) {
+  const chat = loadChat();
+  const m = chat.messages.find((item) => item.id === id && userText(item));
+  if (!m) return { ok: false, message: 'That user message is no longer available.' };
+  if (!remove && (typeof text !== 'string' || !text.trim())) return { ok: false, message: 'Write a message before saving.' };
+  if (remove) {
+    // Remove the original text while retaining a turn boundary for tool-use/result pairs and existing replies.
+    m.content = [];
+    m.deleted = true;
+  } else m.content = [{ type: 'text', text: text.trim() }];
+  saveChat(chat);
+  return { ok: true };
+}
+
+function modelHistory(messages) {
+  // UI IDs and deletion metadata are local only. A deleted turn supplies no original text to either provider.
+  return messages.map((m) => ({ role: m.role, content: m.deleted ? [{ type: 'text', text: '[Message deleted by the user]' }] : m.content }));
 }
 
 // ---------- What the AI may do in the app ----------
@@ -309,4 +344,4 @@ async function runOllama({ history, ctx, onText, signal }) {
   return [{ role: 'assistant', content: [{ type: 'text', text: full }] }];
 }
 
-module.exports = { MODELS, setKey, getKey, loadChat, saveChat, runClaude, runOllama, sseEvents, TOOLS };
+module.exports = { MODELS, setKey, getKey, loadChat, saveChat, runClaude, runOllama, sseEvents, TOOLS, userText, messageText, changeMessage, modelHistory };

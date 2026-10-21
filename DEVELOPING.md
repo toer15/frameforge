@@ -200,6 +200,19 @@ policy could not be verified from the unelevated development shell; installed Fr
 
 ## AI chat
 
+In 1.4.0, user text messages have stable UUIDs (legacy history is migrated on read). `chatView()` exposes the
+IDs only on user bubbles; each bubble has a three-dot details menu for edit/delete. Inline edits save in place
+without regenerating replies; delete removes only that user's visible message. IPC `ai:edit`/`ai:delete` checks
+the user-message ID and refuses changes while `aiAbort` is active. Whitespace-only edits are refused.
+
+`ai.changeMessage()` saves atomically to chat.json. A deleted turn retains only an empty content array and
+deletion metadata, so its original text is removed while existing assistant/tool-use/result turns remain valid.
+`ai.modelHistory()` strips local IDs/metadata and substitutes a short deleted-message marker for either provider.
+Failed or stopped requests keep the user's sent message. `ai:start` events supply the persisted ID to the
+optimistic user bubble. `extra.presetOff` is initialized before startup checks, allowing immediate AI requests.
+`tests/chat-history.test.js` covers persistence and tool-pair preservation; `tests/chat-message-menu.test.js`
+exercises the Electron UI and a localhost simulated Ollama response, including busy guards and failure recovery.
+
 A chat tab powered by Claude (Anthropic) with your own API key from console.anthropic.com (stored
 encrypted with Windows DPAPI), or a free local model through Ollama. The model menu at the top right of the chat
 lists both; for a local model that isn't there yet an **Install** button appears. `src/localai.js` installs Ollama

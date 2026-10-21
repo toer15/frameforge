@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('ff', {
     status: () => ipcRenderer.invoke('ai:status'),
     setKey: (k) => ipcRenderer.invoke('ai:setKey', k),
     history: () => ipcRenderer.invoke('ai:history'),
+    edit: (id, text) => ipcRenderer.invoke('ai:edit', id, text),
+    delete: (id) => ipcRenderer.invoke('ai:delete', id),
     clear: () => ipcRenderer.invoke('ai:clear'),
     send: (t) => ipcRenderer.invoke('ai:send', t),
     stop: () => ipcRenderer.invoke('ai:stop'),

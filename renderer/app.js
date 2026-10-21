@@ -895,6 +895,8 @@ let AI = null;
 let aiBusy = false;
 let liveBubble = null;
 let liveText = '';
+let pendingUserBubble = null;
+let chatChanging = false;
 
 /** Tiny, safe Markdown: escapes everything first, then bold, code, headings and lists. */
 function md(text) {
@@ -931,22 +933,102 @@ function chatScroll() {
   const v = $('#view-chat');
   v.scrollTop = v.scrollHeight;
 }
-function addBubble(role, text, extra = '') {
+function addBubble(role, text, extra = '', id = null) {
   const d = document.createElement('div');
   d.className = `msg ${role} ${extra}`;
-  if (role === 'user') d.textContent = text;
+  let row = d;
+  if (role === 'user') {
+    row = document.createElement('div');
+    row.className = 'user-message';
+    row.dataset.text = text;
+    if (id) row.dataset.messageId = id;
+    row.appendChild(d);
+    const menu = document.createElement('details');
+    menu.className = 'msg-menu';
+    menu.innerHTML = '<summary data-chat-menu aria-label="Message options" title="Message options">⋮</summary><div class="msg-menu-actions"><button type="button" data-chat-edit>Edit message</button><button type="button" data-chat-delete>Delete message</button></div>';
+    menu.querySelector('summary').setAttribute('aria-disabled', String(aiBusy || !id));
+    row.appendChild(menu);
+    renderUserContent(row);
+  }
   else if (role === 'action') d.textContent = `⚙ ${text}`;
   else d.innerHTML = md(text);
-  $('#chatLog').appendChild(d);
+  $('#chatLog').appendChild(row);
   $('#chatEmpty').classList.add('hidden');
   chatScroll();
   return d;
 }
 function setAiBusy(b) {
   aiBusy = b;
+  $$('#chatLog [data-chat-menu]').forEach((el) => el.setAttribute('aria-disabled', String(b || !el.closest('.user-message').dataset.messageId)));
+  $$('#chatLog [data-chat-save]').forEach((el) => { el.disabled = b; });
+  if (b) $$('#chatLog .msg-menu[open]').forEach((el) => { el.open = false; });
   $('#chatSend').classList.toggle('hidden', b);
   $('#chatStop').classList.toggle('hidden', !b);
 }
+
+function renderUserContent(row) {
+  row.classList.remove('editing');
+  const content = document.createElement('div');
+  content.className = 'msg-text';
+  content.textContent = row.dataset.text;
+  row.querySelector('.msg.user').replaceChildren(content);
+}
+function editUserMessage(row) {
+  row.classList.add('editing');
+  const bubble = row.querySelector('.msg.user');
+  bubble.innerHTML = '<textarea class="msg-edit-input" aria-label="Edit message" rows="3"></textarea><div class="msg-edit-actions"><button type="button" class="ghost small" data-chat-cancel>Cancel</button><button type="button" class="primary small" data-chat-save>Save changes</button></div>';
+  const input = bubble.querySelector('textarea');
+  input.value = row.dataset.text;
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+$('#chatLog').addEventListener('click', async (e) => {
+  const row = e.target.closest('.user-message');
+  if (!row) return;
+  const summary = e.target.closest('[data-chat-menu]');
+  if (summary && (aiBusy || chatChanging || !row.dataset.messageId)) { e.preventDefault(); return; }
+  if (e.target.closest('[data-chat-cancel]')) { renderUserContent(row); return; }
+  const edit = e.target.closest('[data-chat-edit]');
+  const save = e.target.closest('[data-chat-save]');
+  const remove = e.target.closest('[data-chat-delete]');
+  if (!edit && !save && !remove) return;
+  if (aiBusy || chatChanging) return;
+  row.querySelector('.msg-menu').open = false;
+  if (edit) return editUserMessage(row);
+  const text = save ? row.querySelector('textarea').value : null;
+  if (save && !text.trim()) return toast('Write a message before saving.');
+  chatChanging = true;
+  if (save) save.disabled = true;
+  try {
+    const r = remove ? await ff.ai.delete(row.dataset.messageId) : await ff.ai.edit(row.dataset.messageId, text);
+    if (!r.ok) return toast(r.message || 'Couldn’t change the message.', 5000);
+    if (remove) row.remove();
+    else { row.dataset.text = text.trim(); renderUserContent(row); }
+    $('#chatEmpty').classList.toggle('hidden', $('#chatLog').children.length > 0);
+  } catch (err) {
+    toast(`Couldn’t change the message: ${err.message || err}`, 5000);
+  } finally {
+    chatChanging = false;
+    if (save && save.isConnected) save.disabled = false;
+  }
+});
+$('#chatLog').addEventListener('keydown', (e) => {
+  const row = e.target.closest('.user-message');
+  if (!row) return;
+  if (e.key === 'Escape') {
+    row.querySelector('.msg-menu').open = false;
+    if (row.classList.contains('editing')) renderUserContent(row);
+    row.querySelector('summary').focus();
+    e.preventDefault();
+    e.stopPropagation();
+  } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && row.classList.contains('editing')) {
+    e.preventDefault();
+    row.querySelector('[data-chat-save]').click();
+  }
+});
+document.addEventListener('click', (e) => {
+  $$('#chatLog .msg-menu[open]').forEach((menu) => { if (!menu.contains(e.target)) menu.open = false; });
+});
 
 /* The model picker (top right of the chat) and the Install button for models that run on this PC. */
 let LOCAL = null;
@@ -1015,21 +1097,35 @@ async function refreshAi() {
 async function loadChatHistory() {
   const h = await ff.ai.history();
   $('#chatLog').innerHTML = '';
-  h.forEach((m) => addBubble(m.role, m.text));
+  h.forEach((m) => addBubble(m.role, m.text, '', m.id));
   $('#chatEmpty').classList.toggle('hidden', h.length > 0);
 }
 
 async function sendChat(text) {
   const t = String(text || '').trim();
-  if (!t || aiBusy) return;
+  if (!t || aiBusy || chatChanging || pendingUserBubble) return;
   $('#chatIn').value = '';
   autoGrow();
-  addBubble('user', t);
-  await ff.ai.send(t);
+  setAiBusy(true);
+  pendingUserBubble = addBubble('user', t);
+  try {
+    const r = await ff.ai.send(t);
+    if (r && (r.busy || r.empty)) {
+      pendingUserBubble.closest('.user-message').remove();
+      toast(r.busy ? 'The AI is already replying.' : 'Write a message first.');
+    }
+  } catch (err) {
+    pendingUserBubble.closest('.user-message').remove();
+    toast(`Couldn’t send the message: ${err.message || err}`, 5000);
+  } finally {
+    pendingUserBubble = null;
+    setAiBusy(false);
+  }
 }
 
 ff.ai.onEvent((ev) => {
   if (ev.type === 'start') {
+    if (pendingUserBubble && ev.messageId) pendingUserBubble.closest('.user-message').dataset.messageId = ev.messageId;
     setAiBusy(true);
     liveText = '';
     liveBubble = addBubble('assistant', '');

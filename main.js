@@ -889,7 +889,7 @@ async function applyAndVerify(id) {
 }
 
 /** Checks that take a moment (display, disk, tweaks Windows undid, pending restart). Cached. */
-let extra = { display: null, disk: null, reverted: [], rebootPending: false, at: 0 };
+let extra = { display: null, disk: null, reverted: [], presetOff: [], rebootPending: false, at: 0 };
 let extraRunning = null;
 async function detectExtra() {
   if (extraRunning) return extraRunning;
@@ -1961,6 +1961,11 @@ async function aiToolRun(name, input) {
 function chatView() {
   const out = [];
   for (const m of ai.loadChat().messages) {
+    if (m.deleted) continue;
+    if (ai.userText(m)) {
+      out.push({ id: m.id, role: 'user', text: ai.messageText(m) });
+      continue;
+    }
     const blocks = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : m.content;
     for (const b of blocks) {
       if (b.type === 'text' && b.text.trim()) {
@@ -1993,6 +1998,8 @@ ipcMain.handle('ai:install', async (_e, model) => {
 });
 ipcMain.handle('ai:installCancel', () => localAi.cancel());
 ipcMain.handle('ai:history', () => chatView());
+ipcMain.handle('ai:edit', (_e, id, text) => aiAbort ? { ok: false, message: 'Wait for the reply to finish or press Stop before editing messages.' } : ai.changeMessage(id, text));
+ipcMain.handle('ai:delete', (_e, id) => aiAbort ? { ok: false, message: 'Wait for the reply to finish or press Stop before deleting messages.' } : ai.changeMessage(id, null, true));
 ipcMain.handle('ai:clear', () => {
   ai.saveChat({ messages: [] });
   return [];
@@ -2016,13 +2023,14 @@ ipcMain.handle('ai:send', async (_e, text) => {
   const msg = String(text || '').trim();
   if (!msg) return { empty: true };
   const chat = ai.loadChat();
-  chat.messages.push({ role: 'user', content: [{ type: 'text', text: msg }] });
+  const messageId = require('crypto').randomUUID();
+  chat.messages.push({ id: messageId, role: 'user', content: [{ type: 'text', text: msg }] });
   ai.saveChat(chat);
   aiAbort = new AbortController();
-  aiEvent({ type: 'start' });
+  aiEvent({ type: 'start', messageId });
   const s = settings.get();
   const args = {
-    history: chat.messages,
+    history: ai.modelHistory(chat.messages),
     ctx: aiContext,
     signal: aiAbort.signal,
     onText: (t) => aiEvent({ type: 'text', text: t }),
@@ -2042,10 +2050,7 @@ ipcMain.handle('ai:send', async (_e, text) => {
     aiEvent({ type: 'done' });
   } catch (e) {
     const aborted = aiAbort && aiAbort.signal.aborted;
-    // Drop the unanswered question so the conversation stays valid.
-    const c2 = ai.loadChat();
-    if (c2.messages.length && c2.messages[c2.messages.length - 1].role === 'user') c2.messages.pop();
-    ai.saveChat(c2);
+    // Keep the sent message so the user can edit or delete it after a failed or stopped reply.
     aiEvent(aborted ? { type: 'stopped' } : { type: 'error', message: String(e.message || e) });
   } finally {
     aiAbort = null;
