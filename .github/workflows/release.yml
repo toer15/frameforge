@@ -51,3 +51,9 @@ jobs:
         # Publishes to the repo in package.json (toer15/frameforge). release-notes.md becomes the text on
         # the release page and in the in-app update popup.
         run: npx electron-builder --win nsis --x64 --publish always -c.releaseInfo.releaseNotesFile=release-notes.md
+
+      - name: Put release-notes.md on the release page
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "v${{ steps.check.outputs.version }}" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md --title "FrameForge ${{ steps.check.outputs.version }}"
