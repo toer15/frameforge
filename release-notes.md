@@ -1,3 +1,7 @@
+**AI Chat message menu: red text on black**
+
+- **Edit message** and **Delete message** now use red text on a black background, including when hovered or focused. Removed the default white button backgrounds.
+
 **AI Chat: edit and delete your messages**
 
 - Each of your sent messages now has a **three-dot menu** beside it, with **Edit message** and **Delete message**.

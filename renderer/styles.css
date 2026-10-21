@@ -468,9 +468,9 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .msg-menu summary::-webkit-details-marker { display: none; }
 .msg-menu summary:hover, .msg-menu summary:focus-visible { color: var(--text); border-color: var(--line-2); }
 .msg-menu summary[aria-disabled='true'] { opacity: 0.4; cursor: default; }
-.msg-menu-actions { position: absolute; right: 0; top: 100%; min-width: 160px; padding: 5px; background: var(--panel-2); border: 1px solid var(--line-2); box-shadow: 0 8px 24px #0008; z-index: 30; }
-.msg-menu-actions button { display: block; width: 100%; text-align: left; white-space: nowrap; padding: 8px 12px; }
-.msg-menu-actions [data-chat-delete] { color: #ffb3c1; }
+.msg-menu-actions { position: absolute; right: 0; top: 100%; min-width: 160px; padding: 5px; background: #000; border: 1px solid #333; box-shadow: 0 8px 24px #0008; z-index: 30; }
+.msg-menu-actions button { display: block; width: 100%; text-align: left; white-space: nowrap; padding: 8px 12px; appearance: none; background: #000; color: #ff3333; border: 0; }
+.msg-menu-actions button:hover, .msg-menu-actions button:focus-visible { background: #000; color: #ff3333; outline: 1px solid #ff3333; outline-offset: -1px; }
 .user-message.editing { width: min(760px, 88%); }
 .user-message.editing .msg.user { flex: 1; }
 .msg-edit-input { width: 100%; resize: vertical; min-height: 90px; color: var(--text); background: #0f1628; border: 1px solid var(--line-2); padding: 8px; font: inherit; }
