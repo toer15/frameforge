@@ -31,16 +31,44 @@ async function currentScheme() {
   return activeScheme((await run('powercfg', ['/getactivescheme'])).stdout);
 }
 
-/** Current plugged-in (AC) value. powercfg prints AC then DC as the last two 0x… values, in any language. */
-async function readAc(scheme, [sub, setting]) {
+/**
+ * Read one power setting from powercfg, in any Windows language. powercfg prints only hex values we
+ * can rely on: range settings show min, max, step, then AC and DC; list settings show just AC and DC.
+ */
+async function readSetting(scheme, [sub, setting]) {
   const r = await run('powercfg', ['/query', scheme, sub, setting]);
-  const hex = r.stdout.match(/0x[0-9a-f]{8}/gi) || [];
-  return hex.length >= 2 ? parseInt(hex[hex.length - 2], 16) : null;
+  const hex = (r.stdout.match(/0x[0-9a-f]{8}/gi) || []).map((h) => parseInt(h, 16));
+  if (hex.length < 2) return null;
+  const info = { ac: hex[hex.length - 2], dc: hex[hex.length - 1] };
+  if (hex.length >= 5) {
+    info.min = hex[0];
+    info.max = hex[1];
+  }
+  return info;
 }
 
-async function writeAc(scheme, [sub, setting], value) {
-  const r = await run('powercfg', ['/setacvalueindex', scheme, sub, setting, String(value)]);
-  if (r.code !== 0) throw new Error(`powercfg couldn’t change this setting (${(r.stderr || r.stdout).trim().slice(0, 120)})`);
+async function readAc(scheme, p) {
+  const info = await readSetting(scheme, p);
+  return info ? info.ac : null;
+}
+
+/** The value to use on this PC: the wanted value, kept inside the range Windows allows. */
+function fit(info, value) {
+  if (!info || info.min == null || info.max == null) return value;
+  return Math.min(info.max, Math.max(info.min, value));
+}
+
+class LockedSetting extends Error {}
+
+/** Write a plugged-in value; retry with the SCHEME_CURRENT alias; explain clearly if Windows refuses. */
+async function writeAc(scheme, p, value, label = 'this power setting') {
+  const [sub, setting] = p;
+  let r = await run('powercfg', ['/setacvalueindex', scheme, sub, setting, String(value)]);
+  if (r.code !== 0) r = await run('powercfg', ['/setacvalueindex', 'SCHEME_CURRENT', sub, setting, String(value)]);
+  if (r.code !== 0) {
+    const why = (r.stderr || r.stdout).trim().replace(/\s+/g, ' ').slice(0, 160);
+    throw new LockedSetting(`Windows doesn’t allow apps to change ${label} on this PC, so nothing was changed.${why ? ` (Windows said: ${why})` : ''}`);
+  }
 }
 
 /** items: [{ p: P.X, value, def, label, unit }] */
@@ -50,29 +78,45 @@ function powerTweak(items) {
     async isOn() {
       const sch = await currentScheme();
       if (!sch) return false;
-      for (const i of items) if ((await readAc(sch, i.p)) !== i.value) return false;
+      for (const i of items) {
+        const info = await readSetting(sch, i.p);
+        if (!info || info.ac !== fit(info, i.value)) return false;
+      }
       return true;
     },
     async apply() {
       const sch = await currentScheme();
       if (!sch) throw new Error('Couldn’t find the active power plan.');
       const b = backup.get(this.id);
-      if (!b || b.scheme !== sch) {
-        const vals = [];
-        for (const i of items) vals.push({ p: i.p, prev: await readAc(sch, i.p) });
-        backup.put(this.id, { scheme: sch, vals });
+      const first = !b || b.scheme !== sch;
+      const vals = [];
+      for (const i of items) {
+        const info = await readSetting(sch, i.p);
+        vals.push({ p: i.p, prev: info ? info.ac : null, to: fit(info, i.value) });
       }
-      for (const i of items) await writeAc(sch, i.p, i.value);
+      // Write everything before saving the backup, so a refused setting leaves nothing half-done.
+      const done = [];
+      try {
+        for (const [k, i] of items.entries()) {
+          await writeAc(sch, i.p, vals[k].to, i.label);
+          done.push(k);
+        }
+      } catch (e) {
+        for (const k of done) if (vals[k].prev != null) await writeAc(sch, items[k].p, vals[k].prev, items[k].label).catch(() => {});
+        throw e;
+      }
+      if (first) backup.put(this.id, { scheme: sch, vals: vals.map(({ p, prev }) => ({ p, prev })) });
       await run('powercfg', ['/setactive', sch]); // makes Windows use the new values right away
       const saved = backup.get(this.id).vals;
-      return { ok: true, details: items.map((i, k) => `Power plan ${sch} › ${i.label} (plugged in): ${saved[k].prev ?? 'unknown'}${i.unit || ''} → ${i.value}${i.unit || ''}`) };
+      const capped = items.map((i, k) => (vals[k].to !== i.value ? `${i.label} set to ${vals[k].to}${i.unit || ''} — the highest your PC allows` : null)).filter(Boolean);
+      return { ok: true, message: capped.length ? `${capped.join('; ')}.` : undefined, details: items.map((i, k) => `Power plan ${sch} › ${i.label} (plugged in): ${saved[k].prev ?? 'unknown'}${i.unit || ''} → ${vals[k].to}${i.unit || ''}${vals[k].to !== i.value ? ` (the highest your PC allows)` : ''}`) };
     },
     async revert() {
       const b = backup.get(this.id);
       if (!b) return { ok: true };
       const exists = (await run('powercfg', ['/query', b.scheme])).code === 0; // the plan may have been removed since
       if (exists) {
-        for (const v of b.vals) if (v.prev != null) await writeAc(b.scheme, v.p, v.prev);
+        for (const v of b.vals) if (v.prev != null) await writeAc(b.scheme, v.p, v.prev).catch(() => {});
         const cur = await currentScheme();
         if (cur) await run('powercfg', ['/setactive', cur]);
       }
@@ -82,7 +126,10 @@ function powerTweak(items) {
     async forceOff() {
       const sch = await currentScheme();
       if (!sch) return { ok: true };
-      for (const i of items) await writeAc(sch, i.p, i.def);
+      for (const i of items) {
+        const info = await readSetting(sch, i.p);
+        await writeAc(sch, i.p, fit(info, i.def), i.label);
+      }
       await run('powercfg', ['/setactive', sch]);
       return { ok: true };
     },
@@ -157,17 +204,30 @@ const NEW = [
     },
     async isOn() {
       const sch = await currentScheme();
-      return !!sch && (await readAc(sch, P.CPMINCORES)) === 100 && !(await this.limited());
+      if (!sch) return false;
+      const info = await readSetting(sch, P.CPMINCORES);
+      return !!info && info.ac === fit(info, 100) && !(await this.limited());
     },
     async apply() {
       const sch = await currentScheme();
       if (!sch) throw new Error('Couldn’t find the active power plan.');
+      const info = await readSetting(sch, P.CPMINCORES);
+      const to = fit(info, 100);
       const b = backup.get(this.id) || {};
-      if (b.scheme !== sch) b.prev = await readAc(sch, P.CPMINCORES);
-      b.scheme = sch;
-      await writeAc(sch, P.CPMINCORES, 100);
-      await run('powercfg', ['/setactive', sch]);
-      const details = [`Power plan ${sch} › core parking, minimum cores unparked (plugged in): ${b.prev ?? 'unknown'}% → 100%`];
+      const prev = info ? info.ac : null;
+      const details = [];
+      let parkingNote = '';
+      try {
+        await writeAc(sch, P.CPMINCORES, to, 'core parking');
+        await run('powercfg', ['/setactive', sch]);
+        if (b.scheme !== sch) b.prev = prev;
+        b.scheme = sch;
+        details.push(`Power plan ${sch} › core parking, minimum cores unparked (plugged in): ${b.prev ?? 'unknown'}% → ${to}%`);
+      } catch (e) {
+        if (!(e instanceof LockedSetting)) throw e;
+        // AMD X3D drivers (and some laptop makers) manage core parking themselves and lock it.
+        parkingNote = 'Your CPU’s driver manages core parking itself and doesn’t let apps change it — that’s normal, especially on AMD X3D chips.';
+      }
       let reboot = false;
       const lim = await this.limited();
       if (lim && !b.numproc) {
@@ -178,14 +238,23 @@ const NEW = [
           details.push(`Removed the msconfig limit: Windows could only see ${lim.visible} of your ${lim.total} processor threads. Restart to use all of them.`);
         }
       }
+      if (parkingNote && !reboot) {
+        // Nothing could be changed at all.
+        throw new LockedSetting(`${parkingNote} Nothing was changed, and Windows still uses all your cores.`);
+      }
       backup.put(this.id, b);
-      return { ok: true, message: reboot ? 'All cores stay awake, and the core limit is removed — restart to finish.' : 'All cores stay awake while plugged in.', details, rebootNow: reboot };
+      return {
+        ok: true,
+        message: parkingNote ? `Removed the core limit — restart to finish. ${parkingNote}` : reboot ? 'All cores stay awake, and the core limit is removed — restart to finish.' : 'All cores stay awake while plugged in.',
+        details,
+        rebootNow: reboot,
+      };
     },
     async revert() {
       const b = backup.get(this.id);
       if (!b) return { ok: true };
       if (b.scheme && b.prev != null && (await run('powercfg', ['/query', b.scheme])).code === 0) {
-        await writeAc(b.scheme, P.CPMINCORES, b.prev);
+        await writeAc(b.scheme, P.CPMINCORES, b.prev).catch(() => {});
         const cur = await currentScheme();
         if (cur) await run('powercfg', ['/setactive', cur]);
       }
@@ -196,7 +265,8 @@ const NEW = [
     async forceOff() {
       const sch = await currentScheme();
       if (sch) {
-        await writeAc(sch, P.CPMINCORES, 10);
+        const info = await readSetting(sch, P.CPMINCORES);
+        await writeAc(sch, P.CPMINCORES, fit(info, 10), 'core parking');
         await run('powercfg', ['/setactive', sch]);
       }
       return { ok: true };
@@ -438,4 +508,4 @@ function tabTweaks() {
   return TWEAKS.filter((t) => t.cat && !t.oneShot && !t.overclock);
 }
 
-module.exports = { CATS, stateOf, tabTweaks, NEW_IDS: NEW.map((t) => t.id) };
+module.exports = { CATS, stateOf, tabTweaks, LockedSetting, NEW_IDS: NEW.map((t) => t.id) };

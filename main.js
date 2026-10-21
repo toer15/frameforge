@@ -100,6 +100,18 @@ function bootTime() {
  * on this PC (like the 'wermgr' service). Those runs did apply the preset, so move them to the changes list.
  */
 function reclassifyOldCttProblem() {
+  // 1.0.5 called a power setting Windows refuses to change (e.g. core parking on AMD X3D) a failure.
+  // Since 1.0.6 that's shown as "locked on this PC" in the Tweaks tab instead of a Fix-mode problem.
+  for (const [id, prob] of Object.entries(problems.all())) {
+    if (!/malformed, or is not within the range/i.test(prob.message || '')) continue;
+    const locked = { ...(settings.get().lockedTweaks || {}) };
+    locked[id] =
+      id === 'core_parking'
+        ? 'Your CPU’s driver manages core parking itself and doesn’t let apps change it — that’s normal, especially on AMD X3D chips. Nothing was changed, and Windows still uses all your cores.'
+        : `Windows doesn’t allow apps to change this setting on this PC, so nothing was changed.`;
+    settings.set({ lockedTweaks: locked });
+    problems.remove(id);
+  }
   const p = problems.all().ctt_tweaks;
   if (!p) return;
   const errs = (p.details || []).filter((d) => d.startsWith('Error: '));
@@ -397,7 +409,12 @@ function tweakPhase(t) {
       }
     }
     if (r.status === 'done') problems.remove(t.id);
-    else problems.put(t.id, { id: t.id, name: t.name, status: r.status, message: r.message, details: r.details, fix: r.fix, adminSkipped: r.adminSkipped, at: Date.now() });
+    else if (!r.locked) problems.put(t.id, { id: t.id, name: t.name, status: r.status, message: r.message, details: r.details, fix: r.fix, adminSkipped: r.adminSkipped, at: Date.now() });
+    // Remember settings this PC locks, so the Tweaks tab can say so instead of offering a switch that can't work.
+    const locked = { ...(settings.get().lockedTweaks || {}) };
+    if (r.locked) locked[t.id] = r.message;
+    else if (r.status === 'done') delete locked[t.id];
+    settings.set({ lockedTweaks: locked });
     send('fix:changed', true);
     if (r.status === 'done') {
       changes.put(t.id, {
@@ -411,7 +428,7 @@ function tweakPhase(t) {
       });
       send('changes', changeList());
     }
-    return { reboot: r.reboot };
+    return { reboot: r.reboot, status: r.status, message: r.message, locked: r.locked };
   };
 }
 
@@ -630,6 +647,7 @@ async function tweakCatalog() {
       recommended: rec.tweaks[t.id] !== false,
       reason: rec.reasons[t.id] || '',
       inPreset: !!s.tweaks[t.id],
+      locked: (s.lockedTweaks || {})[t.id] || null,
     })),
   };
 }
@@ -645,8 +663,7 @@ async function setTweak(id, on) {
     if (on) {
       const r = await tweakPhase(t)();
       reboot = !!(r && r.reboot);
-      const p = problems.all()[t.id];
-      if (p) return { ok: false, message: p.message, on: await tweaksTab.stateOf(t) };
+      if (r.status !== 'done') return { ok: false, locked: !!r.locked, message: r.message, on: await tweaksTab.stateOf(t) };
       const c = changes.all()[t.id];
       return { ok: true, message: c ? c.summary : `${t.name} is on.`, on: await tweaksTab.stateOf(t), reboot };
     }

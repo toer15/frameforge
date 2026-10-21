@@ -625,12 +625,14 @@ async function runOne(t, { admin, progress } = {}) {
     try {
       res = await t.apply({ progress });
     } catch (e) {
-      res = { ok: false, message: String(e.message || e).slice(0, 200) };
+      // A setting Windows won't let apps change on this PC isn't an error to fix — it's just not available.
+      const locked = !!(e && e.constructor && e.constructor.name === 'LockedSetting');
+      res = { ok: false, warn: locked, locked, message: String(e.message || e).slice(0, 300) };
     }
   }
   let message = res.message || '';
   if (res.ok && (!message || message === 'Done.')) message = t.desc.split(/(?<=\.)\s/)[0]; // first sentence of what it does
-  return { status: res.ok ? 'done' : res.warn ? 'warn' : 'error', message, reboot: res.ok && (!!t.reboot || !!res.rebootNow), details: res.details || [], fix: res.fix || null, adminSkipped: t.admin && !admin };
+  return { status: res.ok ? 'done' : res.warn ? 'warn' : 'error', message, reboot: res.ok && (!!t.reboot || !!res.rebootNow), details: res.details || [], fix: res.fix || null, adminSkipped: t.admin && !admin, locked: !!res.locked };
 }
 
 /** Turn Auto Mode off: undo everything in reverse order. */
