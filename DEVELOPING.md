@@ -172,7 +172,7 @@ under `ProgramData\Microsoft\Windows Defender\Platform\<version>`):
 `src/animations.js`: SystemParametersInfo (via a small C# helper run with PowerShell `Add-Type`) for minimize/
 maximize animation, client-area "Animation effects", menu/tooltip/combo/list animations and fades, UI effects;
 plus TaskbarAnimations, MinAnimate, VisualFXSetting=3 and the DWM `DisallowAnimations` policy. Setting
-`animations` ('on'/'off'); `enforceAnimations()` re-applies it at start, every 2 minutes and after Auto Mode.
+`animations` ('on'/'off'); `enforceAnimations()` re-applies it at start, after Auto Mode and whenever `animWatch()` (main.js, every 8 s) sees the registry fingerprint from `animations.fingerprint()` change — plus a full check every minute; after 5 re-applies in 5 minutes it checks once a minute only. Animations On also drops the `visual_effects` boost (`dropVisualEffectsBoost`).
 
 ## AI chat
 

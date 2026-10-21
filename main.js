@@ -107,6 +107,8 @@ async function boot() {
   }
   // Keep the user's animation choice, and check Windows' protection a little after start.
   setTimeout(() => enforceAnimations('start'), 6000);
+  setInterval(() => animWatch(), 8000);
+  if (DEMO && process.env.FRAMEFORGE_TEST_ANIM_TAMPER) setTimeout(() => animations.demoTamper(), 20000); // test: another app flips the animations
   setTimeout(() => refreshSecurity().then(() => send('fix:changed', true)).catch(() => {}), DEMO ? 4000 : 30000);
   setInterval(() => refreshSecurity().catch(() => {}), 30 * 60 * 1000);
   // Scheduled virus scans: checked a minute after start and every 2 minutes; a background scan steps aside for games and for you.
@@ -872,7 +874,7 @@ async function detectExtra() {
     } catch {}
     if (!DEMO) {
       for (const t of tweaksTab.tabTweaks()) {
-        if (!backup.get(t.id) || locked[t.id] || t.id === 'max_refresh') continue;
+        if (!backup.get(t.id) || locked[t.id] || t.id === 'max_refresh' || (t.id === 'visual_effects' && settings.get().animations === 'on')) continue;
         if (!(await tweaksTab.stateOf(t)) && !(await settledOff(t))) out.reverted.push(t.id);
       }
       const rr = await run('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired']);
@@ -890,7 +892,7 @@ async function detectExtra() {
       const userOff = st.userOff || {};
       const tab = new Set(tweaksTab.tabTweaks().map((t) => t.id));
       for (const t of optimizer.planned({ quiet: true, rig })) {
-        if (!tab.has(t.id) || locked[t.id] || userOff[t.id] || out.reverted.includes(t.id) || t.id === 'max_refresh') continue;
+        if (!tab.has(t.id) || locked[t.id] || userOff[t.id] || out.reverted.includes(t.id) || t.id === 'max_refresh' || (t.id === 'visual_effects' && st.animations === 'on')) continue;
         if (problems.all()[t.id]) continue; // already listed as a failed step
         if (!(await tweaksTab.stateOf(t)) && !(await settledOff(t))) out.presetOff.push(t.id);
       }
@@ -1736,26 +1738,60 @@ ipcMain.handle('scan:virusTotal', (_e, sha) => {
 });
 
 // ---------- Windows animations: one switch, kept the way the user set it ----------
+/** Animations on wins over the older "Performance visual effects" boost: switch that off so the two don't fight. */
+async function dropVisualEffectsBoost(why) {
+  if (!backup.get('visual_effects')) return;
+  settings.set({ userOff: { ...(settings.get().userOff || {}), visual_effects: true } });
+  await revertPhase(tweakById('visual_effects'), why)();
+}
 async function enforceAnimations(why) {
   const want = settings.get().animations;
   if (want !== 'on' && want !== 'off') return false;
+  if (want === 'on') await dropVisualEffectsBoost('Windows animations are switched on in Settings').catch(() => {});
   const fixed = await animations.enforce(want).catch(() => false);
   if (fixed && why !== 'start') {
-    changes.put('animations', { name: `Windows animations ${want}`, summary: `Something changed Windows’ animations (a tweak tool, a preset or Windows Settings), so FrameForge switched them ${want} again — your choice in Settings wins.`, details: [], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+    changes.put('animations', { name: `Windows animations ${want}`, summary: `Something changed Windows’ animations (a tweak tool, a preset, another app or Windows Settings), so FrameForge switched them ${want} again — your choice in Settings wins.`, details: [], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
     send('changes', changeList());
   }
   if (fixed) send('anim:changed', await animations.get());
   return fixed;
 }
+/**
+ * Watch for anything that changes the animations after the user made their choice — another app, a tweak tool,
+ * Windows Settings, a Windows update. A light registry fingerprint is compared every few seconds; any change (and a
+ * full check every minute, for changes that never reach the registry) puts the user's choice back right away.
+ * If something keeps fighting FrameForge, it backs off to once a minute instead of spinning.
+ */
+let animFp = null;
+let animWatching = false;
+let animTick = 0;
+const animFixes = [];
+async function animWatch() {
+  const want = settings.get().animations;
+  if ((want !== 'on' && want !== 'off') || animWatching || busy) return;
+  animWatching = true;
+  try {
+    animTick++;
+    const fp = await animations.fingerprint();
+    const recent = animFixes.filter((t) => Date.now() - t < 5 * 60 * 1000);
+    animFixes.length = 0;
+    animFixes.push(...recent);
+    const fighting = recent.length >= 5; // something undoes the choice again and again: check once a minute only
+    const due = animFp === null || (fp !== animFp && !fighting) || animTick % 8 === 0;
+    if (due) {
+      if (await enforceAnimations('watch')) animFixes.push(Date.now());
+      animFp = await animations.fingerprint();
+    } else animFp = fp;
+  } catch {
+  } finally {
+    animWatching = false;
+  }
+}
 ipcMain.handle('anim:get', async () => ({ want: settings.get().animations, ...(await animations.get()) }));
 ipcMain.handle('anim:set', async (_e, on) => {
   settings.set({ animations: on ? 'on' : 'off' });
-  // Animations on wins over the older "Performance visual effects" boost: switch that off so the two don't fight.
-  if (on && backup.get('visual_effects')) {
-    const userOff = { ...(settings.get().userOff || {}), visual_effects: true };
-    settings.set({ userOff });
-    await revertPhase(tweakById('visual_effects'), 'Windows animations switched on in Settings')();
-  }
+  animFp = null; // the watcher takes a fresh baseline after the change
+  if (on) await dropVisualEffectsBoost('Windows animations switched on in Settings');
   const r = await animations.set(!!on);
   changes.put('animations', { name: `Windows animations ${on ? 'on' : 'off'}`, summary: on ? 'Every Windows animation is on. FrameForge keeps it that way, even if a tweak tool or Windows Settings turns them off.' : 'Every Windows animation is off for a snappier, faster-feeling PC. FrameForge keeps it that way, even if a tweak tool or Windows Settings turns them back on.', details: r.details || [], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
   send('changes', changeList());

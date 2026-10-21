@@ -86,6 +86,7 @@ async function set(on) {
   await run('reg', ['add', ADV, '/v', 'TaskbarAnimations', '/t', 'REG_DWORD', '/d', on ? '1' : '0', '/f']);
   await run('reg', ['add', VFX, '/v', 'VisualFXSetting', '/t', 'REG_DWORD', '/d', '3', '/f']); // "Custom" in Performance Options
   await run('reg', ['add', 'HKCU\\Control Panel\\Desktop\\WindowMetrics', '/v', 'MinAnimate', '/t', 'REG_SZ', '/d', on ? '1' : '0', '/f']);
+  await run('reg', ['add', 'HKCU\\Software\\Microsoft\\Windows\\DWM', '/v', 'EnableAeroPeek', '/t', 'REG_DWORD', '/d', on ? '1' : '0', '/f']); // the Peek hover preview
   if (on) {
     // A policy (set by tweak tools or Group Policy) that forces window animations off would beat the switch.
     await run('reg', ['delete', `HKCU\\${DWM_POL}`, '/v', 'DisallowAnimations', '/f']);
@@ -119,4 +120,28 @@ async function enforce(want) {
   return r.ok;
 }
 
-module.exports = { get, set, enforce };
+/**
+ * A cheap fingerprint of every registry value that carries the animation settings (a handful of `reg query` calls —
+ * far lighter than get()). When it changes, something else touched the animations and enforce() puts them back.
+ */
+async function fingerprint() {
+  if (DEMO) return `demo:${demoState}`;
+  if (!IS_WIN) return '';
+  const reads = await Promise.all([
+    run('reg', ['query', 'HKCU\\Control Panel\\Desktop', '/v', 'UserPreferencesMask']),
+    run('reg', ['query', 'HKCU\\Control Panel\\Desktop\\WindowMetrics', '/v', 'MinAnimate']),
+    run('reg', ['query', ADV, '/v', 'TaskbarAnimations']),
+    run('reg', ['query', VFX, '/v', 'VisualFXSetting']),
+    run('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\DWM', '/v', 'EnableAeroPeek']),
+    run('reg', ['query', `HKCU\\${DWM_POL}`, '/v', 'DisallowAnimations']),
+    run('reg', ['query', `HKLM\\${DWM_POL}`, '/v', 'DisallowAnimations']),
+  ]);
+  return reads.map((r) => (r.code === 0 ? r.stdout.replace(/\s+/g, ' ').trim() : '-')).join('|');
+}
+
+/** Test hook (demo only): something else switches the animations the other way. */
+function demoTamper() {
+  if (DEMO) demoState = !demoState;
+}
+
+module.exports = { get, set, enforce, fingerprint, demoTamper };

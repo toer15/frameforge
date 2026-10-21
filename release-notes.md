@@ -1,3 +1,10 @@
+**Windows animations: your choice sticks, within seconds**
+
+- **FrameForge now notices within about 8 seconds** when another app, a tweak tool, Windows Settings or a Windows update changes the animations, and puts your choice back (On = every animation on, Off = every animation off). Before, it only re-checked every 2 minutes.
+- It also checks for changes that never reach the registry once a minute, and covers the Peek hover preview too.
+- **No more fighting with the Performance visual effects boost:** when animations are On, that boost is switched off and Fix mode leaves it alone.
+- If another program keeps undoing your choice again and again, FrameForge backs off to one check a minute instead of looping.
+
 **Fix mode: two problems that could never be fixed now are**
 
 - **Memory compression** now turns off even when Windows' SysMain (Superfetch) service is disabled — which made the command fail with "The service cannot be started". FrameForge starts the service just long enough for the change, then puts it back exactly as it was.
