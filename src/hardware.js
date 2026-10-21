@@ -67,6 +67,7 @@ const DEMO_RIG = {
   ram: { type: 'DDR5', speedMTs: 4800, sticks: 2 },
   display: { resolution: '2560 × 1440', refreshHz: 165 },
   os: 'Windows 11 Pro 25H2',
+  board: { manufacturer: 'ASUSTeK COMPUTER INC.', model: 'ROG STRIX B650E-F GAMING WIFI' },
   laptop: false,
   vendorApp: { name: VENDOR_APPS.amd.name, installed: true, path: null, download: VENDOR_APPS.amd.download },
   source: 'auto',
@@ -77,13 +78,14 @@ async function scan(manual) {
   if (DEMO) {
     rig = JSON.parse(JSON.stringify(DEMO_RIG));
   } else {
-    const [cpu, gfx, mem, os, battery, sticks] = await Promise.all([
+    const [cpu, gfx, mem, os, battery, sticks, board] = await Promise.all([
       si.cpu(),
       si.graphics(),
       si.mem(),
       si.osInfo(),
       si.battery().catch(() => ({ hasBattery: false })),
       si.memLayout().catch(() => []),
+      si.baseboard().catch(() => ({})),
     ]);
     const stick = (sticks || []).find((m) => m.size > 0) || {};
 
@@ -136,6 +138,7 @@ async function scan(manual) {
       },
       os: `${os.distro || 'Windows'} ${os.release || ''}`.trim(),
       laptop: !!battery.hasBattery,
+      board: { manufacturer: (board && board.manufacturer) || null, model: (board && board.model) || null },
       source: 'auto',
     };
   }

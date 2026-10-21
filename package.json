@@ -1,7 +1,7 @@
 {
   "name": "frameforge",
   "productName": "FrameForge",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "FrameForge \u2013 automatic PC best gaming performance assistant for AMD and NVIDIA rigs",
   "main": "main.js",
   "author": "TwicyTom",

@@ -103,13 +103,14 @@ Windows default if Windows already had it on. All tweaks share Auto Mode's undo,
 
 ## Fix mode
 
-Lists everything that didn't work or is holding the PC back: failed Auto Mode steps (with winutil's real
-error lines and log), missing tools, a missing driver app, high temperatures, RAM running at the slow
-default, 60 Hz displays, not running as admin. Each problem has its fix buttons (Try again, Turn on System
-Protection, Open Chris Titus tool, Open winutil log, Download it, Open display settings…) and
-**Ask AI to explain and fix**. **Fix everything automatically** retries and downloads whatever can be fixed
-without you. Repair tools: clear shader caches, reset network, DISM + SFC, turn on System Protection —
-each streams its output live and is recorded in "What FrameForge changed".
+A built-in fixer (no AI service or key — offline logic). `fixList()` in main.js detects problems: failed Auto Mode
+steps, display below its max refresh rate, tweaks Windows reverted, drive C: almost full, missing tools or driver
+app, hot CPU/GPU, RAM at the slow default, a single RAM stick, pending restarts, not running as admin.
+Each problem has **strategies** (fixes tried in order — after each one the problem list is rebuilt to check it's
+really gone) and/or **manual** steps from `src/guides.js`, tailored to the motherboard brand and CPU/GPU vendor.
+"Fix everything automatically" streams a live report (`fixall` events). If admin rights are missing it restarts
+elevated last and resumes by itself (`resumeFixAll`). Repair tools: clear shader caches, reset network,
+DISM + SFC, turn on System Protection.
 
 ## AI chat
 

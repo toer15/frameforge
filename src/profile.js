@@ -37,6 +37,7 @@ function recommend(rig) {
     temp_cleanup: [true, 'Helps every PC.'],
     no_popups: [true, 'Nothing can steal focus from your game.'],
     usb_suspend: [true, 'Stops input hiccups on every PC.'],
+    max_refresh: [true, 'Every frame your monitor can show, you get to see.'],
     kb_repeat: [false, 'Personal taste — it changes how typing feels, not FPS.'],
     fso_off: [false, 'Only some older games benefit. Try it if a game feels laggy in fullscreen.'],
     timer_res: [/Windows 11|\b11\b/.test(rig.os || ''), /Windows 11|\b11\b/.test(rig.os || '') ? 'Windows 11 changed how game timers work — this restores the old behavior.' : 'Only does something on Windows 11.'],
@@ -82,6 +83,7 @@ function insights(rig) {
   if ((ddr.includes('DDR4') && ram.speedMTs && ram.speedMTs <= 2666) || (ddr.includes('DDR5') && ram.speedMTs && ram.speedMTs <= 4800)) {
     out.push({
       level: 'big',
+      id: 'ram_speed',
       title: `Your RAM is running at ${ram.speedMTs} MT/s`,
       body: `That’s the slow default. Turn on ${rig.cpu.vendor === 'amd' ? 'EXPO' : 'XMP'} in your BIOS to run it at the speed on the box — often 10–20% more FPS in CPU-heavy games, for free.`,
     });
@@ -89,20 +91,15 @@ function insights(rig) {
   if (ram.sticks === 1) {
     out.push({
       level: 'big',
+      id: 'single_stick',
       title: 'Only one RAM stick detected',
       body: 'One stick runs in single-channel mode and can cost a lot of FPS. Two matching sticks double the memory bandwidth.',
-    });
-  }
-  if (rig.display && rig.display.refreshHz && rig.display.refreshHz <= 60 && rig.gpu.vendor !== 'other') {
-    out.push({
-      level: 'medium',
-      title: 'Your display is set to 60 Hz',
-      body: 'If your monitor supports more, pick the highest rate in Settings › System › Display › Advanced display, and use a DisplayPort cable.',
     });
   }
   if (rig.laptop) {
     out.push({
       level: 'medium',
+      id: 'laptop',
       title: 'Laptop detected',
       body: 'Plug in the charger while gaming — most laptops cut GPU power by half or more on battery.',
     });
@@ -110,6 +107,7 @@ function insights(rig) {
   if (isX3D(rig.cpu)) {
     out.push({
       level: 'info',
+      id: 'x3d',
       title: `${rig.cpu.name} detected`,
       body: 'X3D chips gain little from overclocking. Keep the AMD chipset driver up to date and leave Game Mode on.',
     });

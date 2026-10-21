@@ -607,20 +607,21 @@ async function refreshFix() {
   const badge = $('#fixBadge');
   badge.textContent = items.length;
   badge.classList.toggle('hidden', !items.length);
-  $('#fixAllBtn').disabled = !items.some((i) => i.auto);
+  $('#fixAllBtn').disabled = fixAllRunning || !items.length;
   $('#fixList').innerHTML = items.length
     ? items.map((it) => `<div class="fix-item ${it.level}" data-fix="${esc(it.id)}">
         <h3>${esc(it.title)}${it.auto ? '<span class="tag rec">Can fix automatically</span>' : ''}${it.bios ? '<span class="tag bios">Fixed in the BIOS</span>' : ''}</h3>
         <p>${esc(it.body || '')}</p>
         ${it.details && it.details.length ? `<details><summary>What happened (${it.details.length})</summary><ul class="ch-exact">${it.details.map((d) => `<li><code>${esc(d)}</code></li>`).join('')}</ul></details>` : ''}
+        ${it.manual && !it.auto ? `<details class="how"><summary>How to fix it</summary><ol class="fr-steps">${it.manual.map((m) => `<li>${esc(m)}</li>`).join('')}</ol></details>` : ''}
         <div class="fix-actions">
           ${it.actions.map((a) => `<button class="${/^(retry|install|repair)/.test(a.id) ? 'primary' : 'ghost'} small" data-fixact="${esc(a.id)}">${esc(a.label)}</button>`).join('')}
-          <button class="ghost small" data-fixask="${esc(it.id)}">Ask AI to explain and fix</button>
+          ${aiReady() ? `<button class="ghost small" data-fixask="${esc(it.id)}">Ask AI to explain</button>` : ''}
         </div>
       </div>`).join('')
     : '<div class="fix-ok">Nothing to fix right now. If something feels off — stutter, crashes, lag — try a repair tool below or ask the AI.</div>';
   $('#repairGrid').innerHTML = FIX.repairs
-    .map((r) => `<div class="repair"><h3>${esc(r.name)}</h3><p>${esc(r.desc)}</p><div class="fix-actions"><button class="primary small" data-fixact="repair:${r.id}">Run it</button><button class="ghost small" data-repairask="${esc(r.id)}">Ask AI if I need this</button></div></div>`)
+    .map((r) => `<div class="repair"><h3>${esc(r.name)}</h3><p>${esc(r.desc)}</p><div class="fix-actions"><button class="primary small" data-fixact="repair:${r.id}">Run it</button>${aiReady() ? `<button class="ghost small" data-repairask="${esc(r.id)}">Ask AI if I need this</button>` : ''}</div></div>`)
     .join('');
 }
 
@@ -684,16 +685,63 @@ document.addEventListener('click', async (e) => {
     sendChat(`Should I run “${r.name}” on my PC? Look at my PC info and problems and tell me honestly if it would help.`);
   }
 });
+const aiReady = () => !!(AI && ((AI.provider === 'claude' && AI.hasKey) || AI.provider === 'ollama'));
+let fixAllRunning = false;
+const FR_ICON = {
+  working: '<span class="spin"></span>',
+  fixed: ICONS.done,
+  failed: ICONS.error,
+  you: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
+};
+function frRow(id) {
+  let li = $(`#frList [data-fr="${CSS.escape(id)}"]`);
+  if (!li) {
+    li = document.createElement('li');
+    li.dataset.fr = id;
+    $('#frList').appendChild(li);
+  }
+  return li;
+}
+ff.fix.onAll((e) => {
+  if (e.type === 'start') {
+    fixAllRunning = true;
+    $('#fixReport').classList.remove('hidden');
+    $('#frList').innerHTML = '';
+    $('#frSummary').classList.add('hidden');
+    $('#frSpin').classList.remove('hidden');
+    $('#frTitle').textContent = 'Fixing everything…';
+    $('#fixAllBtn').disabled = true;
+    $('#fixAllBtn').textContent = 'Fixing…';
+  } else if (e.type === 'phase') {
+    $('#frTitle').textContent = e.text;
+  } else if (e.type === 'found') {
+    $('#frTitle').textContent = e.count ? `Found ${e.count} thing${e.count === 1 ? '' : 's'} to look at — fixing…` : 'Nothing to fix — your PC looks good.';
+  } else if (e.type === 'try') {
+    const li = frRow(e.id);
+    const m = li.querySelector('.m');
+    if (m) m.textContent = `Trying${e.of > 1 ? ` (${e.n} of ${e.of})` : ''}: ${e.text}…`;
+  } else if (e.type === 'item') {
+    const li = frRow(e.id);
+    li.className = e.outcome;
+    const msg = e.outcome === 'fixed' ? `Fixed. ${e.message || ''}` : e.outcome === 'you' ? 'This needs you — here’s exactly what to do:' : e.outcome === 'failed' ? `Couldn’t fix it: ${e.message || ''}` : e.message || 'Working on it…';
+    li.innerHTML = `<span class="ico">${FR_ICON[e.outcome] || ''}</span><div><div class="t">${esc(e.title)}</div><div class="m">${esc(msg)}</div>${e.steps ? `<ol class="fr-steps">${e.steps.map((st) => `<li>${esc(st)}</li>`).join('')}</ol>` : ''}${e.buttons && e.buttons.length ? `<div class="fix-actions">${e.buttons.map((b) => `<button class="ghost small" data-fixact="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div>` : ''}</div>`;
+  } else if (e.type === 'done') {
+    fixAllRunning = false;
+    $('#frSpin').classList.add('hidden');
+    const parts = [];
+    if (e.fixed) parts.push(`fixed ${e.fixed}`);
+    if (e.you) parts.push(`${e.you} need${e.you === 1 ? 's' : ''} you (steps below each)`);
+    if (e.failed) parts.push(`${e.failed} couldn’t be fixed`);
+    $('#frTitle').textContent = e.restarting ? 'Restarting as administrator to finish…' : parts.length ? `Done — ${parts.join(', ')}.` : 'Done — nothing needed fixing.';
+    $('#fixAllBtn').textContent = 'Fix everything automatically';
+    refreshFix();
+    refreshChanges();
+  }
+});
 $('#fixAllBtn').onclick = async () => {
-  const b = $('#fixAllBtn');
-  b.disabled = true;
-  b.textContent = 'Fixing…';
-  const res = await ff.fix.all();
-  const fixed = res.filter((r) => r.fixed).length;
-  toast(res.length ? `Fixed ${fixed} of ${res.length} problem${res.length === 1 ? '' : 's'}. ${fixed < res.length ? 'Ask the AI about the rest.' : ''}` : 'Nothing could be fixed automatically — the rest needs you (see each problem).', 6000);
-  b.textContent = 'Fix everything automatically';
-  refreshFix();
-  refreshChanges();
+  if (fixAllRunning) return;
+  const r = await ff.fix.all();
+  if (r && r.busy) toast(r.message || 'FrameForge is already fixing — hang on.');
 };
 
 /* ---------- AI chat ---------- */

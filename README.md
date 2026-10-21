@@ -22,7 +22,7 @@ Pick a goal — **Competitive**, **Best performance**, **Balanced** or **Best gr
 - A **Tweaks tab** with 28 switches — reduce input lag, use all CPU cores, keep USB awake, Nagle off and more — each explained, showing its real state, and fully undoable
 - A driver checklist for AMD Software / the NVIDIA app made for your goal
 - FPS counter with 1% lows, real CPU and GPU temperatures, in-game overlay (Ctrl+Shift+F)
-- **Fix mode** for anything that didn't work, plus repair tools (shader cache, network, DISM + SFC)
+- **Fix mode** with a built-in fixer: one click fixes what it can by itself (display refresh rate, reverted tweaks, failed steps, missing tools, full drive…) and gives step-by-step instructions for the rest, like the exact BIOS menu for XMP/EXPO on your motherboard
 - **AI chat** that knows your PC and what was changed (needs your own Claude API key, or free Ollama)
 
 Every change is listed with its exact before → after value, and **Undo all changes** puts your PC back.

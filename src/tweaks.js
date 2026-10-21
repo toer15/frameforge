@@ -136,6 +136,22 @@ function powerTweak(items) {
   };
 }
 
+// ---------- Display refresh rate (EnumDisplaySettingsW / ChangeDisplaySettingsExW) ----------
+// C# helper, base64 so PowerShell quoting can't break it. Read() → "WIDTHxHEIGHT|current|max" for the main
+// display at its current resolution; Set(hz) tests the mode first, then applies it (0 = success).
+const DISPLAY_CS = 'dXNpbmcgU3lzdGVtOwp1c2luZyBTeXN0ZW0uQ29sbGVjdGlvbnMuR2VuZXJpYzsKdXNpbmcgU3lzdGVtLlJ1bnRpbWUuSW50ZXJvcFNlcnZpY2VzOwpwdWJsaWMgc3RhdGljIGNsYXNzIEZGRGlzcGxheSB7CiAgW1N0cnVjdExheW91dChMYXlvdXRLaW5kLlNlcXVlbnRpYWwsIENoYXJTZXQgPSBDaGFyU2V0LlVuaWNvZGUpXQogIHB1YmxpYyBzdHJ1Y3QgREVWTU9ERSB7CiAgICBbTWFyc2hhbEFzKFVubWFuYWdlZFR5cGUuQnlWYWxUU3RyLCBTaXplQ29uc3QgPSAzMildIHB1YmxpYyBzdHJpbmcgZG1EZXZpY2VOYW1lOwogICAgcHVibGljIHNob3J0IGRtU3BlY1ZlcnNpb247IHB1YmxpYyBzaG9ydCBkbURyaXZlclZlcnNpb247IHB1YmxpYyBzaG9ydCBkbVNpemU7IHB1YmxpYyBzaG9ydCBkbURyaXZlckV4dHJhOwogICAgcHVibGljIGludCBkbUZpZWxkczsKICAgIHB1YmxpYyBpbnQgZG1Qb3NpdGlvblg7IHB1YmxpYyBpbnQgZG1Qb3NpdGlvblk7IHB1YmxpYyBpbnQgZG1EaXNwbGF5T3JpZW50YXRpb247IHB1YmxpYyBpbnQgZG1EaXNwbGF5Rml4ZWRPdXRwdXQ7CiAgICBwdWJsaWMgc2hvcnQgZG1Db2xvcjsgcHVibGljIHNob3J0IGRtRHVwbGV4OyBwdWJsaWMgc2hvcnQgZG1ZUmVzb2x1dGlvbjsgcHVibGljIHNob3J0IGRtVFRPcHRpb247IHB1YmxpYyBzaG9ydCBkbUNvbGxhdGU7CiAgICBbTWFyc2hhbEFzKFVubWFuYWdlZFR5cGUuQnlWYWxUU3RyLCBTaXplQ29uc3QgPSAzMildIHB1YmxpYyBzdHJpbmcgZG1Gb3JtTmFtZTsKICAgIHB1YmxpYyBzaG9ydCBkbUxvZ1BpeGVsczsgcHVibGljIGludCBkbUJpdHNQZXJQZWw7IHB1YmxpYyBpbnQgZG1QZWxzV2lkdGg7IHB1YmxpYyBpbnQgZG1QZWxzSGVpZ2h0OwogICAgcHVibGljIGludCBkbURpc3BsYXlGbGFnczsgcHVibGljIGludCBkbURpc3BsYXlGcmVxdWVuY3k7CiAgICBwdWJsaWMgaW50IGRtSUNNTWV0aG9kOyBwdWJsaWMgaW50IGRtSUNNSW50ZW50OyBwdWJsaWMgaW50IGRtTWVkaWFUeXBlOyBwdWJsaWMgaW50IGRtRGl0aGVyVHlwZTsKICAgIHB1YmxpYyBpbnQgZG1SZXNlcnZlZDE7IHB1YmxpYyBpbnQgZG1SZXNlcnZlZDI7IHB1YmxpYyBpbnQgZG1QYW5uaW5nV2lkdGg7IHB1YmxpYyBpbnQgZG1QYW5uaW5nSGVpZ2h0OwogIH0KICBbRGxsSW1wb3J0KCJ1c2VyMzIuZGxsIiwgQ2hhclNldCA9IENoYXJTZXQuVW5pY29kZSwgRW50cnlQb2ludCA9ICJFbnVtRGlzcGxheVNldHRpbmdzVyIpXSBzdGF0aWMgZXh0ZXJuIGJvb2wgRW51bURpc3BsYXlTZXR0aW5ncyhzdHJpbmcgZGV2LCBpbnQgbW9kZSwgcmVmIERFVk1PREUgZG0pOwogIFtEbGxJbXBvcnQoInVzZXIzMi5kbGwiLCBDaGFyU2V0ID0gQ2hhclNldC5Vbmljb2RlLCBFbnRyeVBvaW50ID0gIkNoYW5nZURpc3BsYXlTZXR0aW5nc0V4VyIpXSBzdGF0aWMgZXh0ZXJuIGludCBDaGFuZ2VEaXNwbGF5U2V0dGluZ3NFeChzdHJpbmcgZGV2LCByZWYgREVWTU9ERSBkbSwgSW50UHRyIGh3bmQsIGludCBmbGFncywgSW50UHRyIGxQYXJhbSk7CiAgY29uc3QgaW50IEVOVU1fQ1VSUkVOVCA9IC0xLCBETV9ESVNQTEFZRlJFUVVFTkNZID0gMHg0MDAwMDAsIENEU19VUERBVEVSRUdJU1RSWSA9IDB4MSwgQ0RTX1RFU1QgPSAweDI7CiAgc3RhdGljIERFVk1PREUgTmV3KCkgeyB2YXIgZCA9IG5ldyBERVZNT0RFKCk7IGQuZG1TaXplID0gKHNob3J0KU1hcnNoYWwuU2l6ZU9mKHR5cGVvZihERVZNT0RFKSk7IHJldHVybiBkOyB9CiAgcHVibGljIHN0YXRpYyBpbnQgU2l6ZSgpIHsgcmV0dXJuIE1hcnNoYWwuU2l6ZU9mKHR5cGVvZihERVZNT0RFKSk7IH0KICAvLyAiY3VycmVudHxtYXgiIHJlZnJlc2ggcmF0ZSBhdCB0aGUgY3VycmVudCByZXNvbHV0aW9uIGFuZCBjb2xvdXIgZGVwdGggb2YgdGhlIG1haW4gZGlzcGxheQogIHB1YmxpYyBzdGF0aWMgc3RyaW5nIFJlYWQoKSB7CiAgICB2YXIgY3VyID0gTmV3KCk7CiAgICBpZiAoIUVudW1EaXNwbGF5U2V0dGluZ3MobnVsbCwgRU5VTV9DVVJSRU5ULCByZWYgY3VyKSkgcmV0dXJuICJlcnJvciI7CiAgICBpbnQgbWF4ID0gY3VyLmRtRGlzcGxheUZyZXF1ZW5jeTsKICAgIHZhciBtID0gTmV3KCk7CiAgICBmb3IgKGludCBpID0gMDsgRW51bURpc3BsYXlTZXR0aW5ncyhudWxsLCBpLCByZWYgbSk7IGkrKykgewogICAgICBpZiAobS5kbVBlbHNXaWR0aCA9PSBjdXIuZG1QZWxzV2lkdGggJiYgbS5kbVBlbHNIZWlnaHQgPT0gY3VyLmRtUGVsc0hlaWdodCAmJiBtLmRtQml0c1BlclBlbCA9PSBjdXIuZG1CaXRzUGVyUGVsICYmIG0uZG1EaXNwbGF5RnJlcXVlbmN5ID4gbWF4KSBtYXggPSBtLmRtRGlzcGxheUZyZXF1ZW5jeTsKICAgICAgbSA9IE5ldygpOwogICAgfQogICAgcmV0dXJuIGN1ci5kbVBlbHNXaWR0aCArICJ4IiArIGN1ci5kbVBlbHNIZWlnaHQgKyAifCIgKyBjdXIuZG1EaXNwbGF5RnJlcXVlbmN5ICsgInwiICsgbWF4OwogIH0KICAvLyAwID0gY2hhbmdlZC4gVGVzdHMgdGhlIG1vZGUgZmlyc3Qgc28gV2luZG93cyBuZXZlciBzd2l0Y2hlcyB0byBzb21ldGhpbmcgdGhlIG1vbml0b3IgY2FuJ3Qgc2hvdy4KICBwdWJsaWMgc3RhdGljIGludCBTZXQoaW50IGh6KSB7CiAgICB2YXIgY3VyID0gTmV3KCk7CiAgICBpZiAoIUVudW1EaXNwbGF5U2V0dGluZ3MobnVsbCwgRU5VTV9DVVJSRU5ULCByZWYgY3VyKSkgcmV0dXJuIC0xMDA7CiAgICBjdXIuZG1EaXNwbGF5RnJlcXVlbmN5ID0gaHo7CiAgICBjdXIuZG1GaWVsZHMgPSBETV9ESVNQTEFZRlJFUVVFTkNZOwogICAgaW50IHQgPSBDaGFuZ2VEaXNwbGF5U2V0dGluZ3NFeChudWxsLCByZWYgY3VyLCBJbnRQdHIuWmVybywgQ0RTX1RFU1QsIEludFB0ci5aZXJvKTsKICAgIGlmICh0ICE9IDApIHJldHVybiB0OwogICAgcmV0dXJuIENoYW5nZURpc3BsYXlTZXR0aW5nc0V4KG51bGwsIHJlZiBjdXIsIEludFB0ci5aZXJvLCBDRFNfVVBEQVRFUkVHSVNUUlksIEludFB0ci5aZXJvKTsKICB9Cn0K';
+const displayPs = (call) => `Add-Type -TypeDefinition ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${DISPLAY_CS}'))); ${call}`;
+async function displayInfo() {
+  const r = await ps(displayPs('[FFDisplay]::Read()'));
+  const m = r.stdout.match(/(\d+x\d+)\|(\d+)\|(\d+)/);
+  return m ? { res: m[1].replace('x', ' × '), cur: Number(m[2]), max: Number(m[3]) } : null;
+}
+async function setRefresh(hz) {
+  const r = await ps(displayPs(`[FFDisplay]::Set(${Number(hz) | 0})`));
+  const code = parseInt((r.stdout.match(/-?\d+/) || ['-999'])[0], 10);
+  return code;
+}
+
 // ---------- The tweaks ----------
 const NEW = [
   // Input lag
@@ -290,6 +306,43 @@ const NEW = [
   },
 
   // Graphics & games
+  {
+    id: 'max_refresh',
+    cat: 'games',
+    name: 'Use your monitor’s highest refresh rate',
+    desc: 'Windows often leaves a 120/144/165 Hz monitor at 60 Hz, especially after a driver update or a new cable. This switches your main display to the highest refresh rate it supports at your current resolution — the single biggest smoothness gain for many PCs. It tests the mode first, so the screen never goes black.',
+    what: ['Main display › refresh rate = the highest your monitor supports at its current resolution (via Windows’ ChangeDisplaySettingsEx)'],
+    demoMessage: 'Your display now runs at 165 Hz instead of 60 Hz.',
+    offNote: 'Your display was already at its highest refresh rate before FrameForge. Pick a lower one in Windows Settings › Display › Advanced display if you want.',
+    async info() {
+      return displayInfo();
+    },
+    async isOn() {
+      const d = await displayInfo();
+      return !!d && d.cur >= d.max;
+    },
+    async apply() {
+      const d = await displayInfo();
+      if (!d) throw new Error('Couldn’t read the display settings.');
+      if (d.cur >= d.max) return { ok: true, message: `Your display already runs at its highest refresh rate (${d.cur} Hz).`, details: [`Main display ${d.res}: ${d.cur} Hz — already the highest it supports`] };
+      if (!backup.get(this.id)) backup.put(this.id, { prev: d.cur });
+      const code = await setRefresh(d.max);
+      if (code !== 0) {
+        backup.remove(this.id);
+        throw new LockedSetting(`Windows wouldn’t switch your display to ${d.max} Hz (code ${code}). Your cable or port may not carry it — DisplayPort, or HDMI 2.0+, is needed for high refresh rates at ${d.res}.`);
+      }
+      return { ok: true, message: `Your display now runs at ${d.max} Hz instead of ${d.cur} Hz.`, details: [`Main display ${d.res}: ${d.cur} Hz → ${d.max} Hz`] };
+    },
+    async revert() {
+      const b = backup.get(this.id);
+      if (b && b.prev) await setRefresh(b.prev);
+      backup.remove(this.id);
+      return { ok: true };
+    },
+    async forceOff() {
+      return { ok: true, keptOn: true };
+    },
+  },
   {
     id: 'sys_responsiveness',
     cat: 'games',
@@ -508,4 +561,4 @@ function tabTweaks() {
   return TWEAKS.filter((t) => t.cat && !t.oneShot && !t.overclock);
 }
 
-module.exports = { CATS, stateOf, tabTweaks, LockedSetting, NEW_IDS: NEW.map((t) => t.id) };
+module.exports = { CATS, stateOf, tabTweaks, LockedSetting, displayInfo, NEW_IDS: NEW.map((t) => t.id) };

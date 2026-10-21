@@ -1,6 +1,7 @@
 // FrameForge — main process
 const { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, screen, nativeImage, dialog, clipboard, Notification } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 const { run, ps, isAdmin, IS_WIN, DEMO } = require('./src/util');
 const os = require('os');
@@ -80,6 +81,15 @@ async function boot() {
   applyMonitoring();
   registerHotkey();
   setInterval(telemetryTick, 1000);
+  detectExtra().then(() => send('fix:changed', true)).catch(() => {});
+  setInterval(() => detectExtra().then(() => send('fix:changed', true)).catch(() => {}), 2 * 60 * 1000);
+  if (settings.get().resumeFixAll && (admin || DEMO)) {
+    settings.set({ resumeFixAll: false });
+    setTimeout(() => {
+      send('goto', 'fix');
+      fixEverything();
+    }, 3000);
+  }
 
   // After a PC restart, Auto Mode switches itself off. The changes stay exactly as they are —
   // they're listed in "What FrameForge changed on your PC" and can be undone from there.
@@ -609,6 +619,7 @@ async function runAuto(on, { quiet = false } = {}) {
   } finally {
     busy = false;
     runState = null;
+    detectExtra().then(() => send('fix:changed', true)).catch(() => {}); // re-check: Auto Mode may have fixed things
     rebuildTrayMenu();
     send('auto:done', { on: settings.get().autoMode, needsReboot, active: optimizer.activeCount(), quiet, stopped });
   }
@@ -670,7 +681,8 @@ async function setTweak(id, on) {
     if (backup.get(t.id)) {
       await revertPhase(t, 'Switched off in Tweaks')();
     } else if (!DEMO && typeof t.forceOff === 'function') {
-      await t.forceOff(); // Windows had it on before FrameForge: set the Windows default
+      const fo = await t.forceOff(); // Windows had it on before FrameForge: set the Windows default
+      if (fo && fo.keptOn) return { ok: false, message: t.offNote || 'Windows keeps this on.', on: await tweaksTab.stateOf(t) };
       step({ id: `undo_${t.id}`, name: `Off: ${t.name}`, status: 'done', message: 'Set back to the Windows default.' });
     }
     changes.remove(t.id);
@@ -682,6 +694,7 @@ async function setTweak(id, on) {
     return { ok: false, message: String(e.message || e).slice(0, 200), on: await tweaksTab.stateOf(t) };
   } finally {
     busy = false;
+    detectExtra().then(() => send('fix:changed', true)).catch(() => {});
   }
 }
 
@@ -689,46 +702,130 @@ ipcMain.handle('tweaks:catalog', () => tweakCatalog());
 ipcMain.handle('tweaks:set', (_e, id, on) => setTweak(id, !!on));
 
 // ---------- Fix mode ----------
+// The built-in fixer: it finds problems, knows several ways to fix each one, tries them in order and checks
+// after every try whether the problem is really gone. Works offline — no account or key needed.
 
+const si = require('systeminformation');
+const guides = require('./src/guides');
 const A = (id, label) => ({ id, label });
-/** Everything on this PC that needs fixing, with the actions that can fix each one. */
+const tweakById = (id) => optimizer.TWEAKS.find((t) => t.id === id);
+
+/** Checks that take a moment (display, disk, tweaks Windows undid, pending restart). Cached. */
+let extra = { display: null, disk: null, reverted: [], rebootPending: false, at: 0 };
+let extraRunning = null;
+async function detectExtra() {
+  if (extraRunning) return extraRunning;
+  extraRunning = (async () => {
+    const out = { display: null, disk: null, reverted: [], rebootPending: false, at: Date.now() };
+    const locked = settings.get().lockedTweaks || {};
+    try {
+      if (DEMO) out.display = { res: '2560 × 1440', cur: backup.get('max_refresh') ? 165 : 60, max: 165 };
+      else if (!locked.max_refresh) out.display = await tweakById('max_refresh').info();
+    } catch {}
+    try {
+      const c = (await si.fsSize()).find((f) => /^c:/i.test(f.mount || f.fs || ''));
+      if (c && c.size) out.disk = { freeGB: Math.round((c.size - c.used) / 1024 ** 3), usePct: Math.round((c.used / c.size) * 100) };
+    } catch {}
+    if (!DEMO) {
+      for (const t of tweaksTab.tabTweaks()) {
+        if (!backup.get(t.id) || locked[t.id] || t.id === 'max_refresh') continue;
+        if (!(await tweaksTab.stateOf(t))) out.reverted.push(t.id);
+      }
+      const rr = await run('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired']);
+      out.rebootPending = rr.code === 0;
+    }
+    extra = out;
+    return out;
+  })();
+  try {
+    return await extraRunning;
+  } finally {
+    extraRunning = null;
+  }
+}
+
+/** FrameForge changes made since Windows last started that need a restart. */
+function restartNeededFor() {
+  const boot = Date.now() - os.uptime() * 1000;
+  return Object.values(changes.all()).filter((c) => c.reboot && c.at > boot).map((c) => c.name);
+}
+
+/**
+ * Everything on this PC that needs fixing.
+ *   strategies – fixes the fixer tries in order (it checks after each one)
+ *   manual     – steps for the user when no app can fix it
+ *   actions    – buttons shown on the problem
+ */
 function fixList() {
   const s = settings.get();
   const items = [];
+  const add = (it) => items.push({ actions: [], strategies: [], manual: null, ...it });
   if (IS_WIN && !DEMO && !admin) {
-    items.push({ id: 'not_admin', level: 'big', title: 'FrameForge isn’t running as administrator', body: 'Most boosts and all repairs need admin rights, so they were skipped.', actions: [A('admin', 'Restart as administrator')], auto: false });
+    add({ id: 'not_admin', level: 'big', title: 'FrameForge isn’t running as administrator', body: 'Most boosts and all repairs need admin rights, so they were skipped.', actions: [A('admin', 'Restart as administrator')], strategies: [A('admin', 'Restart FrameForge as administrator')] });
   }
   for (const p of Object.values(problems.all())) {
-    const t = optimizer.TWEAKS.find((x) => x.id === p.id);
+    const t = tweakById(p.id);
     if (!t) continue;
-    const actions = [];
-    if (p.adminSkipped) actions.push(A('admin', 'Restart as administrator'));
-    else {
-      if (p.id === 'restore_point') actions.push(A('repair:restore_points', 'Turn on System Protection'));
-      actions.push(A(`retry:${p.id}`, 'Try again'));
-      if (p.fix === 'ctt') {
-        actions.push(A('open_ctt', 'Open Chris Titus tool'));
-        const log = (p.details || []).find((d) => d.startsWith('Full winutil log: '));
-        if (log) actions.push(A(`openfile:${log.slice(18)}`, 'Open winutil log'));
-      }
-      if (p.id === 'power_plan') actions.push(A('open:ms-settings:powersleep', 'Open Power mode settings'));
+    const it = { id: `step_${p.id}`, level: p.status === 'error' ? 'big' : 'medium', title: `${t.name} didn’t finish`, body: p.message, details: p.details, at: p.at, actions: [], strategies: [] };
+    if (p.adminSkipped) {
+      it.actions.push(A('admin', 'Restart as administrator'));
+      it.strategies.push(A('admin', 'Restart FrameForge as administrator'));
+    } else if (p.id === 'restore_point') {
+      it.actions.push(A('repair:restore_points', 'Turn on System Protection'), A('retry:restore_point', 'Try again'));
+      it.strategies.push(A('restore_check', 'Check for a restore point from today'), A('repair:restore_points', 'Turn on System Protection'), A('retry:restore_point', 'Make the restore point again'), A('restore_check', 'Check again for a restore point from today'));
+    } else if (p.fix === 'ctt') {
+      it.actions.push(A(`retry:${p.id}`, 'Try again'), A('open_ctt', 'Open Chris Titus tool'));
+      const log = (p.details || []).find((d) => d.startsWith('Full winutil log: '));
+      if (log) it.actions.push(A(`openfile:${log.slice(18)}`, 'Open winutil log'));
+      it.strategies.push(A(`retry:${p.id}`, 'Run the Chris Titus preset again'), A('redownload_ctt', 'Download a fresh copy of the Chris Titus tool and run it again'));
+      it.manual = ['FrameForge opened the Chris Titus tool for you.', 'Go to the Tweaks tab in it, tick the tweaks you want and click “Run Tweaks”.', 'If one tweak keeps failing, leave it unticked — the rest still work.'];
+      it.manualAction = 'open_ctt';
+    } else if (p.id === 'power_plan') {
+      it.actions.push(A('retry:power_plan', 'Try again'), A('open:ms-settings:powersleep', 'Open Power mode settings'));
+      it.strategies.push(A('retry:power_plan', 'Set the Ultimate Performance plan again'));
+      it.manual = ['FrameForge opened Windows power settings.', 'Set “Power mode” to “Best performance”.'];
+      it.manualAction = 'open:ms-settings:powersleep';
+    } else {
+      it.actions.push(A(`retry:${p.id}`, 'Try again'));
+      it.strategies.push(A(`retry:${p.id}`, `Apply “${t.name}” again`), A(`retry:${p.id}`, 'Try once more'));
     }
-    items.push({ id: `step_${p.id}`, level: p.status === 'error' ? 'big' : 'medium', title: `${t.name} didn’t finish`, body: p.message, details: p.details, actions, auto: !p.adminSkipped, at: p.at });
+    add(it);
+  }
+  if (extra.reverted.length) {
+    const names = extra.reverted.map((id) => (tweakById(id) || {}).name).filter(Boolean);
+    add({ id: 'reverted', level: 'medium', title: `Windows switched off ${names.length} of your tweak${names.length === 1 ? '' : 's'}`, body: `Windows updates sometimes reset settings: ${names.join(', ')}.`, actions: [A('reapply', 'Turn them back on')], strategies: [A('reapply', 'Turn them back on')] });
+  }
+  if (extra.display && extra.display.cur < extra.display.max) {
+    const d = extra.display;
+    add({ id: 'display', level: 'big', title: `Your display runs at ${d.cur} Hz, but it can do ${d.max} Hz`, body: `Windows is only using ${Math.round((d.cur / d.max) * 100)}% of what your monitor can show at ${d.res}.`, actions: [A('tweak:max_refresh', `Switch to ${d.max} Hz`)], strategies: [A('tweak:max_refresh', `Switch the display to ${d.max} Hz`)], manual: guides.displayCable(d) });
+  }
+  if (extra.disk && (extra.disk.usePct >= 92 || extra.disk.freeGB < 15)) {
+    add({ id: 'disk', level: 'medium', title: `Drive C: is almost full (${extra.disk.freeGB} GB free)`, body: 'A nearly full system drive makes Windows and game updates slow, and can cause stutter.', actions: [A('free_space', 'Free up space')], strategies: [A('free_space', 'Clear temp files and old Windows update leftovers')], manual: guides.diskFull(extra.disk) });
   }
   const tl = tools.status();
-  if (s.fpsCounter && !tl.presentmon) items.push({ id: 'tool_presentmon', level: 'medium', title: 'The FPS counter needs PresentMon', body: 'A free tool from Intel that reads real in-game FPS.', actions: [A('install:presentmon', 'Download it')], auto: true });
-  if (s.tempMonitor && !tl.lhm && (!lastStats || lastStats.cpuTemp == null)) items.push({ id: 'tool_lhm', level: 'medium', title: 'CPU temperature can’t be read yet', body: 'Windows doesn’t share the real CPU sensor. LibreHardwareMonitor (free, open source) does.', actions: [A('install:lhm', 'Download it')], auto: true });
-  if (rig && rig.vendorApp && !rig.vendorApp.installed) items.push({ id: 'vendor_app', level: 'medium', title: `${rig.vendorApp.name} isn’t installed`, body: 'The driver checklist and the vendor’s auto-overclock/undervolt live in it.', actions: [A('vendor', 'Get it')], auto: false });
-  if (lastStats && lastStats.cpuTemp >= 90) items.push({ id: 'hot_cpu', level: 'big', title: `CPU is hot (${lastStats.cpuTemp} °C)`, body: 'Above 90 °C the CPU slows itself down. Usually dust, a weak cooler profile or dried thermal paste.', actions: [], auto: false });
-  if (lastStats && lastStats.gpuTemp >= 87) items.push({ id: 'hot_gpu', level: 'big', title: `Graphics card is hot (${lastStats.gpuTemp} °C)`, body: 'It may be lowering its clocks. An undervolt through the vendor auto-tuner or a stronger fan curve usually fixes it.', actions: [], auto: false });
-  if (rig) {
-    profile.insights(rig).forEach((ins, i) => {
-      if (ins.level === 'info') return;
-      const actions = /Hz/.test(ins.title) ? [A('open:ms-settings:display-advanced', 'Open display settings')] : [];
-      items.push({ id: `insight_${i}`, level: ins.level, title: ins.title, body: ins.body, actions, auto: false, bios: /BIOS|stick/i.test(ins.body) });
-    });
+  if (s.fpsCounter && !tl.presentmon) add({ id: 'tool_presentmon', level: 'medium', title: 'The FPS counter needs PresentMon', body: 'A free tool from Intel that reads real in-game FPS.', actions: [A('install:presentmon', 'Download it')], strategies: [A('install:presentmon', 'Download PresentMon from Intel’s GitHub'), A('install:presentmon', 'Try the download again')] });
+  if (s.tempMonitor && !tl.lhm && (!lastStats || lastStats.cpuTemp == null)) add({ id: 'tool_lhm', level: 'medium', title: 'CPU temperature can’t be read yet', body: 'Windows doesn’t share the real CPU sensor. LibreHardwareMonitor (free, open source) does.', actions: [A('install:lhm', 'Download it')], strategies: [A('install:lhm', 'Download LibreHardwareMonitor from its GitHub'), A('install:lhm', 'Try the download again')] });
+  if (rig && rig.vendorApp && !rig.vendorApp.installed) {
+    const amd = rig.gpu.vendor === 'amd';
+    add({ id: 'vendor_app', level: 'medium', title: `${rig.vendorApp.name} isn’t installed`, body: 'The driver checklist and the vendor’s own auto-overclock and undervolt live in it.', actions: [A(amd ? 'vendor' : 'vendor_install', 'Get it')], strategies: amd ? [] : [A('vendor_install', `Install ${rig.vendorApp.name} from Microsoft’s verified app store`)], manual: amd ? guides.amdDriverApp() : null, manualAction: amd ? 'vendor' : null });
   }
-  if (app.isPackaged && updates && updates.state.status === 'unconfigured') items.push({ id: 'updates', level: 'info', title: 'In-app updates aren’t set up', body: 'Set where updates come from so new versions arrive inside the app.', actions: [A('goto:settings', 'Open Settings')], auto: false });
+  if (lastStats && lastStats.cpuTemp >= 90) add({ id: 'hot_cpu', level: 'big', title: `CPU is hot (${lastStats.cpuTemp} °C)`, body: 'Above 90 °C the CPU slows itself down. Usually dust, a weak fan setting or old thermal paste.', manual: guides.hotCpu(rig, lastStats.cpuTemp) });
+  if (lastStats && lastStats.gpuTemp >= 87) {
+    const oc = !!backup.get('gpu_power_limit');
+    add({ id: 'hot_gpu', level: 'big', title: `Graphics card is hot (${lastStats.gpuTemp} °C)`, body: oc ? 'FrameForge raised its power limit for overclocking — that’s the likely cause.' : 'It may be lowering its clocks to protect itself.', strategies: oc ? [A('revert_oc', 'Put the graphics card power limit back to normal')] : [], manual: guides.hotGpu(rig, lastStats.gpuTemp) });
+  }
+  if (rig) {
+    for (const ins of profile.insights(rig)) {
+      if (ins.level === 'info') continue;
+      const manual = ins.id === 'ram_speed' ? guides.ramSpeed(rig) : ins.id === 'single_stick' ? guides.singleStick(rig) : ins.id === 'laptop' ? guides.laptop() : null;
+      add({ id: `insight_${ins.id}`, level: ins.level, title: ins.title, body: ins.body, manual, bios: ins.id === 'ram_speed' });
+    }
+  }
+  const pending = restartNeededFor();
+  if (extra.rebootPending || pending.length) add({ id: 'restart', level: 'info', title: 'A restart is needed', body: pending.length ? `To finish: ${pending.join(', ')}.` : 'Windows has updates waiting for a restart.', actions: [A('restart', 'Restart now')], manual: guides.restartPending(), manualAction: null });
+  if (app.isPackaged && updates && updates.state.status === 'unconfigured') add({ id: 'updates', level: 'info', title: 'In-app updates aren’t set up', body: 'FrameForge can’t find where new versions come from.', actions: [A('set_update_source', 'Fix it')], strategies: [A('set_update_source', 'Use the official FrameForge update source')] });
+  // A problem is fixable automatically when it has strategies.
+  for (const it of items) it.auto = it.strategies.length > 0;
   return items;
 }
 
@@ -756,13 +853,22 @@ async function runRepair(name) {
   }
 }
 
+
+/** Is there a Windows restore point from the last 24 hours? (Windows allows only one a day.) */
+async function recentRestorePoint() {
+  if (DEMO) return true;
+  const r = await ps("$p = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Sort-Object SequenceNumber | Select-Object -Last 1; if ($p) { [int]((Get-Date) - $p.ConvertToDateTime($p.CreationTime)).TotalHours } else { -1 }");
+  const h = parseInt(r.stdout.trim(), 10);
+  return h >= 0 && h < 24;
+}
+
 async function runFixAction(action) {
   const [kind, ...rest] = action.split(':');
   const arg = rest.join(':');
   switch (kind) {
     case 'retry': {
       if (busy) return { ok: false, message: 'Auto Mode is running — wait for it to finish.' };
-      const t = optimizer.TWEAKS.find((x) => x.id === arg);
+      const t = tweakById(arg);
       if (!t) return { ok: false, message: 'Unknown step' };
       busy = true;
       try {
@@ -773,6 +879,78 @@ async function runFixAction(action) {
       const still = problems.all()[arg];
       return still ? { ok: false, message: still.message } : { ok: true, message: `${t.name} worked this time.` };
     }
+    case 'tweak': {
+      const r = await setTweak(arg, true);
+      await detectExtra();
+      return r;
+    }
+    case 'reapply': {
+      const ids = [...extra.reverted];
+      let ok = 0;
+      for (const id of ids) if ((await setTweak(id, true)).ok) ok++;
+      await detectExtra();
+      return { ok: ok === ids.length, message: `Turned ${ok} of ${ids.length} tweak${ids.length === 1 ? '' : 's'} back on.` };
+    }
+    case 'restore_check': {
+      if (await recentRestorePoint()) {
+        problems.remove('restore_point');
+        send('fix:changed', true);
+        return { ok: true, message: 'You already have a restore point from today — Windows allows one a day, so you’re covered.' };
+      }
+      return { ok: false, message: 'No restore point from today yet.' };
+    }
+    case 'redownload_ctt': {
+      try {
+        fs.rmSync(tools.winutilPath(), { force: true });
+      } catch {}
+      return runFixAction('retry:ctt_tweaks');
+    }
+    case 'free_space': {
+      const before = extra.disk;
+      const t = tweakById('temp_cleanup');
+      if (t) await tweakPhase(t)();
+      if (!DEMO) {
+        send('fix:line', { line: 'Removing old Windows update files (DISM /StartComponentCleanup) — this can take a few minutes…' });
+        await fixes.runLines('DISM.exe', ['/Online', '/Cleanup-Image', '/StartComponentCleanup'], (line) => send('fix:line', { line }), 30 * 60 * 1000);
+      }
+      const after = await detectExtra();
+      const freed = before && after.disk ? Math.max(0, after.disk.freeGB - before.freeGB) : 0;
+      changes.put(`free_space_${Date.now()}`, { name: 'Freed up space on drive C:', summary: `Cleared temp files and old Windows update leftovers — about ${freed} GB freed.`, details: ['Temp folders emptied', 'DISM /Online /Cleanup-Image /StartComponentCleanup'], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+      send('changes', changeList());
+      return { ok: true, message: `Freed about ${freed} GB.` };
+    }
+    case 'vendor_install': {
+      const candidates = (rig && tools.WINGET_APPS[rig.gpu.vendor]) || [];
+      if (!candidates.length || !(await tools.hasWinget())) return { ok: false, message: 'There’s no verified automatic installer for this driver app.' };
+      for (const c of candidates) {
+        send('fix:line', { line: `Looking up ${c.name} in Microsoft’s app store (winget)…` });
+        if (!(await tools.wingetKnows(c.id))) continue;
+        send('fix:line', { line: `Installing ${c.name}…` });
+        const r = await tools.wingetInstall(c.id);
+        rig = await hardware.scan(settings.get().manualHardware);
+        send('rig', rig);
+        return r.ok ? { ok: true, message: `Installed ${c.name}.` } : { ok: false, message: r.message };
+      }
+      return { ok: false, message: 'Microsoft’s app store doesn’t have it right now.' };
+    }
+    case 'revert_oc': {
+      const t = tweakById('gpu_power_limit');
+      if (t && backup.get(t.id)) await revertPhase(t, 'Graphics card was running hot')();
+      return { ok: true, message: 'Graphics card power limit is back to normal.' };
+    }
+    case 'set_update_source':
+      settings.set({ updateSource: 'toer15/frameforge' });
+      if (updates) {
+        updates.configure('toer15/frameforge');
+        updates.check();
+      }
+      return { ok: true, message: 'Updates come from the official FrameForge page again.' };
+    case 'restart':
+      return { ok: true, restarted: await (async () => {
+        const r = await dialog.showMessageBox(mainWin, { type: 'question', buttons: ['Restart now', 'Later'], defaultId: 1, title: 'Restart PC', message: 'Restart your PC now?', detail: 'Save anything you have open first.' });
+        if (r.response === 0 && IS_WIN && !DEMO) run('shutdown', ['/r', '/t', '5']);
+        return r.response === 0;
+      })() };
     case 'repair':
       return runRepair(arg);
     case 'install': {
@@ -803,22 +981,78 @@ async function runFixAction(action) {
   return { ok: false, message: 'Unknown fix' };
 }
 
-/** Fix everything that can be fixed without the user: retry failed steps, download missing tools. */
+/**
+ * "Fix everything automatically": check the PC, then for each problem try its fixes in order, checking after
+ * each one whether the problem is gone. What only the user can do gets step-by-step instructions.
+ * If admin rights are missing, FrameForge restarts itself as administrator last and carries on by itself.
+ */
+let fixAllRunning = false;
 async function fixEverything() {
-  const results = [];
-  for (const it of fixList().filter((i) => i.auto)) {
-    const a = it.actions.find((x) => /^(retry|install|repair):/.test(x.id));
-    if (!a) continue;
-    send('fix:repair', { name: it.id, status: 'running', title: it.title });
-    const r = await runFixAction(a.id);
-    send('fix:repair', { name: it.id, status: r && r.ok ? 'done' : 'warn', title: it.title, message: r && r.message });
-    results.push({ problem: it.title, fixed: !!(r && r.ok), message: r && r.message });
+  if (fixAllRunning) return { busy: true };
+  if (busy) return { busy: true, message: 'Auto Mode is running — wait for it to finish.' };
+  fixAllRunning = true;
+  const ev = (e) => send('fixall', e);
+  const tally = { fixed: 0, you: 0, failed: 0 };
+  try {
+    ev({ type: 'start' });
+    ev({ type: 'phase', text: 'Checking your whole PC…' });
+    if (rig) rig = await hardware.scan(settings.get().manualHardware).catch(() => rig);
+    await detectExtra();
+    const items = fixList();
+    ev({ type: 'found', count: items.length });
+    const needAdmin = items.find((i) => i.id === 'not_admin');
+    for (const it of items) {
+      if (it.id === 'not_admin') continue;
+      if (!it.strategies.length) {
+        if (it.manualAction) await runFixAction(it.manualAction).catch(() => {});
+        if (it.manual) {
+          tally.you++;
+          ev({ type: 'item', id: it.id, title: it.title, outcome: 'you', message: it.body, steps: it.manual, buttons: it.actions });
+        }
+        continue;
+      }
+      ev({ type: 'item', id: it.id, title: it.title, outcome: 'working' });
+      let fixed = false;
+      let last = null;
+      for (const [n, st] of it.strategies.entries()) {
+        ev({ type: 'try', id: it.id, text: st.label, n: n + 1, of: it.strategies.length });
+        last = await runFixAction(st.id).catch((e) => ({ ok: false, message: String(e.message || e) }));
+        await detectExtra();
+        fixed = !fixList().some((x) => x.id === it.id); // check: is the problem really gone?
+        if (fixed) break;
+      }
+      if (fixed) {
+        tally.fixed++;
+        ev({ type: 'item', id: it.id, title: it.title, outcome: 'fixed', message: last && last.message });
+      } else if (it.manual) {
+        if (it.manualAction) await runFixAction(it.manualAction).catch(() => {});
+        tally.you++;
+        ev({ type: 'item', id: it.id, title: it.title, outcome: 'you', message: last && last.message, steps: it.manual, buttons: it.actions.filter((a) => !it.strategies.some((st) => st.id === a.id)) });
+      } else {
+        tally.failed++;
+        ev({ type: 'item', id: it.id, title: it.title, outcome: 'failed', message: (last && last.message) || 'It didn’t work after trying every fix FrameForge knows.' });
+      }
+    }
+    if (needAdmin) {
+      ev({ type: 'item', id: 'not_admin', title: needAdmin.title, outcome: 'working', message: 'Restarting FrameForge as administrator — it carries on fixing by itself after the restart.' });
+      ev({ type: 'done', ...tally, restarting: true });
+      settings.set({ resumeFixAll: true });
+      await new Promise((r) => setTimeout(r, 2500));
+      await runFixAction('admin');
+      return { restarting: true };
+    }
+    ev({ type: 'done', ...tally });
+    return tally;
+  } finally {
+    fixAllRunning = false;
+    send('fix:changed', true);
   }
-  send('fix:changed', true);
-  return results;
 }
 
-ipcMain.handle('fix:list', () => ({ items: fixList(), repairs: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, desc: r.desc, reboot: !!r.reboot })), busy: fixBusy }));
+ipcMain.handle('fix:list', async () => {
+  if (Date.now() - extra.at > 30000) await detectExtra();
+  return { items: fixList(), repairs: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, desc: r.desc, reboot: !!r.reboot })), busy: fixBusy || fixAllRunning };
+});
 ipcMain.handle('fix:action', (_e, action) => runFixAction(action));
 ipcMain.handle('fix:all', () => fixEverything());
 

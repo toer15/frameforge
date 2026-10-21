@@ -210,9 +210,18 @@
       <div class="fix-head">
         <div>
           <h1 class="page-title">Fix mode</h1>
-          <p class="muted" id="fixLead">Everything that didn’t work or is holding this PC back — and the fastest way to fix each one.</p>
+          <p class="muted" id="fixLead">Everything that didn’t work or is holding this PC back. “Fix everything automatically” tries every fix FrameForge knows for each problem, checks that it worked, and tells you exactly what to do for anything only you can change.</p>
         </div>
         <button class="primary heat" id="fixAllBtn">Fix everything automatically</button>
+      </div>
+
+      <div class="fix-report hidden" id="fixReport" aria-live="polite">
+        <div class="fr-head">
+          <span class="spin" id="frSpin"></span>
+          <div><b id="frTitle">Fixing everything…</b><span class="fr-sub">Built into FrameForge — works offline, nothing to set up.</span></div>
+        </div>
+        <ol class="fr-list" id="frList"></ol>
+        <div class="fr-summary hidden" id="frSummary"></div>
       </div>
 
       <div class="fix-console hidden" id="fixConsole">

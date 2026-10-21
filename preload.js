@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('ff', {
     onChanged: on('fix:changed'),
     onRepair: on('fix:repair'),
     onLine: on('fix:line'),
+    onAll: on('fixall'),
   },
   tw: {
     catalog: () => ipcRenderer.invoke('tweaks:catalog'),
