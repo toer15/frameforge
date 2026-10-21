@@ -106,6 +106,7 @@ const REPAIRS = {
         ['netsh', ['int', 'ip', 'reset'], 'Reset TCP/IP'],
       ];
       const details = [];
+      let failed = 0;
       for (const [f, a, label] of steps) {
         if (DEMO) {
           await sleep(500);
@@ -114,9 +115,11 @@ const REPAIRS = {
           continue;
         }
         const code = await runLines(f, a, onLine, 120000);
-        details.push(`${label}${code === 0 ? '' : ` (exit code ${code})`}`);
+        if (code !== 0) failed++;
+        details.push(`${label}${code === 0 ? '' : ` — FAILED (exit code ${code})`}`);
       }
-      return { ok: true, message: 'Network reset. Restart your PC to finish.', details };
+      if (failed === steps.length) return { ok: false, message: 'Windows refused every network reset step (FrameForge needs to run as administrator for this).', details };
+      return { ok: !failed, warn: !!failed, message: failed ? `Network reset, but ${failed} of ${steps.length} steps failed — see the details. Restart your PC to finish.` : 'Network reset. Restart your PC to finish.', details };
     },
   },
   system_files: {

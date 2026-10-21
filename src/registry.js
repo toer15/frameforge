@@ -25,4 +25,26 @@ async function del(key, name) {
   await run('reg', ['delete', key, '/v', name, '/f']);
 }
 
-module.exports = { get, set, del };
+/** Every value in one key, with a single reg.exe call: Map(lowercase name → { name, type, data }). */
+async function list(key) {
+  const out = new Map();
+  const r = await run('reg', ['query', key]);
+  if (r.code !== 0) return out;
+  for (const line of r.stdout.split(/\r?\n/)) {
+    const m = line.match(/^ {4}(.+?) {4}(REG_[A-Z_]+) {4}(.*)$/);
+    if (m) out.set(m[1].toLowerCase(), { name: m[1], type: m[2], data: m[3] });
+  }
+  return out;
+}
+
+/** Names of the sub-keys of a key (full paths), e.g. every installed GOG game. */
+async function subkeys(key) {
+  const r = await run('reg', ['query', key]);
+  if (r.code !== 0) return [];
+  return r.stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.toLowerCase().startsWith(key.toLowerCase().replace(/\\+$/, '') + '\\'));
+}
+
+module.exports = { get, set, del, list, subkeys };

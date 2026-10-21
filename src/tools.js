@@ -65,23 +65,27 @@ async function latestAsset(tool) {
   const rel = await res.json();
   const asset = tool.pick(rel.assets || []);
   if (!asset) throw new Error(`No Windows download found in the latest ${tool.name} release`);
-  return { url: asset.browser_download_url, name: asset.name, size: asset.size, version: rel.tag_name };
+  // GitHub publishes each release file's SHA-256 ("digest": "sha256:…"): used to check the download.
+  return { url: asset.browser_download_url, name: asset.name, size: asset.size, version: rel.tag_name, digest: /^sha256:([a-f0-9]{64})$/i.test(asset.digest || '') ? asset.digest.slice(7).toLowerCase() : null };
 }
 
-async function download(url, dest, onProgress = null, signal) {
+async function download(url, dest, onProgress = null, signal, sha256 = null) {
   const res = await net.fetch(url, { headers: { 'User-Agent': 'FrameForge' }, signal });
   if (!res.ok) throw new Error(`Download failed (${res.status})`);
   const total = Number(res.headers.get('content-length')) || 0;
   const reader = res.body.getReader();
   const chunks = [];
+  const hash = require('crypto').createHash('sha256');
   let got = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     chunks.push(Buffer.from(value));
+    hash.update(value);
     got += value.length;
     if (onProgress && total) onProgress(got / total);
   }
+  if (sha256 && hash.digest('hex') !== String(sha256).toLowerCase()) throw new Error('The download didn’t match its official fingerprint (SHA-256), so it was thrown away and not used.');
   fs.writeFileSync(dest, Buffer.concat(chunks));
 }
 
@@ -98,12 +102,12 @@ async function install(id, onProgress = () => {}, signal) {
   const tool = TOOLS[id];
   const asset = await latestAsset(tool);
   if (id === 'presentmon') {
-    await download(asset.url, path.join(dir(), 'PresentMon.exe'), onProgress, signal);
+    await download(asset.url, path.join(dir(), 'PresentMon.exe'), onProgress, signal, asset.digest);
     return { ok: true, message: `${tool.name} ${asset.version} installed.` };
   }
   const zip = path.join(dir(), 'lhm.zip');
   const out = path.join(dir(), 'lhm');
-  await download(asset.url, zip, onProgress, signal);
+  await download(asset.url, zip, onProgress, signal, asset.digest);
   const r = await ps(`Expand-Archive -LiteralPath '${zip}' -DestinationPath '${out}' -Force`);
   fs.rmSync(zip, { force: true });
   if (r.code !== 0 || !lhmPath()) throw new Error('Couldn’t unpack LibreHardwareMonitor');
@@ -125,6 +129,14 @@ function winutilPath() {
   return path.join(dir(), 'winutil.ps1');
 }
 
+/** SHA-256 GitHub lists for the latest winutil.ps1 release file, or null. */
+async function winutilDigest() {
+  const res = await net.fetch('https://api.github.com/repos/ChrisTitusTech/winutil/releases/latest', { headers: { 'User-Agent': 'FrameForge', Accept: 'application/vnd.github+json' } });
+  if (!res.ok) return null;
+  const a = ((await res.json()).assets || []).find((x) => x.name === 'winutil.ps1');
+  return a && /^sha256:([a-f0-9]{64})$/i.test(a.digest || '') ? a.digest.slice(7).toLowerCase() : null;
+}
+
 /** Get the latest winutil.ps1 from Chris Titus's official GitHub release (refreshed every 3 days). */
 async function ensureWinutil(signal) {
   const p = winutilPath();
@@ -133,7 +145,9 @@ async function ensureWinutil(signal) {
     const age = Date.now() - fs.statSync(p).mtimeMs;
     if (age < 3 * 24 * 3600 * 1000) return p;
   } catch {}
-  await download(WINUTIL_URL, p + '.tmp', null, signal);
+  // Check it against the SHA-256 GitHub lists for that release file, when GitHub says it.
+  const expected = await winutilDigest().catch(() => null);
+  await downloadFile(WINUTIL_URL, p + '.tmp', { signal, sha256: expected });
   const head = fs.readFileSync(p + '.tmp', 'utf8').slice(0, 4000);
   if (!/winutil|Chris Titus/i.test(head)) {
     fs.rmSync(p + '.tmp', { force: true });

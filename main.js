@@ -107,6 +107,8 @@ async function boot() {
   }
   // Keep the user's animation choice, and check Windows' protection a little after start.
   setTimeout(() => enforceAnimations('start'), 6000);
+  // Keep the "Start with Windows" task pointing at this copy of FrameForge (the install folder can change).
+  if (settings.get().startWithWindows && admin && !DEMO) setStartWithWindows(true).catch(() => {});
   setInterval(() => animWatch(), 8000);
   if (DEMO && process.env.FRAMEFORGE_TEST_ANIM_TAMPER) setTimeout(() => animations.demoTamper(), 20000); // test: another app flips the animations
   setTimeout(() => refreshSecurity().then(() => send('fix:changed', true)).catch(() => {}), DEMO ? 4000 : 30000);
@@ -338,14 +340,24 @@ function toggleOverlay() {
   send('overlay:shown', overlayShown);
 }
 
+/** Registers the overlay shortcut. Returns false when it couldn't (invalid, or another program already owns it). */
 function registerHotkey() {
   globalShortcut.unregisterAll();
   const key = settings.get().overlayHotkey;
   try {
-    if (key) globalShortcut.register(key.replace(/Ctrl/i, 'CommandOrControl'), toggleOverlay);
+    if (key) return globalShortcut.register(key.replace(/Ctrl/i, 'CommandOrControl'), toggleOverlay) && globalShortcut.isRegistered(key.replace(/Ctrl/i, 'CommandOrControl'));
   } catch {
-    /* invalid accelerator — ignore */
+    return false; // invalid accelerator
   }
+  return true;
+}
+
+/** Start FrameForge quietly in the tray when Windows starts (a sign-in task that runs with admin rights). */
+async function setStartWithWindows(on) {
+  if (!IS_WIN || DEMO) return { ok: true };
+  const r = on ? await run('schtasks', ['/Create', '/TN', 'FrameForge', '/TR', `"${process.execPath}" --hidden`, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/F']) : await run('schtasks', ['/Delete', '/TN', 'FrameForge', '/F']);
+  if (r.code === 0 || !on) return { ok: true };
+  return { ok: false, message: `Windows wouldn’t set it up (${(r.stderr || r.stdout || '').trim().split(/\r?\n/)[0].slice(0, 120) || `code ${r.code}`}). Run FrameForge as administrator and try again.` };
 }
 
 // ---------- Monitoring ----------
@@ -2096,15 +2108,17 @@ ipcMain.handle('settings:set', async (_e, patch) => {
   const before = settings.get();
   const s = settings.set(patch);
   if ('startWithWindows' in patch && IS_WIN && !DEMO) {
-    if (patch.startWithWindows) {
-      await run('schtasks', ['/Create', '/TN', 'FrameForge', '/TR', `"${process.execPath}" --hidden`, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/F']);
-    } else {
-      await run('schtasks', ['/Delete', '/TN', 'FrameForge', '/F']);
+    const r = patch.startWithWindows ? await setStartWithWindows(true) : await setStartWithWindows(false);
+    if (!r.ok) {
+      // Windows refused (e.g. no admin rights): the switch must not claim it's on.
+      settings.set({ startWithWindows: !patch.startWithWindows });
+      return { ...settings.get(), _error: r.message };
     }
   }
-  if ('overlayHotkey' in patch && patch.overlayHotkey !== before.overlayHotkey) registerHotkey();
+  let hotkeyFailed = false;
+  if ('overlayHotkey' in patch && patch.overlayHotkey !== before.overlayHotkey) hotkeyFailed = !registerHotkey();
   if ('fpsCounter' in patch || 'tempMonitor' in patch || 'overlayPosition' in patch) applyMonitoring();
-  return s;
+  return hotkeyFailed ? { ...s, _error: `“${s.overlayHotkey}” couldn’t be registered — another program is probably using it. Pick a different shortcut.` } : s;
 });
 ipcMain.handle('auto:set', (_e, on) => runAuto(!!on));
 ipcMain.handle('auto:stop', () => stopAuto());

@@ -167,6 +167,8 @@ under `ProgramData\Microsoft\Windows Defender\Platform\<version>`):
 
 
 **Tweaks that can't be verified.** A tweak may define `available()` (power-plan tweaks do: the setting must be readable in the active plan) — if it's false the tweak is reverted quietly and set aside in `lockedTweaks` (`settledOff`/`markUnavailable` in main.js). Fix actions that switch tweaks on go through `applyAndVerify` (re-reads the real state; unverifiable → set aside). Tweaks with `reboot: true` aren't listed as reverted until the restart after they were applied. `mem_compression` runs Enable/Disable-MMAgent through `mmAgent()`, which starts SysMain temporarily when it is disabled.
+
+**Notes from the full audit (1.3.3).** `visual_effects` writes the real switches (UserPreferencesMask best-performance value, DragFullWindows, MinAnimate, ListviewShadow/AlphaSelect, TaskbarAnimations) and calls `UpdatePerUserSystemParameters` so it applies live. `game_gpu` uses `games.findGames()` (Steam, Epic, GOG/Ubisoft/EA/Battle.net registry entries, X:\XboxGames, X:\Riot Games, X:\GOG Games, X:\Games) and `isOn()` reads the whole UserGpuPreferences key with one `reg query` (`registry.list`), using a 10-minute cached game list. Helper-tool downloads are checked against the `digest` GitHub gives each release asset. `setStartWithWindows` / `registerHotkey` return whether Windows accepted the change; `settings:set` then returns `_error` and the UI shows it.
 ## Windows animations
 
 `src/animations.js`: SystemParametersInfo (via a small C# helper run with PowerShell `Add-Type`) for minimize/

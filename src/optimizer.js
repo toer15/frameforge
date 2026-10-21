@@ -264,15 +264,27 @@ const TWEAKS = [
   {
     id: 'visual_effects',
     name: 'Performance visual effects',
-    desc: 'Switches off Windows animations and shadows. Small gain on older PCs; makes Windows look plainer. Takes effect after you sign out.',
-    ...registryTweak([
-      {
-        key: `${HKCU}\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects`,
-        name: 'VisualFXSetting',
-        type: 'REG_DWORD',
-        data: 2,
-      },
-    ]),
+    desc: 'Does what “Adjust for best performance” does in Windows: switches off animations, window shadows, the translucent selection box and showing window contents while dragging. Small gain on older PCs; makes Windows look plainer. Applies right away (a few parts after you sign out).',
+    ...registryTweak(
+      (() => {
+        const desk = `${HKCU}\\Control Panel\\Desktop`;
+        const adv = `${HKCU}\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced`;
+        return [
+          // "Performance Options" radio button — and the real switches below it, which Windows actually reads.
+          { key: `${HKCU}\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects`, name: 'VisualFXSetting', type: 'REG_DWORD', data: 2, def: 0 },
+          { key: desk, name: 'UserPreferencesMask', type: 'REG_BINARY', data: '9012038010000000', def: '9E1E078012000000' },
+          { key: desk, name: 'DragFullWindows', type: 'REG_SZ', data: '0', def: '1' },
+          { key: `${desk}\\WindowMetrics`, name: 'MinAnimate', type: 'REG_SZ', data: '0', def: '1' },
+          { key: adv, name: 'ListviewShadow', type: 'REG_DWORD', data: 0, def: 1 },
+          { key: adv, name: 'ListviewAlphaSelect', type: 'REG_DWORD', data: 0, def: 1 },
+          { key: adv, name: 'TaskbarAnimations', type: 'REG_DWORD', data: 0, def: 1 },
+        ];
+      })()
+    ),
+    async after() {
+      // Make Windows re-read the per-user settings now, instead of at the next sign-in.
+      await run('rundll32.exe', ['user32.dll,', 'UpdatePerUserSystemParameters', '1,', 'True']);
+    },
   },
   {
     id: 'temp_cleanup',
@@ -449,14 +461,22 @@ TWEAKS.push({
 TWEAKS.push({
   id: 'game_gpu',
   name: 'Run every game on the gaming graphics card',
-  desc: 'Finds your Steam and Epic games and tells Windows to run each one on your fastest graphics card instead of the built-in one.',
+  desc: 'Finds your installed games — Steam, Epic, GOG, Ubisoft Connect, EA app, Battle.net, Xbox and games folders on any drive — and tells Windows to run each one on your fastest graphics card instead of the built-in one. Games you install later are picked up by Fix mode.',
+  /** True when every game FrameForge can find is set to the high-performance graphics card in Windows. */
+  async isOn() {
+    const { findGamesCached } = require('./games');
+    const games = await findGamesCached();
+    if (!games.length) return !!backup.get(this.id);
+    const set = await reg.list('HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences');
+    return games.every((g) => g.exes.every((exe) => { const v = set.get(exe.toLowerCase()); return !!v && /GpuPreference=2/.test(v.data); }));
+  },
   demoMessage: 'Set 23 games to the high-performance graphics card.',
   demoDetails: ['ELDEN RING (Steam): start_protected_game.exe, eldenring.exe → High performance GPU', 'Rocket League (Epic): RocketLeague.exe → High performance GPU', 'Forza Horizon 5 (Steam): ForzaHorizon5.exe → High performance GPU', '…and 20 more games'],
   async apply() {
     const { findGames } = require('./games');
     const key = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
     const games = await findGames();
-    if (!games.length) return { ok: true, message: 'No Steam or Epic games found.' };
+    if (!games.length) return { ok: true, message: 'No installed games found (looked for Steam, Epic, GOG, Ubisoft, EA, Battle.net, Xbox and games folders).' };
     const exes = games.flatMap((g) => g.exes);
     const b = backup.get(this.id) || { entries: [] };
     const known = new Set(b.entries.map((e) => e.name.toLowerCase()));

@@ -1216,6 +1216,12 @@ document.addEventListener('change', async (e) => {
     return;
   }
   S = await ff.setSettings({ [k]: el.type === 'checkbox' ? el.checked : el.value });
+  if (S && S._error) {
+    // The change didn't fully work (Windows refused it, or the shortcut is taken): say so, and show the real state.
+    toast(S._error, 8000);
+    delete S._error;
+    renderSettings();
+  }
   if (['aiProvider', 'aiModel', 'ollamaModel'].includes(k)) refreshAi();
   if (k === 'autoFix' || k === 'autoRestart') {
     renderSettings(); // the same switch is in Fix mode and in Settings

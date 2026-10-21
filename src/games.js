@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const reg = require('./registry');
 
-const SKIP_EXE = /unins|setup|install|crash|report|redist|vc_?redist|dxsetup|directx|prereq|helper|launcher|updater|easyanticheat|eac|battleye|be(service|launcher)|dotnet|vcredist|physx|cefprocess|webhelper|ue4editor|server|benchmark/i;
+const SKIP_EXE = /unins|setup|install|crash|report|redist|vc_?redist|dxsetup|directx|prereq|helper|launcher|updater|easyanticheat|eac|battleye|be(service|launcher)|dotnet|vcredist|physx|cefprocess|webhelper|ue4editor|server|benchmark|createdump|crashhandler|crashpad|dxwebsetup/i;
 
 function readSafe(p) {
   try {
@@ -104,10 +104,74 @@ function epicGames() {
   return games;
 }
 
+/** GOG Galaxy, Ubisoft Connect, EA app and Battle.net record every installed game in the registry. */
+async function registryGames() {
+  const games = [];
+  const add = (name, dir, store, exe) => {
+    if (!dir || !fs.existsSync(dir)) return;
+    const exes = [...new Set([exe && fs.existsSync(exe) ? exe : null, ...gameExes(dir)].filter(Boolean))].slice(0, 4);
+    if (exes.length) games.push({ name: name || path.basename(dir), exes, store });
+  };
+  for (const key of await reg.subkeys('HKLM\\SOFTWARE\\WOW6432Node\\GOG.com\\Games')) {
+    const [gn, p, exe] = await Promise.all([reg.get(key, 'gameName'), reg.get(key, 'path'), reg.get(key, 'exe')]);
+    if (p.exists) add(gn.exists ? gn.data : null, p.data, 'GOG', exe.exists ? exe.data : null);
+  }
+  for (const key of await reg.subkeys('HKLM\\SOFTWARE\\WOW6432Node\\Ubisoft\\Launcher\\Installs')) {
+    const d = await reg.get(key, 'InstallDir');
+    if (d.exists) add(null, d.data.replace(/\//g, '\\'), 'Ubisoft');
+  }
+  for (const base of ['HKLM\\SOFTWARE\\EA Games', 'HKLM\\SOFTWARE\\WOW6432Node\\EA Games', 'HKLM\\SOFTWARE\\Electronic Arts', 'HKLM\\SOFTWARE\\WOW6432Node\\Electronic Arts']) {
+    for (const key of await reg.subkeys(base)) {
+      const d = await reg.get(key, 'Install Dir');
+      if (d.exists) add(key.split('\\').pop(), d.data, 'EA');
+    }
+  }
+  for (const key of await reg.subkeys('HKLM\\SOFTWARE\\WOW6432Node\\Blizzard Entertainment')) {
+    const d = await reg.get(key, 'InstallPath');
+    if (d.exists) add(key.split('\\').pop(), d.data, 'Battle.net');
+  }
+  return games;
+}
+
+/** Games installed straight into a games folder on any drive: X:\XboxGames, X:\Riot Games, X:\GOG Games, X:\Games. */
+function folderGames() {
+  const games = [];
+  const roots = [];
+  for (let c = 67; c <= 90; c++) {
+    const d = String.fromCharCode(c) + ':\\';
+    for (const [sub, store, inner] of [['XboxGames', 'Xbox', 'Content'], ['Riot Games', 'Riot', ''], ['GOG Games', 'GOG', ''], ['Games', 'Games folder', '']]) {
+      const root = path.join(d, sub);
+      if (fs.existsSync(root)) roots.push({ root, store, inner });
+    }
+  }
+  for (const { root, store, inner } of roots) {
+    let subs = [];
+    try {
+      subs = fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory());
+    } catch {
+      continue;
+    }
+    for (const e of subs) {
+      if (/^(steamlibrary|steamapps|epic games|_commonredist|redist)$/i.test(e.name)) continue; // those have their own scanners
+      const dir = inner ? path.join(root, e.name, inner) : path.join(root, e.name);
+      const exes = gameExes(dir);
+      if (exes.length) games.push({ name: e.name, exes, store });
+    }
+  }
+  return games;
+}
+
 async function findGames() {
-  const all = [...(await steamGames()), ...epicGames()];
+  const all = [...(await steamGames()), ...epicGames(), ...(await registryGames().catch(() => [])), ...folderGames()];
   const seen = new Set();
   return all.filter((g) => !seen.has(g.exes[0].toLowerCase()) && seen.add(g.exes[0].toLowerCase())).slice(0, 400);
 }
 
-module.exports = { findGames, gameExes, bestExe };
+// Walking every game folder is slow: Fix mode asks again every couple of minutes, so reuse the answer for 10 minutes.
+let cache = { at: 0, games: [] };
+async function findGamesCached(maxAgeMs = 10 * 60 * 1000) {
+  if (Date.now() - cache.at > maxAgeMs) cache = { at: Date.now(), games: await findGames() };
+  return cache.games;
+}
+
+module.exports = { findGames, findGamesCached, gameExes, bestExe };

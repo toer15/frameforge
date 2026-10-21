@@ -1,3 +1,11 @@
+**Everything does what its name says: a full check of the app**
+
+- **Performance visual effects** now really does what Windows' "Adjust for best performance" does — animations, window shadows, the translucent selection box and showing window contents while dragging are switched off, and it applies right away. Before, it only set a flag Windows doesn't act on.
+- **Run every game on the gaming graphics card** now finds games from GOG, Ubisoft Connect, the EA app, Battle.net, Xbox and games folders on any drive (not just Steam and Epic), shows its real state, and Fix mode picks up games you install later.
+- **Downloads are verified:** PresentMon, LibreHardwareMonitor and the Chris Titus tool are checked against the SHA-256 fingerprint GitHub publishes for each release file; a file that doesn't match is thrown away.
+- **Reset network** now says so when Windows refuses a step, instead of always reporting success.
+- **Start with Windows** and the **overlay shortcut** now tell you when Windows refused them (no admin rights / shortcut taken by another program) instead of silently showing the switch as on. The start-up task is also refreshed each time FrameForge starts, so it always points at the installed copy.
+
 **Windows animations: your choice sticks, within seconds**
 
 - **FrameForge now notices within about 8 seconds** when another app, a tweak tool, Windows Settings or a Windows update changes the animations, and puts your choice back (On = every animation on, Off = every animation off). Before, it only re-checked every 2 minutes.
