@@ -16,6 +16,7 @@ const tools = require('./src/tools');
 const { FpsReader } = require('./src/fps');
 const { Sensors } = require('./src/sensors');
 const updater = require('./src/updater');
+const updateRelaunch = require('./src/update-relaunch');
 const ai = require('./src/ai');
 const localAi = require('./src/localai');
 const scanner = require('./src/scanner');
@@ -33,6 +34,7 @@ let busy = false;
 let overlayShown = true;
 let quitting = false;
 let updates = null;
+let showWhenReady = false;
 
 const fps = new FpsReader();
 const sensors = new Sensors();
@@ -73,7 +75,8 @@ async function boot() {
     }
   }
 
-  createMainWindow(process.argv.includes('--hidden'));
+  const reopenedAfterUpdate = updateRelaunch.consume(app);
+  createMainWindow(process.argv.includes('--hidden') && !reopenedAfterUpdate, reopenedAfterUpdate);
   createTray();
   scanjob.init({ send, onFinished: onScanFinished });
   updates = updater.setup({ send, getSettings: settings.get, onEvent: onUpdateEvent });
@@ -177,19 +180,29 @@ function reclassifyOldCttProblem() {
 
 // ---------- Windows ----------
 
-function createMainWindow(hidden) {
+function createMainWindow(hidden, focusWhenReady = false) {
+  if (showWhenReady) {
+    hidden = false;
+    focusWhenReady = true;
+    showWhenReady = false;
+  }
   mainWin = new BrowserWindow({
     width: 1240,
     height: 800,
     minWidth: 980,
     minHeight: 640,
     frame: false,
-    show: !hidden,
+    show: !hidden && !focusWhenReady,
     backgroundColor: '#0a0f1c',
     icon: ICON,
     title: 'FrameForge',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
+  if (focusWhenReady) {
+    mainWin.once('ready-to-show', showMain);
+    // Also show after loading: a Windows launcher may suppress the first show request.
+    mainWin.webContents.once('did-finish-load', showMain);
+  }
   mainWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWin.on('close', (e) => {
     if (!quitting && settings.get().minimizeToTray) {
@@ -205,7 +218,10 @@ function createMainWindow(hidden) {
 }
 
 function showMain() {
-  if (!mainWin) return;
+  if (!mainWin || mainWin.isDestroyed()) {
+    showWhenReady = true;
+    return;
+  }
   if (mainWin.isMinimized()) mainWin.restore();
   mainWin.show();
   mainWin.focus();
@@ -231,13 +247,17 @@ function updateNow() {
   if (!updates) return;
   if (updates.state.status === 'ready') {
     quitting = true;
-    updates.install();
+    if (!updates.install()) quitting = false;
   } else {
     showMain();
     updates.download();
   }
 }
 function onUpdateEvent(st) {
+  if (st.status === 'error' && quitting) {
+    quitting = false;
+    applyMonitoring();
+  }
   rebuildTrayMenu();
   // With background downloads on, 'available' is followed by 'ready' — only announce once it's ready.
   const announce = st.status === 'ready' || (st.status === 'available' && !settings.get().backgroundDownloadUpdates);

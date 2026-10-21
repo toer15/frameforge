@@ -1,3 +1,9 @@
+**FrameForge opens on screen after an update**
+
+- After an update installs, FrameForge restarts and opens its main window automatically, even if it normally starts hidden in the tray.
+- This applies to both **Update now** and downloaded updates installed when FrameForge quits. The installer also reopens updates started by older versions.
+- A one-time update handoff helps the new version show its window. Ordinary **Start with Windows** launches still stay in the tray.
+
 **Virus scan: Delete all acts immediately**
 
 - Clicking **Delete all** in the scan results now starts deleting all available threats immediately. You no longer need to click **Do it** afterwards.

@@ -5,6 +5,7 @@
 // (build.publish). When a newer version is published there, FrameForge shows a popup, downloads
 // the installer, checks its SHA-512 fingerprint against latest.yml, and installs it.
 const { app } = require('electron');
+const updateRelaunch = require('./update-relaunch');
 
 let electronUpdater = null;
 try {
@@ -79,7 +80,9 @@ function setup({ send, getSettings, onEvent = () => {} }) {
     if (process.env.FRAMEFORGE_UPDATER_TEST_PLATFORM) au._testOnlyOptions = { platform: process.env.FRAMEFORGE_UPDATER_TEST_PLATFORM, isUseDifferentialDownload: false };
   }
   au.autoDownload = false;
-  au.autoInstallOnAppQuit = true;
+  // Handle quit ourselves: the library's automatic quit path does not force a relaunch.
+  au.autoInstallOnAppQuit = false;
+  au.autoRunAppAfterInstall = true;
   au.allowDowngrade = false;
   au.disableDifferentialDownload = false; // download only the parts of the app that changed
   au.logger = null;
@@ -108,7 +111,34 @@ function setup({ send, getSettings, onEvent = () => {} }) {
   });
   au.on('download-progress', (p) => push({ status: 'downloading', progress: Math.round(p.percent) }));
   au.on('update-downloaded', (info) => push({ status: 'ready', version: info.version, progress: 100 }));
-  au.on('error', (e) => push({ status: 'error', error: friendlyError(e, feed), detail: String((e && e.message) || e).slice(0, 600) }));
+  let installing = false;
+  function installError(e) {
+    if (installing) {
+      installing = false;
+      try { updateRelaunch.clear(app); } catch {}
+    }
+    push({ status: 'error', error: friendlyError(e, feed), detail: String((e && e.message) || e).slice(0, 600) });
+  }
+  au.on('error', installError);
+
+  function install() {
+    if (installing || state.status !== 'ready') return false;
+    try {
+      updateRelaunch.prepare(app, state.version);
+      installing = true;
+      au.quitAndInstall(true, true);
+      return installing;
+    } catch (e) {
+      installError(e);
+      return false;
+    }
+  }
+  app.on('before-quit', (event) => {
+    if (!installing && state.status === 'ready') {
+      event.preventDefault();
+      install();
+    }
+  });
 
   let checking = false;
   async function check() {
@@ -154,7 +184,7 @@ function setup({ send, getSettings, onEvent = () => {} }) {
     /** Called when the window is opened or focused. */
     maybeCheck: () => autoCheck(10 * 60 * 1000),
     // Silent in-place install: no installer window, FrameForge reopens by itself on the new version.
-    install: () => au.quitAndInstall(true, true),
+    install,
     configure,
     _updater: au,
   };

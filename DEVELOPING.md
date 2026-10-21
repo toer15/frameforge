@@ -211,6 +211,21 @@ Chris Titus tool — and every action that changes the PC shows an **Allow / Don
 
 ## In-app updates
 
+In 1.3.6, `src/updater.js` handles ready-update quit events itself, always using
+`quitAndInstall(true, true)` and explicitly setting `autoRunAppAfterInstall`. The library's default
+auto-install-on-quit path is disabled because it does not request relaunch. Before installing,
+`src/update-relaunch.js` writes a one-use target-version handoff in user data (expires after 24 hours).
+The new version consumes it, or recognizes NSIS's `--updated`, and overrides `--hidden`. It shows and focuses
+the main window at both ready-to-show and did-finish-load to handle Windows launchers that suppress the first
+show request. Early second-instance requests are saved until the window exists. Ordinary hidden startup is
+unchanged. Installer errors clear the handoff and leave the app usable.
+
+`build/installer.nsh` additionally relaunches silent `--updated` installs without `--force-run`, covering older
+versions' quit-time installs. It uses the existing installer launch link and passes `--updated`; the normal
+forced-run path still handles itself. Unit tests cover quit/install flags and marker lifetime; Windows demo
+tests inspect the real window visibility for hidden startup, update flags, hidden launchers and saved handoffs:
+`node --test tests/update-relaunch.test.js tests/update-window.test.js`.
+
 Installed copies check `toer15/frameforge` on GitHub when they start, every 30 minutes, and when the window
 is opened. A newer release downloads in the background, is checked against its SHA-512 fingerprint (a
 tampered file is thrown away), and a popup offers **Update now** — a silent install that reopens the app in
