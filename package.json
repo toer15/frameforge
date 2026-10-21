@@ -1,0 +1,74 @@
+{
+  "name": "frameforge",
+  "productName": "FrameForge",
+  "version": "1.0.3",
+  "description": "FrameForge – automatic PC best gaming performance assistant for AMD and NVIDIA rigs",
+  "main": "main.js",
+  "author": "TwicyTom",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64 --publish never",
+    "release": "electron-builder --win nsis --x64 --publish always"
+  },
+  "dependencies": {
+    "@fontsource/orbitron": "^5.0.0",
+    "@fontsource/rajdhani": "^5.0.0",
+    "electron-updater": "^6.3.0",
+    "systeminformation": "^5.23.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.0"
+  },
+  "build": {
+    "appId": "com.twicytom.frameforge",
+    "productName": "FrameForge",
+    "copyright": "© 2026 TwicyTom",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**",
+      "renderer/**",
+      "assets/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true,
+      "requestedExecutionLevel": "requireAdministrator",
+      "artifactName": "FrameForge-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FrameForge",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "toer15",
+        "repo": "frameforge",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

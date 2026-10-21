@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' 'unsafe-inline'" />
+  <link rel="stylesheet" href="../node_modules/@fontsource/orbitron/700.css" />
+  <link rel="stylesheet" href="../node_modules/@fontsource/rajdhani/700.css" />
+  <style>
+    html, body { margin: 0; background: transparent; overflow: hidden; }
+    .ov {
+      display: inline-grid; gap: 2px; padding: 8px 12px 9px;
+      background: rgba(8, 12, 22, 0.72); border-left: 3px solid #ff6b2c;
+      font: 700 15px 'Rajdhani', sans-serif; color: #e6ecff;
+      text-shadow: 0 1px 2px #000;
+    }
+    .row { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+    .k { color: #8d9abd; width: 30px; }
+    .v { font: 700 17px 'Orbitron', sans-serif; font-variant-numeric: tabular-nums; }
+    .fps .v { font-size: 24px; color: #fff; }
+    .u { color: #8d9abd; font-size: 13px; }
+    .c { color: #3fd8ff; }
+    .warm { color: #ffb347; }
+    .hot { color: #ff4d6d; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="ov" id="ov">
+    <div class="row fps" id="rFps"><span class="k">FPS</span><span class="v" id="fps">—</span><span class="u" id="low"></span></div>
+    <div class="row" id="rCpu"><span class="k">CPU</span><span class="v c" id="cpu">—</span><span class="u" id="cpuL"></span></div>
+    <div class="row" id="rGpu"><span class="k">GPU</span><span class="v c" id="gpu">—</span><span class="u" id="gpuL"></span></div>
+  </div>
+  <script>
+    const el = (id) => document.getElementById(id);
+    const cls = (t) => (t >= 88 ? 'v hot' : t >= 78 ? 'v warm' : 'v c');
+    window.ff.onStats((s) => {
+      el('rFps').classList.toggle('hidden', !s.fpsEnabled);
+      el('rCpu').classList.toggle('hidden', !s.tempEnabled);
+      el('rGpu').classList.toggle('hidden', !s.tempEnabled);
+      el('fps').textContent = s.fps ? s.fps.fps : '—';
+      el('low').textContent = s.fps ? `1% ${s.fps.low1}` : '';
+      el('cpu').textContent = s.cpuTemp != null ? s.cpuTemp + '°' : '—';
+      el('gpu').textContent = s.gpuTemp != null ? s.gpuTemp + '°' : '—';
+      el('cpu').className = s.cpuTemp != null ? cls(s.cpuTemp) : 'v c';
+      el('gpu').className = s.gpuTemp != null ? cls(s.gpuTemp) : 'v c';
+      el('cpuL').textContent = s.cpuLoad != null ? s.cpuLoad + '%' : '';
+      el('gpuL').textContent = s.gpuLoad != null ? s.gpuLoad + '%' : '';
+    });
+  </script>
+</body>
+</html>

@@ -42,4 +42,6 @@ If something goes wrong, use **Undo all changes**, or Windows System Restore wit
 "FrameForge - before optimizing". Chris Titus tweaks are undone with his tool's own Undo button
 (Fix mode → Open Chris Titus tool).
 
+For developers: see [DEVELOPING.md](DEVELOPING.md).
+
 Found a bug? [Open an issue](https://github.com/toer15/frameforge/issues) or tell TwicyTom on Discord.

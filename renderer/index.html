@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:" />
+  <title>FrameForge</title>
+  <link rel="stylesheet" href="../node_modules/@fontsource/orbitron/700.css" />
+  <link rel="stylesheet" href="../node_modules/@fontsource/orbitron/900.css" />
+  <link rel="stylesheet" href="../node_modules/@fontsource/rajdhani/500.css" />
+  <link rel="stylesheet" href="../node_modules/@fontsource/rajdhani/600.css" />
+  <link rel="stylesheet" href="../node_modules/@fontsource/rajdhani/700.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M6 30 L20 6 L34 30 Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M13 30 L20 18 L27 30" fill="currentColor" opacity=".9"/>
+        <rect x="4" y="32" width="32" height="3" rx="1.5" fill="currentColor"/>
+      </svg>
+      <span class="brand-name">Frame<b>Forge</b></span>
+    </div>
+    <nav>
+      <button class="nav-item active" data-view="home">
+        <svg viewBox="0 0 24 24"><path d="M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        Home
+      </button>
+      <button class="nav-item" data-view="fix">
+        <svg viewBox="0 0 24 24"><path d="M21.7 18.6 13.4 10.3a5.5 5.5 0 0 0-7.1-7.1l3.5 3.5-2.8 2.8-3.5-3.5a5.5 5.5 0 0 0 7.1 7.1l8.3 8.3a1.4 1.4 0 0 0 2-1.9Z"/></svg>
+        Fix mode<span class="nav-badge hidden" id="fixBadge">0</span>
+      </button>
+      <button class="nav-item" data-view="chat">
+        <svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm4 6.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>
+        AI Chat
+      </button>
+      <button class="nav-item" data-view="settings">
+        <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.4 4.6-.1-2.2 2-1.6-2-3.4-2.4.8-1.9-1.1L15.5 3h-4l-.5 2.6-1.9 1.1-2.4-.8-2 3.4 2 1.6v2.2l-2 1.6 2 3.4 2.4-.8 1.9 1.1.5 2.6h4l.5-2.6 1.9-1.1 2.4.8 2-3.4z"/></svg>
+        Settings
+      </button>
+    </nav>
+    <div class="side-foot">
+      <button class="share-btn" id="shareBtn" title="Copy the download link to send to friends">
+        <svg viewBox="0 0 24 24"><path d="M18 16a3 3 0 0 0-2.4 1.2l-6.7-3.4a3 3 0 0 0 0-1.6l6.7-3.4A3 3 0 1 0 15 7l-6.7 3.4a3 3 0 1 0 0 3.2l6.7 3.4A3 3 0 1 0 18 16Z"/></svg>
+        Share FrameForge
+      </button>
+      <div class="side-status" id="sideStatus"><span class="dot"></span><span>Auto Mode off</span></div>
+      <div class="side-version" id="sideVersion">v1.0.0</div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="titlebar">
+      <div class="title-drag"></div>
+      <div id="adminBadge" class="admin-badge hidden">Limited mode — restart FrameForge and choose “Yes” on the admin prompt for full boosts</div>
+      <div class="win-ctrl">
+        <button id="wMin" aria-label="Minimize"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+        <button id="wMax" aria-label="Maximize"><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg></button>
+        <button id="wClose" class="close" aria-label="Close"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+      </div>
+    </header>
+
+    <!-- ================= HOME ================= -->
+    <section class="view" id="view-home">
+      <div class="forge panel" id="forge">
+        <div class="forge-text">
+          <h1>Automatic PC Best Gaming Performance Assistance</h1>
+          <p id="forgeStatus">Off. Your PC is running on stock Windows settings.</p>
+          <div class="run hidden" id="runBar">
+            <div class="run-top"><span class="run-now" id="runNow">Starting…</span><span class="run-count" id="runCount"></span></div>
+            <div class="progress"><i id="runFill"></i></div>
+            <div class="run-foot">
+              <span>Works in the background — keep using your PC.</span>
+              <button class="ghost small stop" id="stopBtn">Stop</button>
+            </div>
+          </div>
+        </div>
+        <button class="lever" id="lever" role="switch" aria-checked="false" aria-label="Automatic PC Best Gaming Performance Assistance">
+          <span class="lever-track"><span class="lever-heat"></span></span>
+          <span class="lever-knob"><span class="grip"></span><span class="grip"></span><span class="grip"></span></span>
+          <span class="lever-off">OFF</span><span class="lever-on">ON</span>
+        </button>
+        <div class="forge-glow"></div>
+      </div>
+
+      <div class="panel presets" id="presets">
+        <div class="panel-head">
+          <h2>Your goal</h2>
+          <span class="muted head-note" id="presetHint">Auto Mode tunes the whole PC for the goal you pick.</span>
+        </div>
+        <div class="carousel" id="carousel" tabindex="0" aria-roledescription="carousel" aria-label="Presets">
+          <button class="car-btn" id="carPrev" aria-label="Previous preset"><svg viewBox="0 0 24 24"><path d="M15 4 7 12l8 8"/></svg></button>
+          <div class="car-viewport"><div class="car-track" id="carTrack"></div></div>
+          <button class="car-btn" id="carNext" aria-label="Next preset"><svg viewBox="0 0 24 24"><path d="m9 4 8 8-8 8"/></svg></button>
+        </div>
+        <div class="car-dots" id="carDots" role="tablist"></div>
+      </div>
+
+      <div class="telemetry panel" id="telemetry">
+        <div class="tele fps">
+          <div class="tele-val"><span id="tFps">—</span><small>FPS</small></div>
+          <div class="tele-sub" id="tFpsSub">FPS counter is off</div>
+        </div>
+        <div class="tele">
+          <div class="tele-val"><span id="tCpuT">—</span><small>°C</small></div>
+          <div class="tele-sub">CPU temperature</div>
+          <div class="bar"><i id="bCpu"></i></div>
+          <div class="src" id="sCpu"></div>
+        </div>
+        <div class="tele">
+          <div class="tele-val"><span id="tGpuT">—</span><small>°C</small></div>
+          <div class="tele-sub">GPU temperature</div>
+          <div class="bar"><i id="bGpu"></i></div>
+          <div class="src" id="sGpu"></div>
+        </div>
+        <div class="tele load">
+          <div class="load-row"><span>CPU load</span><b id="tCpuL">—</b></div>
+          <div class="load-row"><span>GPU load</span><b id="tGpuL">—</b></div>
+          <button class="ghost small" id="overlayBtn">Show overlay</button>
+        </div>
+      </div>
+      <div class="hint hidden" id="teleHint"></div>
+
+      <div class="panel changes" id="changesPanel">
+        <div class="panel-head">
+          <h2>What FrameForge changed on your PC</h2>
+          <div class="head-actions">
+            <button class="ghost small" id="clearHistBtn">Clear history</button>
+            <button class="ghost small stop" id="undoAllBtn">Undo all changes</button>
+          </div>
+        </div>
+        <div class="notice hidden" id="restartNotice">
+          <span>Your PC restarted, so Auto Mode switched itself off. Everything listed here is still active on your PC.</span>
+          <button class="ghost small" id="noticeOk">Got it</button>
+        </div>
+        <p class="muted" id="changesEmpty">Nothing changed yet. When Auto Mode runs, every change is listed here with exactly what it was before and after — and it stays here after you restart your PC.</p>
+        <ul class="change-list" id="changeList"></ul>
+      </div>
+
+      <div class="grid">
+        <div class="panel rig">
+          <div class="panel-head">
+            <h2>Your rig</h2>
+            <div class="head-actions">
+              <button class="ghost small" id="rescanBtn">Scan again</button>
+              <button class="ghost small" id="manualBtn">Choose parts myself</button>
+            </div>
+          </div>
+          <dl id="rigList" class="rig-list">
+            <div class="skeleton">Scanning your PC…</div>
+          </dl>
+        </div>
+
+        <div class="panel log">
+          <div class="panel-head">
+            <h2>What FrameForge did</h2>
+            <button class="primary small hidden" id="restartBtn">Restart PC to finish</button>
+          </div>
+          <ol id="logList" class="log-list">
+            <li class="empty">Flip the switch above and every step shows up here as it happens.</li>
+          </ol>
+        </div>
+
+        <div class="panel insights">
+          <div class="panel-head"><h2>Found on your PC</h2></div>
+          <div id="insightList" class="insight-list"></div>
+        </div>
+
+        <div class="panel tune">
+          <div class="panel-head">
+            <h2 id="tuneTitle">Driver tune-up</h2>
+            <button class="ghost small" id="vendorBtn">Open driver app</button>
+          </div>
+          <p class="muted" id="tuneLead">These live inside your graphics driver app. Open it and set each one.</p>
+          <ul id="guideList" class="guide-list"></ul>
+          <div id="ocBlock" class="oc-block hidden">
+            <h3>Overclocking for this rig</h3>
+            <ol id="ocList" class="oc-list"></ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= FIX MODE ================= -->
+    <section class="view hidden" id="view-fix">
+      <div class="fix-head">
+        <div>
+          <h1 class="page-title">Fix mode</h1>
+          <p class="muted" id="fixLead">Everything that didn’t work or is holding this PC back — and the fastest way to fix each one.</p>
+        </div>
+        <button class="primary heat" id="fixAllBtn">Fix everything automatically</button>
+      </div>
+
+      <div class="fix-console hidden" id="fixConsole">
+        <div class="fc-top"><b id="fcTitle">Working…</b><span class="spin" id="fcSpin"></span></div>
+        <pre id="fcLog"></pre>
+      </div>
+
+      <h2 class="fix-sub">Problems on this PC</h2>
+      <div class="fix-list" id="fixList"></div>
+
+      <h2 class="fix-sub">Repair tools</h2>
+      <div class="repair-grid" id="repairGrid"></div>
+    </section>
+
+    <!-- ================= AI CHAT ================= -->
+    <section class="view hidden chat-view" id="view-chat">
+      <div class="chat-head">
+        <div>
+          <h1 class="page-title">FrameForge AI</h1>
+          <p class="muted" id="chatModelLine">Knows your PC, your preset and everything FrameForge changed.</p>
+        </div>
+        <button class="ghost small" id="newChatBtn">New chat</button>
+      </div>
+
+      <div class="panel chat-setup hidden" id="chatSetup">
+        <h2>Connect the AI</h2>
+        <p>FrameForge AI runs on <b>Claude</b> by Anthropic. It needs your own API key — you pay Anthropic per message (usually a few cents per conversation with the default model).</p>
+        <ol>
+          <li>Go to <a href="#" data-link="https://console.anthropic.com/settings/keys">console.anthropic.com</a>, sign in, and add a little credit under Billing.</li>
+          <li>Create an API key and paste it here. It’s stored encrypted on this PC only.</li>
+        </ol>
+        <div class="src-row">
+          <input id="chatKeyIn" class="text-in" type="password" placeholder="sk-ant-…" spellcheck="false" autocomplete="off" />
+          <button class="primary small" id="chatKeySave">Save key</button>
+        </div>
+        <p class="muted small-note">Want it free instead? Pick <b>Ollama</b> in Settings › AI chat — it runs a smaller AI on your own PC. It can answer questions but can’t take actions.</p>
+      </div>
+
+      <div class="chat-log" id="chatLog" aria-live="polite"></div>
+
+      <div class="chat-empty" id="chatEmpty">
+        <p>Ask anything about your PC or gaming performance.</p>
+        <div class="chips">
+          <button class="chip-btn" data-ask="What did FrameForge change on my PC? Tell me exactly, with before and after values.">What did you change on my PC?</button>
+          <button class="chip-btn" data-ask="Are my CPU and GPU temperatures OK right now?">Are my temperatures OK?</button>
+          <button class="chip-btn" data-ask="Which preset should I use for competitive shooters like Valorant, and why?">Best preset for Valorant?</button>
+          <button class="chip-btn" data-ask="Is my RAM running at full speed? If not, how do I fix it?">Is my RAM at full speed?</button>
+          <button class="chip-btn" data-ask="What is holding back FPS on my PC the most, and what can I do about it?">What’s holding my FPS back?</button>
+        </div>
+      </div>
+
+      <form class="composer" id="chatForm">
+        <textarea id="chatIn" rows="1" placeholder="Ask FrameForge AI…" aria-label="Message"></textarea>
+        <button class="primary" type="submit" id="chatSend">Send</button>
+        <button class="ghost stop hidden" type="button" id="chatStop">Stop</button>
+      </form>
+    </section>
+
+    <!-- ================= SETTINGS ================= -->
+    <section class="view hidden" id="view-settings">
+      <div class="settings-wrap">
+        <h1 class="page-title">Settings</h1>
+
+        <div class="automode panel" id="autoCard">
+          <div class="set-text">
+            <h2>Auto Mode</h2>
+            <p id="autoCardText">Off. Turn it on and FrameForge tunes your whole PC for gaming by itself.</p>
+          </div>
+          <button class="ghost small stop hidden" id="stopBtn2">Stop</button>
+          <label class="switch big heat"><input type="checkbox" id="autoToggle" aria-label="Auto Mode" /><span></span></label>
+        </div>
+
+        <section class="set-group">
+          <div class="set-head">
+            <h2>What Auto Mode does</h2>
+            <button class="ghost small" id="resetProfileBtn">Reset to best for my PC</button>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Tailor boosts to my PC</h3>
+              <p>FrameForge reads your hardware and switches on only the boosts that help this exact system. Changing a boost below by hand overrides it.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="smartProfile" /><span></span></label>
+          </div>
+          <div id="tweakRows"></div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>Chris Titus Tech’s Windows Utility</h2></div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Preset Auto Mode runs</h3>
+              <p><b>Minimal</b>: telemetry and background services only. <b>Standard</b>: Chris Titus’s recommended set — also turns off activity history and location services, and runs Disk Cleanup. <b>Advanced</b>: also removes OneDrive, Widgets and Windows AI features and brings back the old right-click menu — only if you’re sure.</p>
+            </div>
+            <select data-key="cttPreset" class="select">
+              <option value="Minimal">Minimal</option>
+              <option value="Standard">Standard</option>
+              <option value="Advanced">Advanced</option>
+            </select>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Open the tool</h3>
+              <p>Opens winutil’s own window to install apps or pick extra tweaks by hand, or to undo its tweaks.</p>
+            </div>
+            <button class="ghost small" id="openCttBtn">Open Chris Titus tool</button>
+          </div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>Overclocking</h2></div>
+          <div class="set-row warn-row">
+            <div class="set-text">
+              <h3>Overclock automatically</h3>
+              <p>Uses the safe limits built into your graphics card. On NVIDIA, FrameForge raises the power limit to the card’s maximum by itself; for clock speeds it opens your vendor’s own auto-tuner, which stress-tests your chip. Higher temperatures and power draw. Undone when you turn Auto Mode off.</p>
+            </div>
+            <label class="switch heat"><input type="checkbox" data-key="overclock" id="ocToggle" /><span></span></label>
+          </div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>Downloads</h2></div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Download performance tools</h3>
+              <p>Lets Auto Mode download free tools it needs: PresentMon by Intel (FPS counter), LibreHardwareMonitor (temperatures), and your driver app if it’s missing.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="autoDownloadTools" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Open my driver app after boosting</h3>
+              <p>Opens AMD Software, the NVIDIA app or Intel Graphics Software so you can finish the driver tune-up.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="openVendorApp" /><span></span></label>
+          </div>
+          <div class="tool-rows" id="toolRows"></div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>Overlay</h2></div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>FPS counter</h3>
+              <p>Shows your in-game FPS and 1% lows on top of games running in borderless or windowed mode.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="fpsCounter" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Temperature monitor</h3>
+              <p>Shows CPU and GPU temperature on the overlay and on the Home tab.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="tempMonitor" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>Overlay position</h3><p>Which corner of the screen the overlay sits in.</p></div>
+            <select data-key="overlayPosition" class="select">
+              <option value="top-left">Top left</option>
+              <option value="top-right">Top right</option>
+              <option value="bottom-left">Bottom left</option>
+              <option value="bottom-right">Bottom right</option>
+            </select>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>Show or hide overlay shortcut</h3><p>Works while you’re in a game.</p></div>
+            <select data-key="overlayHotkey" class="select">
+              <option>Ctrl+Shift+F</option>
+              <option>Ctrl+Shift+O</option>
+              <option>Alt+F10</option>
+              <option>Alt+Shift+F12</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>AI chat</h2></div>
+          <div class="set-row">
+            <div class="set-text"><h3>AI provider</h3><p><b>Claude</b>: smartest, can take actions in FrameForge with your OK, needs an API key (pay per use). <b>Ollama</b>: free, runs on your PC, answers only.</p></div>
+            <select data-key="aiProvider" class="select">
+              <option value="claude">Claude (Anthropic)</option>
+              <option value="ollama">Ollama (free, local)</option>
+            </select>
+          </div>
+          <div class="set-row" id="rowAiModel">
+            <div class="set-text"><h3>Claude model</h3><p>Opus is the smartest. Haiku is the fastest and cheapest.</p></div>
+            <select data-key="aiModel" class="select" id="aiModelSel"></select>
+          </div>
+          <div class="set-row" id="rowAiKey">
+            <div class="set-text">
+              <h3>Claude API key</h3>
+              <p id="aiKeyLine">Not set.</p>
+              <div class="src-row">
+                <input id="aiKeyIn" class="text-in" type="password" placeholder="sk-ant-…" spellcheck="false" autocomplete="off" />
+                <button class="ghost small" id="aiKeySave">Save</button>
+                <button class="ghost small stop" id="aiKeyRemove">Remove</button>
+              </div>
+            </div>
+          </div>
+          <div class="set-row hidden" id="rowOllama">
+            <div class="set-text"><h3>Ollama model</h3><p>Install Ollama from ollama.com, then run <b>ollama pull llama3.1</b> (or type another model you have).</p></div>
+            <input data-key="ollamaModel" class="text-in narrow" spellcheck="false" />
+          </div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>Updates</h2></div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Check for updates automatically</h3>
+              <p>When a new version is out, a popup lets you update right inside the app.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="autoCheckUpdates" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Download updates in the background</h3>
+              <p>New versions download by themselves (only the parts that changed). The popup then just asks to restart FrameForge — about 10 seconds, and it reopens by itself.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="backgroundDownloadUpdates" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Where updates come from</h3>
+              <p>Your public GitHub repo (<b>toer15/frameforge</b> by default). Each new release you publish there shows up as an update popup for everyone.</p>
+              <div class="src-row">
+                <input id="updSource" class="text-in" placeholder="toer15/frameforge" spellcheck="false" />
+                <button class="ghost small" id="updSourceSave">Save</button>
+              </div>
+              <p class="why" id="updSourceLine"></p>
+            </div>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3 id="verLine">FrameForge 1.0.0</h3>
+              <p id="updLine">Not checked yet.</p>
+            </div>
+            <button class="primary small" id="checkUpdBtn">Check for updates</button>
+          </div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>App</h2></div>
+          <div class="set-row">
+            <div class="set-text"><h3>Start with Windows</h3><p>Starts quietly in the tray so the overlay and boosts are ready when you game.</p></div>
+            <label class="switch"><input type="checkbox" data-key="startWithWindows" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>Keep running in the tray when closed</h3><p>Closing the window keeps the overlay running.</p></div>
+            <label class="switch"><input type="checkbox" data-key="minimizeToTray" /><span></span></label>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <!-- Choose parts dialog -->
+  <div class="modal hidden" id="manualModal" role="dialog" aria-modal="true" aria-labelledby="manualTitle">
+    <div class="modal-card">
+      <h2 id="manualTitle">Choose your parts</h2>
+      <p class="muted">FrameForge found these automatically. Change them if it got something wrong.</p>
+      <label class="field">Graphics card brand
+        <div class="seg" id="vendorSeg">
+          <button data-v="nvidia">NVIDIA</button><button data-v="amd">AMD</button><button data-v="intel">Intel</button>
+        </div>
+      </label>
+      <label class="field">Graphics card
+        <input id="mGpu" list="gpuList" placeholder="e.g. Radeon RX 7800 XT" />
+      </label>
+      <label class="field">Processor
+        <input id="mCpu" list="cpuList" placeholder="e.g. Ryzen 7 7800X3D" />
+      </label>
+      <datalist id="gpuList"></datalist>
+      <datalist id="cpuList"></datalist>
+      <div class="modal-actions">
+        <button class="ghost" id="mAuto">Use what was detected</button>
+        <span class="spacer"></span>
+        <button class="ghost" id="mCancel">Cancel</button>
+        <button class="primary" id="mSave">Save parts</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Update popup -->
+  <div class="modal hidden" id="updModal" role="dialog" aria-modal="true" aria-labelledby="updTitle">
+    <div class="modal-card update">
+      <div class="upd-badge" id="updBadge">New</div>
+      <h2 id="updTitle">FrameForge update ready</h2>
+      <p class="muted" id="updText">A new version is available.</p>
+      <pre class="notes hidden" id="updNotes"></pre>
+      <div class="progress hidden" id="updProg"><i></i></div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="ghost" id="updLater">Later</button>
+        <button class="primary" id="updGo">Update now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overclock confirm -->
+  <div class="modal hidden" id="ocModal" role="dialog" aria-modal="true" aria-labelledby="ocTitle">
+    <div class="modal-card">
+      <h2 id="ocTitle">Turn on overclocking?</h2>
+      <p class="muted">Your parts will run hotter and use more power. FrameForge only uses limits your graphics card allows, and your vendor’s auto-tuner tests stability before it keeps a clock. If a game crashes, turn this off and everything goes back to stock.</p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="ghost" id="ocNo">Keep it off</button>
+        <button class="primary heat" id="ocYes">Turn on overclocking</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Turn off: keep or undo -->
+  <div class="modal hidden" id="offModal" role="dialog" aria-modal="true" aria-labelledby="offTitle">
+    <div class="modal-card">
+      <h2 id="offTitle">Turn off Auto Mode?</h2>
+      <p class="muted" id="offText">FrameForge can leave your PC tuned or put everything back exactly how it was.</p>
+      <div class="modal-actions">
+        <button class="ghost" id="offCancel">Cancel</button>
+        <span class="spacer"></span>
+        <button class="ghost stop" id="offUndo">Undo everything</button>
+        <button class="primary" id="offKeep">Keep my changes</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
