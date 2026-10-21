@@ -1,5 +1,5 @@
 // FrameForge — main process
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, screen, nativeImage, dialog, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, screen, nativeImage, dialog, clipboard, Notification } = require('electron');
 const path = require('path');
 
 const { run, ps, isAdmin, IS_WIN, DEMO } = require('./src/util');
@@ -69,8 +69,9 @@ async function boot() {
 
   createMainWindow(process.argv.includes('--hidden'));
   createTray();
-  updates = updater.setup({ send, getSettings: settings.get });
+  updates = updater.setup({ send, getSettings: settings.get, onEvent: onUpdateEvent });
 
+  reclassifyOldCttProblem();
   rig = await hardware.scan(settings.get().manualHardware).catch(() => null);
   applyProfileIfAuto();
   send('rig', rig);
@@ -91,6 +92,30 @@ async function boot() {
 /** When Windows last started (to the minute). */
 function bootTime() {
   return Math.round((Date.now() - os.uptime() * 1000) / 60000) * 60000;
+}
+
+/**
+ * Versions before 1.0.4 called the Chris Titus step failed when winutil only reported items that don't exist
+ * on this PC (like the 'wermgr' service). Those runs did apply the preset, so move them to the changes list.
+ */
+function reclassifyOldCttProblem() {
+  const p = problems.all().ctt_tweaks;
+  if (!p) return;
+  const errs = (p.details || []).filter((d) => d.startsWith('Error: '));
+  const real = errs.filter((d) => !tools.HARMLESS.test(d));
+  const timedOut = (p.details || []).some((d) => /TIMED OUT/i.test(d)) || /took too long|timed out/i.test(p.message || '');
+  if (!errs.length || real.length || timedOut) return;
+  const preset = ((p.message || '').match(/the (\w+) preset/) || [])[1] || settings.get().cttPreset;
+  changes.put('ctt_tweaks', {
+    name: p.name,
+    summary: `Applied Chris Titus’s ${preset} preset. ${errs.length} item${errs.length === 1 ? ' was' : 's were'} skipped because ${errs.length === 1 ? 'it isn’t' : 'they aren’t'} on your version of Windows — that’s normal.`,
+    details: (p.details || []).map((d) => (d.startsWith('Error: ') ? `Skipped (not on this PC — normal): ${d.slice(7).replace(/^\[[^\]]+\]\s*/, '').replace(/^Non-terminating error\s*:\s*/i, '')}` : d)).filter((d) => !/^Tweaks: \d+ error/.test(d)),
+    at: p.at || Date.now(),
+    preset: settings.get().preset,
+    undoable: false,
+    reboot: false,
+  });
+  problems.remove('ctt_tweaks');
 }
 
 // ---------- Windows ----------
@@ -115,6 +140,9 @@ function createMainWindow(hidden) {
       mainWin.hide();
     }
   });
+  // Opening the window checks for updates too (at most every 10 minutes).
+  mainWin.on('show', () => updates && updates.maybeCheck && updates.maybeCheck());
+  mainWin.on('focus', () => updates && updates.maybeCheck && updates.maybeCheck());
   mainWin.on('maximize', () => send('window:state', { maximized: true }));
   mainWin.on('unmaximize', () => send('window:state', { maximized: false }));
 }
@@ -137,14 +165,56 @@ function createTray() {
   }
 }
 
+// ---------- Updates: tell the user even when FrameForge is hidden in the tray ----------
+const notifiedUpdates = new Set();
+function windowHidden() {
+  return !mainWin || mainWin.isDestroyed() || !mainWin.isVisible() || mainWin.isMinimized();
+}
+function updateNow() {
+  if (!updates) return;
+  if (updates.state.status === 'ready') {
+    quitting = true;
+    updates.install();
+  } else {
+    showMain();
+    updates.download();
+  }
+}
+function onUpdateEvent(st) {
+  rebuildTrayMenu();
+  // With background downloads on, 'available' is followed by 'ready' — only announce once it's ready.
+  const announce = st.status === 'ready' || (st.status === 'available' && !settings.get().backgroundDownloadUpdates);
+  if (!announce || !st.version) return;
+  const key = `${st.version}:${st.status}`;
+  if (notifiedUpdates.has(key)) return;
+  notifiedUpdates.add(key);
+  if (windowHidden() && Notification.isSupported()) {
+    const n = new Notification({
+      title: st.status === 'ready' ? `FrameForge ${st.version} is ready to install` : `FrameForge ${st.version} is out`,
+      body: st.status === 'ready' ? 'Click to open FrameForge and update — it takes about 10 seconds.' : 'Click to open FrameForge and get it.',
+      icon: ICON,
+    });
+    n.on('click', showMain);
+    n.show();
+  }
+  if (tray) tray.setToolTip(st.status === 'ready' ? `FrameForge — update ${st.version} ready` : 'FrameForge');
+}
+
 function rebuildTrayMenu() {
   if (!tray) return;
   const s = settings.get();
+  const u = updates ? updates.state : {};
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open FrameForge', click: showMain },
       busy ? { label: 'Stop Auto Mode', click: stopAuto } : { label: s.autoMode ? 'Auto Mode: on' : 'Auto Mode: off', enabled: false },
       { label: 'Show/hide overlay', click: toggleOverlay },
+      { type: 'separator' },
+      u.status === 'ready'
+        ? { label: `Update to ${u.version} now`, click: updateNow }
+        : u.status === 'downloading'
+          ? { label: `Downloading update… ${u.progress || 0}%`, enabled: false }
+          : { label: 'Check for updates', click: () => updates && updates.check() },
       { type: 'separator' },
       {
         label: 'Quit',
@@ -239,6 +309,7 @@ function applyMonitoring() {
 let demoFps = 142;
 let lastStats = null;
 let lastRunLog = [];
+let runQuiet = false;
 function telemetryTick() {
   const s = settings.get();
   const t = sensors.read();
@@ -294,7 +365,7 @@ function step(entry) {
     lastRunLog = lastRunLog.filter((e) => e.id !== entry.id).concat({ id: entry.id, name: entry.name, status: entry.status, message: entry.message || '' });
   }
   if (runState && entry.status === 'running' && entry.id !== 'stop') {
-    runState.current = entry.name;
+    runState.current = entry.message && entry.id === 'ctt_tweaks' && /^Tweak \d/.test(entry.message) ? `${entry.name} — ${entry.message}` : entry.name;
     sendProgress();
   }
 }
@@ -305,9 +376,25 @@ function checkStop() {
 
 function tweakPhase(t) {
   return async () => {
-    step({ id: t.id, name: t.name, status: 'running', message: t.id === 'ctt_tweaks' ? `Running the ${settings.get().cttPreset} preset in the background — this can take a few minutes and finishes even if you press Stop.` : '' });
-    const r = await optimizer.runOne(t, { admin });
+    const isCtt = t.id === 'ctt_tweaks';
+    step({ id: t.id, name: t.name, status: 'running', message: isCtt ? `Downloading the latest Chris Titus tool and running his ${settings.get().cttPreset} preset — takes a few minutes, and finishes even if you press Stop.` : '' });
+    let lastLive = 0;
+    const progress = (line) => {
+      // Show what winutil is doing right now (at most a few updates per second).
+      if (Date.now() - lastLive < 250) return;
+      lastLive = Date.now();
+      step({ id: t.id, name: t.name, status: 'running', message: line });
+    };
+    const r = await optimizer.runOne(t, { admin, progress });
     step({ id: t.id, name: t.name, status: r.status, message: r.message });
+    if (isCtt && r.status !== 'error' && settings.get().cttOpenAfter && !runQuiet) {
+      try {
+        await tools.openWinutil();
+        step({ id: 'ctt_open', name: 'Opened Chris Titus’s tool', status: 'done', message: 'Its window is open so you can see and check the tweaks. Close it when you’re done.' });
+      } catch (e) {
+        step({ id: 'ctt_open', name: 'Couldn’t open Chris Titus’s tool', status: 'warn', message: String(e.message || e).slice(0, 160) });
+      }
+    }
     if (r.status === 'done') problems.remove(t.id);
     else problems.put(t.id, { id: t.id, name: t.name, status: r.status, message: r.message, details: r.details, fix: r.fix, adminSkipped: r.adminSkipped, at: Date.now() });
     send('fix:changed', true);
@@ -463,6 +550,7 @@ async function runAuto(on, { quiet = false } = {}) {
   send('auto:busy', { on, quiet });
   const queue = [];
   lastRunLog = [];
+  runQuiet = quiet;
   if (on) onPhases(quiet, queue);
   else offPhases(queue);
   runState = { on, done: 0, total: queue.length + (on ? 8 : 0), current: '' }; // estimate until the plan is known
@@ -959,10 +1047,7 @@ ipcMain.handle('overlay:toggle', () => {
 });
 ipcMain.handle('update:check', () => updates && updates.check());
 ipcMain.handle('update:download', () => updates && updates.download());
-ipcMain.handle('update:install', () => {
-  quitting = true;
-  updates && updates.install();
-});
+ipcMain.handle('update:install', () => updateNow());
 ipcMain.handle('update:state', () => (updates ? updates.state : null));
 
 /** The one link friends need: GitHub's "latest release" page always shows the newest installer. */

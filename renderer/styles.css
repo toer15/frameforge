@@ -327,7 +327,13 @@ button:disabled { opacity: 0.5; cursor: default; }
 .seg button + button { border-left: 0; }
 .seg button.on { background: rgba(63, 216, 255, 0.15); border-color: var(--coolant); color: var(--coolant); }
 .update .upd-badge { display: inline-block; font: 700 13px var(--display); color: #1a0700; background: var(--heat); padding: 3px 10px; margin-bottom: 12px; }
-.notes { white-space: pre-wrap; max-height: 180px; overflow: auto; background: #0d1426; border: 1px solid var(--line); padding: 10px 12px; font: 500 15px var(--body); color: #c6d0ec; margin: 0; }
+.notes { max-height: 220px; overflow: auto; background: #0d1426; border: 1px solid var(--line); padding: 10px 14px; font: 500 15px/1.45 var(--body); color: #c6d0ec; margin: 0; user-select: text; }
+.notes p { margin: 0 0 6px; }
+.notes ul, .notes ol { margin: 2px 0 6px; padding-left: 20px; }
+.notes p:last-child, .notes ul:last-child { margin-bottom: 0; }
+.upd-later-note { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+.side-update { -webkit-app-region: no-drag; margin-top: 2px; padding: 6px 10px; border: 1px solid var(--heat); background: rgba(255, 107, 44, 0.12); color: var(--heat-hot); font-weight: 700; font-size: 14px; text-align: left; }
+.side-update:hover { background: rgba(255, 107, 44, 0.22); }
 .progress { margin-top: 14px; height: 8px; background: #1b2540; overflow: hidden; }
 .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--heat), var(--heat-hot)); transition: width 0.3s; }
 

@@ -47,11 +47,14 @@ function friendlyError(e, feed) {
   return 'Couldn’t check for updates: ' + msg.split('\n')[0].slice(0, 140);
 }
 
-function setup({ send, getSettings }) {
+function setup({ send, getSettings, onEvent = () => {} }) {
   const state = { status: 'idle', version: null, progress: 0, error: null, source: null, current: app.getVersion() };
   const push = (patch) => {
     Object.assign(state, patch);
     send('update:event', { ...state });
+    try {
+      onEvent({ ...state });
+    } catch {}
   };
 
   if (!electronUpdater || (!app.isPackaged && !TEST)) {
@@ -61,6 +64,7 @@ function setup({ send, getSettings }) {
         push({ status: 'dev', error: 'Updates work in the installed version of FrameForge.' });
       },
       async download() {},
+      maybeCheck() {},
       install() {},
       configure() {
         return state;
@@ -69,7 +73,11 @@ function setup({ send, getSettings }) {
   }
 
   const au = TEST ? new electronUpdater.NsisUpdater() : electronUpdater.autoUpdater;
-  if (TEST) au.forceDevUpdateConfig = true;
+  if (TEST) {
+    au.forceDevUpdateConfig = true;
+    // Test machines may not run Windows: read the Windows update files anyway.
+    if (process.env.FRAMEFORGE_UPDATER_TEST_PLATFORM) au._testOnlyOptions = { platform: process.env.FRAMEFORGE_UPDATER_TEST_PLATFORM, isUseDifferentialDownload: false };
+  }
   au.autoDownload = false;
   au.autoInstallOnAppQuit = true;
   au.allowDowngrade = false;
@@ -94,12 +102,13 @@ function setup({ send, getSettings }) {
   au.on('update-available', (info) => {
     const n = info.releaseNotes;
     const notes = typeof n === 'string' ? n : Array.isArray(n) ? n.map((x) => x.note).join('\n') : '';
-    push({ status: 'available', version: info.version, notes: notes.replace(/<\/(p|li|h\d)>/gi, '\n').replace(/<li>/gi, '• ').replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim(), checkedAt: Date.now() });
+    const clean = notes.replace(/\r\n?/g, '\n').replace(/<\/(p|li|h\d)>/gi, '\n').replace(/<li>/gi, '- ').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\n{3,}/g, '\n\n').trim();
+    push({ status: 'available', version: info.version, notes: clean, checkedAt: Date.now() });
     if (getSettings().backgroundDownloadUpdates) download();
   });
   au.on('download-progress', (p) => push({ status: 'downloading', progress: Math.round(p.percent) }));
   au.on('update-downloaded', (info) => push({ status: 'ready', version: info.version, progress: 100 }));
-  au.on('error', (e) => push({ status: 'error', error: friendlyError(e, feed) }));
+  au.on('error', (e) => push({ status: 'error', error: friendlyError(e, feed), detail: String((e && e.message) || e).slice(0, 600) }));
 
   let checking = false;
   async function check() {
@@ -126,14 +135,24 @@ function setup({ send, getSettings }) {
   }
 
   configure();
-  // Check shortly after start and then every 2 hours, if the user allows it.
-  setTimeout(() => getSettings().autoCheckUpdates && check(), 6000);
-  setInterval(() => getSettings().autoCheckUpdates && check(), 2 * 60 * 60 * 1000);
+  // Check 5 seconds after start, then every 30 minutes, and whenever the window is opened
+  // (at most once every 10 minutes), if the user allows it.
+  let lastAuto = 0;
+  const autoCheck = (minGapMs) => {
+    if (!getSettings().autoCheckUpdates) return;
+    if (Date.now() - lastAuto < minGapMs) return;
+    lastAuto = Date.now();
+    check();
+  };
+  setTimeout(() => autoCheck(0), 5000);
+  setInterval(() => autoCheck(0), 30 * 60 * 1000);
 
   return {
     state,
     check,
     download,
+    /** Called when the window is opened or focused. */
+    maybeCheck: () => autoCheck(10 * 60 * 1000),
     // Silent in-place install: no installer window, FrameForge reopens by itself on the new version.
     install: () => au.quitAndInstall(true, true),
     configure,

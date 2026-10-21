@@ -111,25 +111,19 @@ Chris Titus tool — and every action that changes the PC shows an **Allow / Don
 
 ## In-app updates
 
-Every copy of FrameForge checks your GitHub repo's Releases. A newer release → popup → download →
-SHA-512 fingerprint check (a tampered file is thrown away) → "Restart and update".
+Installed copies check `toer15/frameforge` on GitHub when they start, every 30 minutes, and when the window
+is opened. A newer release downloads in the background, is checked against its SHA-512 fingerprint (a
+tampered file is thrown away), and a popup offers **Update now** — a silent install that reopens the app in
+about 10 seconds. When the app is hidden in the tray, a Windows notification appears instead. If the user
+picks **Later**, the update installs when FrameForge quits.
 
-**One-time setup**
-1. Create a **public** GitHub repo, e.g. `frameforge`, and push this folder to it.
-2. In FrameForge: Settings › Updates › *Where updates come from* → type `yourname/frameforge` → Save.
-   (Copies built by the GitHub workflow below already point at your repo — no setting needed.)
+**Publishing a new version**
+1. Raise `"version"` in `package.json` (e.g. `1.0.5`).
+2. Write what's new in `release-notes.md` — it's shown in the update popup and on the release page.
+3. Push to `main`.
 
-**Every new version (automatic, recommended)**
-```
-git tag v1.1.0
-git push origin v1.1.0
-```
-`.github/workflows/release.yml` builds the installer on a real Windows machine and publishes the release
-with `latest.yml` attached. Then edit the release on GitHub and write what's new — that text shows in
-the popup. Everyone gets the popup within 2 hours, or right away with *Check for updates*.
-
-**Or by hand**: bump `"version"` in package.json, run `npm run dist`, create a GitHub release tagged
-`v1.1.0` and upload all three files from `dist/`: the `.exe`, the `.exe.blockmap` and `latest.yml`.
+`.github/workflows/release.yml` sees the new version, builds the installer on GitHub's Windows servers and
+publishes the release with `latest.yml` attached. Every installed copy then picks it up by itself.
 
 ## Develop
 
@@ -152,5 +146,5 @@ Set `FRAMEFORGE_DEMO=1` on Windows to try the UI without touching the system.
 - `src/tools.js` – downloads PresentMon and LibreHardwareMonitor from their GitHub releases
 - `src/updater.js` – update checks, download, fingerprint check, popup events
 - `src/games.js` – finds installed Steam and Epic games
-- `.github/workflows/release.yml` – builds and publishes a release when you push a version tag
+- `.github/workflows/release.yml` – builds and publishes a release when the version in package.json changes
 - `renderer/` – the UI

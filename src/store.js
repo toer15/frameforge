@@ -26,6 +26,7 @@ const DEFAULT_SETTINGS = {
   lastBoot: null, // when Windows last started, as of the last Auto Mode run
   restartedNotice: false,
   cttPreset: 'Standard', // Minimal | Standard | Advanced
+  cttOpenAfter: true, // open winutil's own window after Auto Mode runs it
   smartProfile: true, // pick tweaks to fit this specific PC
   tweaksCustomized: false, // true once the user changes a tweak toggle by hand
   overclock: false,

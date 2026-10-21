@@ -46,6 +46,7 @@
       </button>
       <div class="side-status" id="sideStatus"><span class="dot"></span><span>Auto Mode off</span></div>
       <div class="side-version" id="sideVersion">v1.0.0</div>
+      <button class="side-update hidden" id="sideUpdate">Update ready — install</button>
     </div>
   </aside>
 
@@ -291,6 +292,13 @@
           </div>
           <div class="set-row">
             <div class="set-text">
+              <h3>Open the Chris Titus tool after Auto Mode</h3>
+              <p>When Auto Mode has run the preset, open Chris Titus’s own window so you can see and check the tweaks.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="cttOpenAfter" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
               <h3>Open the tool</h3>
               <p>Opens winutil’s own window to install apps or pick extra tweaks by hand, or to undo its tweaks.</p>
             </div>
@@ -399,7 +407,7 @@
           <div class="set-row">
             <div class="set-text">
               <h3>Check for updates automatically</h3>
-              <p>When a new version is out, a popup lets you update right inside the app.</p>
+              <p>Checks when FrameForge starts, every 30 minutes, and when you open the window. A new version downloads by itself and a popup lets you install it in about 10 seconds. If FrameForge is in the tray, you get a Windows notification instead.</p>
             </div>
             <label class="switch"><input type="checkbox" data-key="autoCheckUpdates" /><span></span></label>
           </div>
@@ -478,7 +486,7 @@
       <div class="upd-badge" id="updBadge">New</div>
       <h2 id="updTitle">FrameForge update ready</h2>
       <p class="muted" id="updText">A new version is available.</p>
-      <pre class="notes hidden" id="updNotes"></pre>
+      <div class="notes md hidden" id="updNotes"></div>
       <div class="progress hidden" id="updProg"><i></i></div>
       <div class="modal-actions">
         <span class="spacer"></span>

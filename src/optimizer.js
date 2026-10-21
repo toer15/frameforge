@@ -298,26 +298,34 @@ TWEAKS.push({
     const p = settings.get().cttPreset || 'Standard';
     return (CTT_PRESETS[p] || []).map((i) => `winutil ${p}: ${CTT_NAMES[i] || i}`);
   },
-  async apply() {
+  async apply(ctx = {}) {
     const tools = require('./tools');
     const preset = settings.get().cttPreset || 'Standard';
     // FrameForge already made a restore point, and Windows allows only one per 24 hours, so winutil's
     // own restore-point step would fail — leave it out.
     const ids = (CTT_PRESETS[preset] || []).filter((i) => i !== 'WPFTweaksRestorePoint');
-    const r = await tools.runWinutil(ids);
+    const r = await tools.runWinutil(ids, (line) => ctx.progress && ctx.progress(line), CTT_NAMES);
     const names = ids.map((i) => `winutil ${preset}: ${CTT_NAMES[i] || i}`);
-    const problems = [...r.errors.map((e) => `Error: ${e}`), ...r.steps.filter((st) => st.state !== 'ok').map((st) => `${st.name}: ${st.state}`)];
-    const extra = [...problems, ...(r.logPath ? [`Full winutil log: ${r.logPath}`] : [])];
-    if (r.ok) {
-      return { ok: true, message: `Applied Chris Titus’s ${preset} preset (${ids.length} tweaks)${r.warnings.length ? ` with ${r.warnings.length} warning${r.warnings.length === 1 ? '' : 's'}` : ''}.`, details: [...names, ...r.warnings.map((w) => `Warning: ${w}`), ...(r.logPath ? [`Full winutil log: ${r.logPath}`] : [])] };
+    const timedOut = r.steps.some((st) => /TIMED OUT/i.test(st.state));
+    const skipped = r.harmless.map((e) => `Skipped (not on this PC — normal): ${e.replace(/^\[[^\]]+\]\s*/, '').replace(/^Non-terminating error\s*:\s*/i, '')}`);
+    const log = r.logPath ? [`Full winutil log: ${r.logPath}`] : [];
+    // Exit code 1 only because of "not found" items still means the preset was applied.
+    const worked = r.ok || (r.code === 1 && r.errors.length === 0 && !timedOut && !r.fatal);
+    if (worked) {
+      const n = r.harmless.length;
+      return {
+        ok: true,
+        message: `Applied Chris Titus’s ${preset} preset (${ids.length} tweaks).${n ? ` ${n} item${n === 1 ? ' was' : 's were'} skipped because ${n === 1 ? 'it isn’t' : 'they aren’t'} on your version of Windows — that’s normal.` : ''}`,
+        details: [...names, ...skipped, ...r.warnings.map((w) => `Warning: ${w}`), ...log],
+      };
     }
-    if (r.code === 2) return { ok: false, warn: true, message: 'winutil said nothing was selected — this version may have renamed its tweaks. Try again after the next FrameForge update.', details: extra, fix: 'ctt' };
-    const first = r.fatal || r.errors[0] || (r.steps.find((st) => st.state !== 'ok') || {}).name;
+    if (r.code === 2) return { ok: false, warn: true, message: 'winutil said nothing was selected — this version may have renamed its tweaks. Try again after the next FrameForge update.', details: [...skipped, ...log], fix: 'ctt' };
+    const first = r.fatal || (timedOut ? 'a step took too long and was stopped' : r.errors[0]);
     return {
       ok: false,
       warn: true,
-      message: `Most of the ${preset} preset ran, but winutil reported a problem${first ? `: ${String(first).slice(0, 160)}` : ''}. Open Fix mode to retry it or open the Chris Titus tool.`,
-      details: extra.length ? extra : r.lines.slice(-8),
+      message: `Most of the ${preset} preset ran, but winutil reported a real problem${first ? `: ${String(first).replace(/^\[[^\]]+\]\s*/, '').replace(/^Non-terminating error\s*:\s*/i, '').replace(/\.+$/, '').slice(0, 160)}` : ''}. Try again, or open the Chris Titus tool from Fix mode.`,
+      details: [...r.errors.map((e) => `Error: ${e}`), ...r.steps.filter((st) => st.state !== 'ok').map((st) => `${st.name}: ${st.state}`), ...skipped, ...log],
       fix: 'ctt',
     };
   },
@@ -547,7 +555,7 @@ function planned({ quiet = false, rig }) {
 }
 
 /** Apply one tweak. Returns { status, message }. */
-async function runOne(t, { admin }) {
+async function runOne(t, { admin, progress } = {}) {
   let res;
   if (t.admin && !admin) {
     res = { ok: false, warn: true, message: 'Skipped — needs FrameForge to run as administrator.' };
@@ -556,13 +564,15 @@ async function runOne(t, { admin }) {
     runOne.failedOnce = true;
     await sleep(800);
     res = { ok: false, warn: true, fix: 'ctt', message: 'Most of the Standard preset ran, but winutil reported a problem: [Tweaks] WPFTweaksServices: timed out after 300 s. Open Fix mode to retry it or open the Chris Titus tool.', details: ['Error: [Tweaks] WPFTweaksServices: timed out after 300 s', 'Tweaks: 1 error(s)', 'Full winutil log: C:\\Users\\Tommy\\AppData\\Local\\winutil\\logs\\winutil_2026-10-20_19-01-40.log'] };
+  } else if (DEMO && t.id === 'ctt_tweaks') {
+    res = await t.apply({ progress });
   } else if (DEMO) {
     await sleep(450 + Math.random() * 500);
     res = { ok: true, message: t.demoMessage || (t.id === 'temp_cleanup' ? 'Freed 1.4 GB.' : 'Done.'), details: t.demoDetails || (t.values ? regDetails(t.values) : []) };
     if (!t.oneShot) backup.put(t.id, { demo: true });
   } else {
     try {
-      res = await t.apply();
+      res = await t.apply({ progress });
     } catch (e) {
       res = { ok: false, message: String(e.message || e).slice(0, 200) };
     }

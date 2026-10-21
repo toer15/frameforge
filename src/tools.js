@@ -143,22 +143,52 @@ async function ensureWinutil(signal) {
   return p;
 }
 
+// winutil errors that only mean "this thing isn't on your PC" — e.g. its Telemetry tweak tries to disable a
+// 'wermgr' service that current Windows 11 doesn't have. Nothing was harmed, there was just nothing to change.
+const HARMLESS = /was not found on computer|cannot find any service|does not exist|cannot find (path|the|a|an|any)|no msft_scheduledtask|objectnotfound|pathnotfound|nomatchfound|is not recognized as (the|a) name|the system cannot find the (file|path) specified|no such (service|task|package)|not installed|package .* not found|could not find/i;
+
+/** "[2026-10-21 15:01:44.200] [INFO] [Tweaks] Applying tweak: X" → { level, component, text } */
+function parseWinutilLine(l) {
+  const m = l.match(/^\[[^\]]+\]\s*\[(INFO|WARN|ERROR|DEBUG)\]\s*\[([^\]]+)\]\s*(.*)$/);
+  return m ? { level: m[1], component: m[2], text: m[3] } : null;
+}
+
 /**
  * Run a list of winutil tweak IDs with no window (winutil's headless mode, via a -Config file).
- * Returns what winutil reported: per-step states, its ERROR/WARN lines and the log path.
+ * onLine(text) gets a friendly line for each step winutil starts, live.
  * Not interruptible: stopping halfway could leave Windows services half-changed.
  */
-async function runWinutil(ids) {
+async function runWinutil(ids, onLine = () => {}, names = {}) {
   if (DEMO) {
-    await new Promise((r) => setTimeout(r, 2500));
-    return { ok: true, code: 0, lines: ['All steps completed.'], errors: [], warnings: [], steps: [{ name: 'Tweaks', items: ids.length, state: 'ok' }], logPath: null };
+    for (const [i, id] of ids.entries()) {
+      await new Promise((r) => setTimeout(r, 160));
+      onLine(`Tweak ${i + 1} of ${ids.length}: ${names[id] || id}`);
+    }
+    const harmless = /Telemetry/.test(ids.join()) ? ["[Tweaks] Non-terminating error : Service wermgr was not found on computer '.'."] : [];
+    return { ok: harmless.length === 0, code: harmless.length ? 1 : 0, lines: [], errors: [], harmless, warnings: [], steps: [{ name: 'Tweaks', items: ids.length, state: harmless.length ? '1 error(s)' : 'ok' }], logPath: null };
   }
   const p = await ensureWinutil();
   const cfg = path.join(dir(), 'winutil-frameforge.json');
   fs.writeFileSync(cfg, JSON.stringify(ids, null, 1));
-  const r = await run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', p, '-Config', cfg], { timeout: 45 * 60 * 1000 });
-  const lines = (r.stdout + '\n' + r.stderr).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const tag = (lvl) => lines.filter((l) => new RegExp(`\\[${lvl}\\]`).test(l)).map((l) => l.replace(/^\[[^\]]+\]\s*/, '').replace(/^\[(ERROR|WARN|INFO|DEBUG)\]\s*/, '')).filter((l, i, a) => a.indexOf(l) === i);
+  const lines = [];
+  let n = 0;
+  const { runLines } = require('./fixes');
+  const code = await runLines(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', p, '-Config', cfg],
+    (l) => {
+      lines.push(l);
+      const e = parseWinutilLine(l);
+      if (!e) return;
+      const t = e.text.match(/^(Applying|Running) tweak:\s*(\S+)/i);
+      if (t) onLine(`Tweak ${Math.min(++n, ids.length)} of ${ids.length}: ${names[t[2]] || t[2]}`);
+      else if (e.level === 'ERROR') onLine(HARMLESS.test(e.text) ? `Skipped something that isn't on this PC (${e.text.replace(/^Non-terminating error\s*:\s*/i, '').slice(0, 80)})` : `Problem: ${e.text.slice(0, 100)}`);
+    },
+    45 * 60 * 1000
+  );
+  const entries = lines.map(parseWinutilLine).filter(Boolean);
+  const uniq = (a) => a.filter((x, i) => a.indexOf(x) === i);
+  const allErrors = uniq(entries.filter((e) => e.level === 'ERROR').map((e) => `[${e.component}] ${e.text}`));
   const steps = lines
     .map((l) => l.match(/^(\S[\S ]*?)\s+(\d+) item\(s\)\s+([\d.]+)s\s+(.+)$/))
     .filter(Boolean)
@@ -166,19 +196,35 @@ async function runWinutil(ids) {
   const logLine = lines.find((l) => /\b(See|Log:)\s+\S+\.log/i.test(l));
   const logPath = logLine ? (logLine.match(/([A-Z]:\\[^\s]+\.log)/i) || [])[1] || null : null;
   const fatal = lines.find((l) => /could not complete the headless run/i.test(l));
-  return { ok: r.code === 0, code: r.code, lines, errors: tag('ERROR'), warnings: tag('WARN'), steps, logPath, fatal };
+  return {
+    ok: code === 0,
+    code,
+    lines,
+    errors: allErrors.filter((e) => !HARMLESS.test(e)),
+    harmless: allErrors.filter((e) => HARMLESS.test(e)),
+    warnings: uniq(entries.filter((e) => e.level === 'WARN').map((e) => `[${e.component}] ${e.text}`)),
+    steps,
+    logPath,
+    fatal,
+  };
 }
 
-/** Open winutil's normal window so you can pick extra tweaks or apps by hand. */
+/** Open winutil's own window (its normal app) — e.g. to check its tweaks, install apps, or Undo. */
 async function openWinutil() {
   const p = await ensureWinutil();
   if (DEMO) return p;
   const { spawn } = require('child_process');
-  spawn('cmd.exe', ['/c', 'start', '"Chris Titus Tech Windows Utility"', 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', p], {
+  // Start PowerShell directly in its own (minimized) console; winutil then opens its window.
+  const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Minimized', '-File', p], {
     detached: true,
     stdio: 'ignore',
-    windowsHide: true,
-  }).unref();
+    windowsHide: false,
+  });
+  await new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('spawn', resolve);
+  });
+  child.unref();
   return p;
 }
 
@@ -232,4 +278,4 @@ async function wingetInstall(id) {
   return { ok: false, message: (r.stdout.split(/\r?\n/).filter(Boolean).pop() || 'winget failed').slice(0, 160) };
 }
 
-module.exports = { ensureWinutil, runWinutil, openWinutil, winutilPath, install, status, presentMonPath, lhmPath, startLhm, TOOLS, WINGET_APPS, hasWinget, wingetKnows, wingetInstall };
+module.exports = { HARMLESS, ensureWinutil, runWinutil, openWinutil, winutilPath, install, status, presentMonPath, lhmPath, startLhm, TOOLS, WINGET_APPS, hasWinget, wingetKnows, wingetInstall };

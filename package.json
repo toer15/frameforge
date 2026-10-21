@@ -1,8 +1,8 @@
 {
   "name": "frameforge",
   "productName": "FrameForge",
-  "version": "1.0.3",
-  "description": "FrameForge – automatic PC best gaming performance assistant for AMD and NVIDIA rigs",
+  "version": "1.0.4",
+  "description": "FrameForge \u2013 automatic PC best gaming performance assistant for AMD and NVIDIA rigs",
   "main": "main.js",
   "author": "TwicyTom",
   "license": "MIT",
@@ -24,7 +24,7 @@
   "build": {
     "appId": "com.twicytom.frameforge",
     "productName": "FrameForge",
-    "copyright": "© 2026 TwicyTom",
+    "copyright": "\u00a9 2026 TwicyTom",
     "directories": {
       "output": "dist",
       "buildResources": "build"

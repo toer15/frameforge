@@ -160,6 +160,8 @@ ff.onBusy(({ on, quiet }) => {
 });
 
 ff.onStep((s) => {
+  // Live detail for the running step (e.g. "Tweak 5 of 16: Windows telemetry turned off") on the progress line.
+  if (s.status === 'running' && s.message && busy && !$('#stopBtn').disabled) $('#runNow').textContent = `${s.name}: ${s.message}`;
   const list = $('#logList');
   list.querySelector('.empty')?.remove();
   let li = logEntries.get(s.id + s.name.startsWith('Undo'));
@@ -889,19 +891,35 @@ function updLine(u) {
 }
 function showUpdate(u) {
   $('#updModal').classList.remove('hidden');
+  $('#updBadge').textContent = u.current ? `${u.current} → ${u.version}` : 'New';
   $('#updTitle').textContent = u.status === 'ready' ? `FrameForge ${u.version} is ready` : `FrameForge ${u.version} is out`;
   $('#updText').textContent = u.status === 'ready' ? 'Downloaded and checked. FrameForge closes, updates itself in about 10 seconds and reopens — no installer to click through. Your settings and changes list stay as they are.' : u.status === 'downloading' ? 'Downloading the update…' : 'Get the newest boosts and fixes. Your settings stay as they are.';
   const notes = $('#updNotes');
-  notes.textContent = u.notes || '';
+  notes.innerHTML = u.notes ? md(u.notes) : '';
   notes.classList.toggle('hidden', !u.notes);
+  let later = $('#updModal .upd-later-note');
+  if (!later) {
+    later = document.createElement('p');
+    later.className = 'upd-later-note';
+    $('#updModal .modal-actions').before(later);
+  }
+  later.textContent = u.status === 'ready' ? 'Not now? It installs by itself the next time you quit FrameForge.' : 'It downloads in the background — you can keep using FrameForge.';
   $('#updProg').classList.toggle('hidden', u.status !== 'downloading');
   $('#updProg i').style.width = (u.progress || 0) + '%';
   const go = $('#updGo');
   go.disabled = u.status === 'downloading';
   go.textContent = u.status === 'ready' ? 'Update now' : u.status === 'downloading' ? 'Downloading…' : 'Update now';
 }
+function updSide(u) {
+  const b = $('#sideUpdate');
+  const show = ['ready', 'available', 'downloading'].includes(u.status);
+  b.classList.toggle('hidden', !show);
+  b.textContent = u.status === 'ready' ? `Update ${u.version} ready — install` : u.status === 'downloading' ? `Downloading ${u.version}… ${u.progress || 0}%` : `Update ${u.version} available`;
+}
+$('#sideUpdate').onclick = async () => showUpdate(await ff.updateState());
 ff.onUpdate((u) => {
   updLine(u);
+  updSide(u);
   if (['available', 'downloading', 'ready'].includes(u.status) && updDismissed !== `${u.version}:${u.status}`) showUpdate(u);
 });
 $('#updGo').onclick = async () => {
@@ -950,7 +968,11 @@ document.addEventListener('keydown', (e) => {
   renderSettings();
   renderAuto(S.autoMode, INFO.active);
   const u = await ff.updateState();
-  if (u) updLine(u);
+  if (u) {
+    updLine(u);
+    updSide(u);
+    if (['available', 'downloading', 'ready'].includes(u.status)) showUpdate(u);
+  }
   if (S.updateSource) $('#updSource').value = S.updateSource;
   $('#overlayBtn').textContent = 'Hide overlay';
   const st = await ff.autoState();
