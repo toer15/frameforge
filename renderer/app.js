@@ -35,6 +35,7 @@ $$('.nav-item').forEach((b) =>
     $$('.nav-item').forEach((n) => n.classList.toggle('active', n === b));
     $$('.view').forEach((v) => v.classList.toggle('hidden', v.id !== `view-${b.dataset.view}`));
     if (b.dataset.view === 'fix' && typeof refreshFix === 'function') refreshFix();
+    if (b.dataset.view === 'tweaks') refreshTweaks();
   })
 );
 $('#wMin').onclick = () => ff.win.min();
@@ -183,6 +184,7 @@ ff.onDone(async (d) => {
   S = await ff.settings();
   renderAuto(d.on, d.active);
   renderPresets();
+  if (!$('#view-tweaks').classList.contains('hidden')) refreshTweaks();
   $('#restartBtn').classList.toggle('hidden', !d.needsReboot);
   if (d.kept) toast('Auto Mode is off. Your changes are still active — they’re listed under “What FrameForge changed”.');
   else if (d.stopped) toast(d.active ? `Stopped. ${d.active} boost${d.active === 1 ? '' : 's'} kept — turn Auto Mode off to undo.` : 'Stopped. Nothing was changed.');
@@ -486,6 +488,104 @@ $('#shareBtn').onclick = async () => {
   const link = await ff.shareCopy();
   toast(`Download link copied — paste it in Discord: ${link}`, 6000);
 };
+
+/* ---------- Tweaks tab ---------- */
+let TW = null;
+const twWorking = new Set();
+const twRebootNames = new Set();
+
+function twRow(t) {
+  const tags = [
+    t.recommended ? '<span class="tag rec">Recommended for your PC</span>' : '<span class="tag no">Not recommended for your PC</span>',
+    t.inPreset ? '<span class="tag">In your preset</span>' : '',
+    t.reboot ? '<span class="tag reboot">Restart to finish</span>' : '',
+    t.admin && TW && !TW.admin ? '<span class="tag admin">Needs admin</span>' : '',
+  ].join('');
+  const state = t.on ? (t.byFrameForge ? 'On — set by FrameForge' : 'On — Windows already had this set') : 'Off';
+  return `<div class="tw-row ${twWorking.has(t.id) ? 'working' : ''}" data-tw="${t.id}">
+    <div class="set-text">
+      <h3>${esc(t.name)}${tags}</h3>
+      <p>${esc(t.desc)}</p>
+      ${t.reason ? `<p class="why ${t.recommended ? '' : 'no'}">${esc(t.reason)}</p>` : ''}
+      <div class="tw-state ${t.on ? 'on' : 'off'}">${twWorking.has(t.id) ? 'Working…' : state}</div>
+      ${t.what && t.what.length ? `<details><summary>Exactly what it changes</summary><ul class="ch-exact">${t.what.map((w) => `<li><code>${esc(w)}</code></li>`).join('')}</ul></details>` : ''}
+    </div>
+    <label class="switch"><input type="checkbox" data-twset="${t.id}" ${t.on ? 'checked' : ''} ${twWorking.has(t.id) ? 'disabled' : ''} aria-label="${esc(t.name)}" /><span></span></label>
+  </div>`;
+}
+
+function renderTweaks() {
+  if (!TW) return;
+  // Keep any open "Exactly what it changes" boxes open across re-renders.
+  const open = new Set($$('#twList details[open]').map((d) => d.closest('[data-tw]').dataset.tw));
+  $('#twList').innerHTML = TW.cats
+    .map((c) => {
+      const items = TW.items.filter((t) => t.cat === c.id);
+      if (!items.length) return '';
+      const offRec = items.filter((t) => !t.on && t.recommended).length;
+      return `<section class="tw-cat">
+        <div class="tw-cat-head"><div><h2>${esc(c.name)}</h2><p>${esc(c.blurb)}</p></div>
+        <button class="ghost small" data-twcat="${c.id}" ${offRec ? '' : 'disabled'}>${offRec ? `Turn on ${offRec} recommended` : 'All recommended are on'}</button></div>
+        ${items.map(twRow).join('')}
+      </section>`;
+    })
+    .join('');
+  open.forEach((id) => {
+    const d = $(`#twList [data-tw="${id}"] details`);
+    if (d) d.open = true;
+  });
+  const on = TW.items.filter((t) => t.on).length;
+  $('#twCount').textContent = `${on} of ${TW.items.length} on`;
+  const offRec = TW.items.filter((t) => !t.on && t.recommended).length;
+  $('#twAllRec').disabled = !offRec;
+  $('#twAllRec').textContent = offRec ? `Turn on ${offRec} recommended` : 'Everything recommended is on';
+  $('#twReboot').classList.toggle('hidden', !twRebootNames.size);
+  $('#twRebootText').textContent = `Restart your PC to finish: ${[...twRebootNames].join(', ')}.`;
+}
+
+async function refreshTweaks() {
+  TW = await ff.tw.catalog();
+  renderTweaks();
+}
+
+async function setTweak(id, on) {
+  const t = TW.items.find((x) => x.id === id);
+  twWorking.add(id);
+  renderTweaks();
+  const r = await ff.tw.set(id, on);
+  twWorking.delete(id);
+  if (t) {
+    t.on = r.on;
+    t.byFrameForge = r.on && on;
+  }
+  if (r.reboot && t) twRebootNames.add(t.name);
+  if (!r.ok) toast(`${t ? t.name : 'Tweak'}: ${r.message}`, 6000);
+  else if (on && r.on === false) toast(`${t.name} didn’t take effect — see Fix mode.`, 6000);
+  renderTweaks();
+  return r;
+}
+
+document.addEventListener('change', (e) => {
+  const sw = e.target.closest('[data-twset]');
+  if (sw) setTweak(sw.dataset.twset, sw.checked);
+});
+document.addEventListener('click', async (e) => {
+  const cat = e.target.closest('[data-twcat]');
+  if (!cat || !TW) return;
+  cat.disabled = true;
+  for (const t of TW.items.filter((x) => x.cat === cat.dataset.twcat && !x.on && x.recommended)) await setTweak(t.id, true);
+  refreshTweaks();
+});
+$('#twAllRec').onclick = async () => {
+  $('#twAllRec').disabled = true;
+  const todo = TW.items.filter((x) => !x.on && x.recommended);
+  let ok = 0;
+  for (const t of todo) if ((await setTweak(t.id, true)).ok) ok++;
+  toast(`Turned on ${ok} of ${todo.length} recommended tweaks.`);
+  refreshTweaks();
+};
+$('#twRebootBtn').onclick = () => ff.restartPc();
+ff.tw.onChanged(() => refreshTweaks());
 
 /* ---------- Fix mode ---------- */
 let FIX = null;

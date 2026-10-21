@@ -91,6 +91,16 @@ over your mouse or keyboard — so you can keep using your PC while it works.
   Settings. These tweaks are NOT undone by turning Auto Mode off — use the restore point FrameForge makes
   first, or winutil's own Undo (Settings › "Open Chris Titus tool").
 
+## Tweaks tab
+
+28 tweaks in five groups (input lag, CPU, graphics & games, network, Windows & background), each a switch
+with a short explanation, a "recommended for your PC" flag and the exact settings it changes. Switches read
+the real state from Windows (registry, powercfg, services, MMAgent) — language-independent, so it works on any
+Windows language. Switching on saves the previous values first; switching off restores them, or sets the
+Windows default if Windows already had it on. All tweaks share Auto Mode's undo, change list and Fix mode.
+
+`src/tweaks.js` defines them. Power-plan tweaks change the active plan's plugged-in (AC) values only.
+
 ## Fix mode
 
 Lists everything that didn't work or is holding the PC back: failed Auto Mode steps (with winutil's real

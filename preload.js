@@ -58,6 +58,11 @@ contextBridge.exposeInMainWorld('ff', {
     onRepair: on('fix:repair'),
     onLine: on('fix:line'),
   },
+  tw: {
+    catalog: () => ipcRenderer.invoke('tweaks:catalog'),
+    set: (id, on) => ipcRenderer.invoke('tweaks:set', id, on),
+    onChanged: on('tweaks:changed'),
+  },
   onGoto: on('goto'),
   onPresetChanged: on('preset:changed'),
   win: {

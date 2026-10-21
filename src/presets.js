@@ -29,6 +29,7 @@ const PRESETS = {
       ctt_tweaks: true,
       dx_opt: true,
       game_gpu: true,
+      usb_suspend: true, timer_res: true, core_parking: true, cpu_min: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, net_throttling: true, nagle_off: true, bg_apps: true, transparency: true, startup_delay: true,
       no_popups: true,
     },
   },
@@ -57,6 +58,7 @@ const PRESETS = {
       ctt_tweaks: true,
       dx_opt: true,
       game_gpu: true,
+      usb_suspend: true, core_parking: true, cpu_min: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, net_throttling: true, bg_apps: true, transparency: true, startup_delay: true,
       no_popups: false,
     },
   },
@@ -85,6 +87,7 @@ const PRESETS = {
       ctt_tweaks: false,
       dx_opt: true,
       game_gpu: true,
+      usb_suspend: true, cpu_boost: true, sys_responsiveness: true, startup_delay: true,
       no_popups: false,
     },
   },
@@ -113,13 +116,14 @@ const PRESETS = {
       ctt_tweaks: false,
       dx_opt: true,
       game_gpu: true,
+      usb_suspend: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, startup_delay: true,
       no_popups: false,
     },
   },
 };
 
 // Boosts the PC profile may switch off for hardware reasons, whatever the preset says.
-const HARDWARE_VETO = ['power_plan', 'power_throttling', 'hags'];
+const HARDWARE_VETO = ['power_plan', 'power_throttling', 'hags', 'core_parking', 'cpu_min', 'timer_res', 'mem_compression'];
 
 /** Boost list for this preset on this PC, plus a reason for each. */
 function compose(presetId, rig) {

@@ -4,11 +4,12 @@ const path = require('path');
 
 const { run, ps, isAdmin, IS_WIN, DEMO } = require('./src/util');
 const os = require('os');
-const { settings, changes, problems } = require('./src/store');
+const { settings, changes, problems, backup } = require('./src/store');
 const fixes = require('./src/fixes');
 const presets = require('./src/presets');
 const hardware = require('./src/hardware');
 const optimizer = require('./src/optimizer');
+const tweaksTab = require('./src/tweaks'); // adds the Tweaks-tab boosts to optimizer.TWEAKS
 const profile = require('./src/profile');
 const tools = require('./src/tools');
 const { FpsReader } = require('./src/fps');
@@ -605,6 +606,71 @@ function stopAuto() {
   return true;
 }
 
+// ---------- Tweaks tab: switch any boost on or off by hand ----------
+
+async function tweakCatalog() {
+  const s = settings.get();
+  const rec = rig ? profile.recommend(rig) : { tweaks: {}, reasons: {} };
+  const list = tweaksTab.tabTweaks();
+  const states = await Promise.all(list.map((t) => tweaksTab.stateOf(t)));
+  return {
+    cats: tweaksTab.CATS,
+    busy,
+    admin,
+    items: list.map((t, i) => ({
+      id: t.id,
+      cat: t.cat,
+      name: t.name,
+      desc: t.desc,
+      what: t.what || (t.values ? t.values.map((v) => `${v.key} › ${v.name} = ${v.data}`) : []),
+      admin: !!t.admin,
+      reboot: !!t.reboot,
+      on: states[i],
+      byFrameForge: !!backup.get(t.id),
+      recommended: rec.tweaks[t.id] !== false,
+      reason: rec.reasons[t.id] || '',
+      inPreset: !!s.tweaks[t.id],
+    })),
+  };
+}
+
+async function setTweak(id, on) {
+  const t = tweaksTab.tabTweaks().find((x) => x.id === id);
+  if (!t) return { ok: false, message: 'Unknown tweak.' };
+  if (busy) return { ok: false, message: 'FrameForge is busy with another change — try again in a moment.', on: await tweaksTab.stateOf(t) };
+  if (t.admin && !admin) return { ok: false, message: 'This one needs FrameForge to run as administrator.', on: await tweaksTab.stateOf(t) };
+  busy = true;
+  let reboot = false;
+  try {
+    if (on) {
+      const r = await tweakPhase(t)();
+      reboot = !!(r && r.reboot);
+      const p = problems.all()[t.id];
+      if (p) return { ok: false, message: p.message, on: await tweaksTab.stateOf(t) };
+      const c = changes.all()[t.id];
+      return { ok: true, message: c ? c.summary : `${t.name} is on.`, on: await tweaksTab.stateOf(t), reboot };
+    }
+    if (backup.get(t.id)) {
+      await revertPhase(t, 'Switched off in Tweaks')();
+    } else if (!DEMO && typeof t.forceOff === 'function') {
+      await t.forceOff(); // Windows had it on before FrameForge: set the Windows default
+      step({ id: `undo_${t.id}`, name: `Off: ${t.name}`, status: 'done', message: 'Set back to the Windows default.' });
+    }
+    changes.remove(t.id);
+    problems.remove(t.id);
+    send('changes', changeList());
+    send('fix:changed', true);
+    return { ok: true, message: `${t.name} is off.`, on: await tweaksTab.stateOf(t), reboot: !!t.reboot };
+  } catch (e) {
+    return { ok: false, message: String(e.message || e).slice(0, 200), on: await tweaksTab.stateOf(t) };
+  } finally {
+    busy = false;
+  }
+}
+
+ipcMain.handle('tweaks:catalog', () => tweakCatalog());
+ipcMain.handle('tweaks:set', (_e, id, on) => setTweak(id, !!on));
+
 // ---------- Fix mode ----------
 
 const A = (id, label) => ({ id, label });
@@ -766,6 +832,7 @@ function aiContext() {
     boostsInCurrentPreset: prof && Object.entries(prof.tweaks).map(([id, on]) => ({ boost: (optimizer.TWEAKS.find((t) => t.id === id) || {}).name || id, on, why: prof.reasons[id] })),
     thingsToFixFoundOnThisPC: rig ? profile.insights(rig) : [],
     fixModeProblems: fixList().map((i) => ({ id: i.id, title: i.title, body: i.body, details: i.details, fixActions: i.actions.map((a) => a.id) })),
+    tweaksTab: tweaksTab.tabTweaks().map((t) => ({ id: t.id, category: t.cat, name: t.name, whatItDoes: t.desc, appliedByFrameForge: !!backup.get(t.id), needsRestart: !!t.reboot })),
     repairTools: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, what: r.desc })),
     driverChecklistForPreset: vg ? vg[s.preset] : [],
     overclocking: { enabled: s.overclock, plan: rig ? profile.overclockPlan(rig, s.preset) : [] },
@@ -818,6 +885,11 @@ async function aiTool(name, input) {
     }
     case 'run_repair':
       return runRepair(input.repair);
+    case 'set_tweak': {
+      const r = await setTweak(input.id, input.on);
+      send('tweaks:changed', true);
+      return r;
+    }
     case 'open_chris_titus':
       await tools.openWinutil();
       return { opened: true };

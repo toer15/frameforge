@@ -19,6 +19,7 @@ Pick a goal — **Competitive**, **Best performance**, **Balanced** or **Best gr
 - Every Steam and Epic game set to run on your fastest graphics card
 - Xbox background recording off, raw mouse aim, no pop-ups mid-match (Competitive)
 - Chris Titus Tech's Windows Utility tweaks (Standard preset)
+- A **Tweaks tab** with 28 switches — reduce input lag, use all CPU cores, keep USB awake, Nagle off and more — each explained, showing its real state, and fully undoable
 - A driver checklist for AMD Software / the NVIDIA app made for your goal
 - FPS counter with 1% lows, real CPU and GPU temperatures, in-game overlay (Ctrl+Shift+F)
 - **Fix mode** for anything that didn't work, plus repair tools (shader cache, network, DISM + SFC)

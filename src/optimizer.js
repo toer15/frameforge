@@ -9,6 +9,7 @@ const HKLM = 'HKLM';
 const ULTIMATE = 'e9a42b02-d5df-448d-aa00-03f14749eb61';
 const HIGH_PERF = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c';
 const BEST_PERF_OVERLAY = 'ded574b5-45a0-4f42-8737-46345c09c238';
+const BALANCED = '381b4222-f694-41f0-9685-ff5bb260df2e';
 
 const shown = (e) => (e && e.exists ? (/^0x[0-9a-f]+$/i.test(e.data) ? String(parseInt(e.data, 16)) : e.data === '' ? '(empty)' : e.data) : 'not set');
 
@@ -20,10 +21,36 @@ function regDetails(values, entries = []) {
   });
 }
 
-/** Registry-based tweak: backs up each value the first time, then writes the new ones. */
+const toNum = (d) => (typeof d === 'number' ? d >>> 0 : /^0x/i.test(String(d)) ? parseInt(d, 16) >>> 0 : parseInt(d, 10) >>> 0);
+/** Does the registry value read back equal what the tweak writes? DWORDs compare as numbers. */
+function sameValue(v, cur) {
+  if (!cur || !cur.exists) return false;
+  if (v.type === 'REG_DWORD') return toNum(cur.data) === toNum(v.data);
+  return String(cur.data) === String(v.data);
+}
+const showData = (v) => (v.type === 'REG_DWORD' && toNum(v.data) === 0xffffffff ? '0xffffffff' : String(v.data));
+
+/**
+ * Registry-based tweak: backs up each value the first time, then writes the new ones.
+ * Each value may carry `def`: the Windows default, used when switching it off without a backup
+ * (otherwise the value is deleted, which is Windows' default for it).
+ */
 function registryTweak(values) {
   return {
     values,
+    what: values.map((v) => `${v.key} › ${v.name} = ${showData(v)}`),
+    async isOn() {
+      for (const v of values) if (!sameValue(v, await reg.get(v.key, v.name))) return false;
+      return true;
+    },
+    async forceOff() {
+      for (const v of values) {
+        if ('def' in v) await reg.set(v.key, v.name, v.type, v.def);
+        else await reg.del(v.key, v.name);
+      }
+      if (this.after) await this.after(false);
+      return { ok: true };
+    },
     async apply() {
       if (!backup.get(this.id)) {
         const entries = [];
@@ -118,6 +145,16 @@ const TWEAKS = [
         message: 'Windows hides power plans on this PC. Set Settings › System › Power › Power mode to Best performance.',
       };
     },
+    what: ['Active power plan → Ultimate Performance (or High performance / “Best performance” power mode where Windows hides plans)'],
+    async isOn() {
+      const cur = activeScheme((await run('powercfg', ['/getactivescheme'])).stdout);
+      const g = settings.get().ultimatePlanGuid;
+      return !!cur && (cur === ULTIMATE || cur === HIGH_PERF || (g && cur === g.toLowerCase()));
+    },
+    async forceOff() {
+      await run('powercfg', ['/setactive', BALANCED]);
+      return { ok: true };
+    },
     async revert() {
       const b = backup.get(this.id);
       if (!b) return { ok: true, skipped: true };
@@ -146,7 +183,7 @@ const TWEAKS = [
     name: 'Turn off Xbox background recording',
     desc: 'Stops Game Bar from secretly recording the last minutes of gameplay. Doesn’t affect OBS or streaming.',
     ...registryTweak([
-      { key: `${HKCU}\\System\\GameConfigStore`, name: 'GameDVR_Enabled', type: 'REG_DWORD', data: 0 },
+      { key: `${HKCU}\\System\\GameConfigStore`, name: 'GameDVR_Enabled', type: 'REG_DWORD', data: 0, def: 1 },
       {
         key: `${HKCU}\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR`,
         name: 'AppCaptureEnabled',
@@ -179,10 +216,10 @@ const TWEAKS = [
       (() => {
         const k = `${HKLM}\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games`;
         return [
-          { key: k, name: 'GPU Priority', type: 'REG_DWORD', data: 8 },
-          { key: k, name: 'Priority', type: 'REG_DWORD', data: 6 },
-          { key: k, name: 'Scheduling Category', type: 'REG_SZ', data: 'High' },
-          { key: k, name: 'SFIO Priority', type: 'REG_SZ', data: 'High' },
+          { key: k, name: 'GPU Priority', type: 'REG_DWORD', data: 8, def: 8 },
+          { key: k, name: 'Priority', type: 'REG_DWORD', data: 6, def: 2 },
+          { key: k, name: 'Scheduling Category', type: 'REG_SZ', data: 'High', def: 'Medium' },
+          { key: k, name: 'SFIO Priority', type: 'REG_SZ', data: 'High', def: 'Normal' },
         ];
       })()
     ),
@@ -192,9 +229,9 @@ const TWEAKS = [
     name: 'Raw mouse aim (no acceleration)',
     desc: 'Turns off “Enhance pointer precision” so the same hand movement always turns the same distance in-game.',
     ...registryTweak([
-      { key: `${HKCU}\\Control Panel\\Mouse`, name: 'MouseSpeed', type: 'REG_SZ', data: '0' },
-      { key: `${HKCU}\\Control Panel\\Mouse`, name: 'MouseThreshold1', type: 'REG_SZ', data: '0' },
-      { key: `${HKCU}\\Control Panel\\Mouse`, name: 'MouseThreshold2', type: 'REG_SZ', data: '0' },
+      { key: `${HKCU}\\Control Panel\\Mouse`, name: 'MouseSpeed', type: 'REG_SZ', data: '0', def: '1' },
+      { key: `${HKCU}\\Control Panel\\Mouse`, name: 'MouseThreshold1', type: 'REG_SZ', data: '0', def: '6' },
+      { key: `${HKCU}\\Control Panel\\Mouse`, name: 'MouseThreshold2', type: 'REG_SZ', data: '0', def: '10' },
     ]),
     async after() {
       // Apply immediately instead of waiting for a sign-out.
@@ -337,10 +374,10 @@ TWEAKS.push({
   name: 'No pop-ups during matches',
   desc: 'Turns off Windows notification banners, and the Sticky Keys / Filter Keys prompts that steal focus when you tap Shift five times or hold it down.',
   ...registryTweak([
-    { key: `${HKCU}\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications`, name: 'ToastEnabled', type: 'REG_DWORD', data: 0 },
-    { key: `${HKCU}\\Control Panel\\Accessibility\\StickyKeys`, name: 'Flags', type: 'REG_SZ', data: '506' },
-    { key: `${HKCU}\\Control Panel\\Accessibility\\ToggleKeys`, name: 'Flags', type: 'REG_SZ', data: '58' },
-    { key: `${HKCU}\\Control Panel\\Accessibility\\Keyboard Response`, name: 'Flags', type: 'REG_SZ', data: '122' },
+    { key: `${HKCU}\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications`, name: 'ToastEnabled', type: 'REG_DWORD', data: 0, def: 1 },
+    { key: `${HKCU}\\Control Panel\\Accessibility\\StickyKeys`, name: 'Flags', type: 'REG_SZ', data: '506', def: '510' },
+    { key: `${HKCU}\\Control Panel\\Accessibility\\ToggleKeys`, name: 'Flags', type: 'REG_SZ', data: '58', def: '62' },
+    { key: `${HKCU}\\Control Panel\\Accessibility\\Keyboard Response`, name: 'Flags', type: 'REG_SZ', data: '122', def: '126' },
   ]),
 });
 
@@ -358,6 +395,20 @@ TWEAKS.push({
   },
   get demoDetails() {
     return [`HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences › DirectXUserGlobalSettings: not set → ${Object.entries(this.flags()).map(([k, v]) => `${k}=${v};`).join('')}`];
+  },
+  what: ['HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences › DirectXUserGlobalSettings += SwapEffectUpgradeEnable=1; VRROptimizeEnable=1; (AutoHDREnable=1 in Best graphics)'],
+  async isOn() {
+    const cur = await reg.get('HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences', 'DirectXUserGlobalSettings');
+    return !!cur.exists && /SwapEffectUpgradeEnable=1/.test(cur.data) && /VRROptimizeEnable=1/.test(cur.data);
+  },
+  async forceOff() {
+    const key = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
+    const cur = await reg.get(key, 'DirectXUserGlobalSettings');
+    if (!cur.exists) return { ok: true };
+    const rest = String(cur.data).split(';').filter((kv) => kv && !/^(SwapEffectUpgradeEnable|VRROptimizeEnable|AutoHDREnable)=/.test(kv));
+    if (rest.length) await reg.set(key, 'DirectXUserGlobalSettings', 'REG_SZ', rest.map((kv) => kv + ';').join(''));
+    else await reg.del(key, 'DirectXUserGlobalSettings');
+    return { ok: true };
   },
   async apply() {
     const key = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
@@ -568,7 +619,7 @@ async function runOne(t, { admin, progress } = {}) {
     res = await t.apply({ progress });
   } else if (DEMO) {
     await sleep(450 + Math.random() * 500);
-    res = { ok: true, message: t.demoMessage || (t.id === 'temp_cleanup' ? 'Freed 1.4 GB.' : 'Done.'), details: t.demoDetails || (t.values ? regDetails(t.values) : []) };
+    res = { ok: true, message: t.demoMessage || (t.id === 'temp_cleanup' ? 'Freed 1.4 GB.' : 'Done.'), details: t.demoDetails || (t.values ? regDetails(t.values) : t.what || []) };
     if (!t.oneShot) backup.put(t.id, { demo: true });
   } else {
     try {
@@ -579,7 +630,7 @@ async function runOne(t, { admin, progress } = {}) {
   }
   let message = res.message || '';
   if (res.ok && (!message || message === 'Done.')) message = t.desc.split(/(?<=\.)\s/)[0]; // first sentence of what it does
-  return { status: res.ok ? 'done' : res.warn ? 'warn' : 'error', message, reboot: res.ok && !!t.reboot, details: res.details || [], fix: res.fix || null, adminSkipped: t.admin && !admin };
+  return { status: res.ok ? 'done' : res.warn ? 'warn' : 'error', message, reboot: res.ok && (!!t.reboot || !!res.rebootNow), details: res.details || [], fix: res.fix || null, adminSkipped: t.admin && !admin };
 }
 
 /** Turn Auto Mode off: undo everything in reverse order. */
@@ -621,4 +672,4 @@ function activeCount() {
   return Object.keys(backup.all()).length;
 }
 
-module.exports = { CTT_PRESETS, CTT_NAMES, list, planned, runOne, revertPlan, revertOne, disable, activeCount, VENDOR_GUIDES, TWEAKS };
+module.exports = { registryTweak, sameValue, toNum, activeScheme, BALANCED, CTT_PRESETS, CTT_NAMES, list, planned, runOne, revertPlan, revertOne, disable, activeCount, VENDOR_GUIDES, TWEAKS };

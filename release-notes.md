@@ -1,12 +1,13 @@
-**Chris Titus tweaks fixed**
-- The Chris Titus step no longer shows as failed when Windows simply doesn't have something it tries to change (like the `wermgr` service). Those items are skipped and listed as normal — the preset is applied.
-- You can now watch it work: "Tweak 7 of 16: Windows telemetry turned off" on the progress line.
-- When Auto Mode has run it, Chris Titus's own tool opens so you can check the tweaks (turn this off in Settings).
-- "Open Chris Titus tool" opens it more reliably.
-- An old false "didn't finish" warning in Fix mode is cleared by itself.
+**New: Tweaks tab** 🎛️
 
-**Updates now come to you automatically**
-- FrameForge checks for updates when it starts, every 30 minutes, and whenever you open it
-- New versions download by themselves, and a popup shows what's new — click **Update now** and it updates in about 10 seconds
-- If FrameForge is hidden in the tray, you get a Windows notification instead
-- Not now? It installs by itself the next time you quit FrameForge
+Switch 28 performance tweaks on or off yourself, each with a short explanation:
+
+- **Reduce input lag** — raw mouse aim, keep USB devices awake, fastest key repeat, real exclusive fullscreen, precise game timers, no pop-ups mid-match
+- **CPU** — use all CPU cores (no core parking + removes any msconfig core limit), keep CPU at full speed, aggressive boost, Ultimate Performance
+- **Graphics & games** — prioritize games over background tasks, keep the graphics card link at full power, max priority and fastest GPU for every game, Game Mode, GPU scheduling
+- **Network** — remove network throttling, send game packets instantly (Nagle off)
+- **Windows & background** — stop background apps, no startup delay, instant menus, transparency off, SysMain off, memory compression off
+
+Every switch shows what's **really** set in Windows right now, marks what's recommended for your PC, and lists exactly what it changes. Switching one off puts back exactly what was there before. "Turn on everything recommended" does it all in one click.
+
+The Competitive and Best performance presets now use the new tweaks too.

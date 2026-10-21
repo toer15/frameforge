@@ -482,3 +482,25 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .share-btn { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--line-2); background: rgba(255,255,255,0.02); color: var(--text); font-weight: 700; font-size: 15px; clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px)); }
 .share-btn svg { width: 18px; height: 18px; fill: var(--coolant); }
 .share-btn:hover { border-color: var(--coolant); color: var(--coolant); }
+
+/* ---------- Tweaks tab ---------- */
+.tw-head { display: flex; align-items: flex-start; gap: 20px; }
+.tw-head p { margin: 0 0 16px; max-width: 66ch; }
+.tw-actions { margin-left: auto; margin-top: 12px; display: grid; justify-items: end; gap: 8px; }
+.tw-actions button { white-space: nowrap; }
+.tw-count { color: var(--muted); font: 700 14px var(--display); }
+.tw-cat { margin: 22px 0 6px; }
+.tw-cat-head { display: flex; align-items: flex-end; gap: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+.tw-cat-head h2 { font: 700 21px var(--display); }
+.tw-cat-head p { margin: 0 0 2px; color: var(--muted); font-weight: 600; }
+.tw-cat-head button { margin-left: auto; white-space: nowrap; }
+.tw-row { display: flex; gap: 20px; align-items: flex-start; padding: 14px 4px; border-bottom: 1px solid rgba(36, 48, 79, 0.6); }
+.tw-row .set-text h3 { font-size: 17px; }
+.tw-row.working { opacity: 0.6; }
+.tw-row .switch { margin-top: 4px; }
+.tw-state { font-size: 13px; font-weight: 700; margin-top: 4px; }
+.tw-state.on { color: var(--coolant); }
+.tw-state.off { color: #6f7ca0; }
+.tag.no { color: #ff9db0; border-color: rgba(255, 77, 109, 0.45); }
+.tw-row details { margin-top: 6px; }
+.tw-row summary { cursor: pointer; color: var(--coolant); font-weight: 700; font-size: 14px; }

@@ -100,6 +100,12 @@ const TOOLS = [
     approve: (i) => ({ shader_cache: 'Clear the DirectX, NVIDIA and AMD shader caches', network: 'Reset your network settings (needs a restart)', system_files: 'Repair Windows system files with DISM and SFC (10–30 min)', restore_points: 'Turn on System Protection for your system drive' })[i.repair] || `Run repair ${i.repair}`,
   },
   {
+    name: 'set_tweak',
+    description: 'Switch one tweak from the Tweaks tab on or off (ids are in tweaksTab in the snapshot). Every change can be undone.',
+    input_schema: { type: 'object', properties: { id: { type: 'string' }, on: { type: 'boolean' } }, required: ['id', 'on'] },
+    approve: (i) => `${i.on ? 'Turn on' : 'Turn off'} the tweak “${(require('./optimizer').TWEAKS.find((t) => t.id === i.id) || {}).name || i.id}”`,
+  },
+  {
     name: 'open_chris_titus',
     description: 'Open Chris Titus Tech’s Windows Utility (winutil) in its own window so the user can pick tweaks, install apps, or use its Undo / Windows Update fixes.',
     input_schema: { type: 'object', properties: {} },
