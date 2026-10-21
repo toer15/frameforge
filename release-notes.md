@@ -1,3 +1,11 @@
+**Windows animations: live window dragging and missing effects restored**
+
+- **On now enables live window contents while dragging**, plus Windows animations, shadows, smooth fonts, selection effects and thumbnail previews. Previously the switch could say On while moving a window still showed only its outline.
+- **Off also disables live window dragging** along with the Windows animations. Static effects such as font smoothing stay as they are; transparency remains under its own tweak.
+- The switch now checks each controlled effect and names anything Windows refused to enable. Failed changes no longer appear as successful in the change history.
+- Auto Mode skips its conflicting Performance visual effects boost while animations are On. FrameForge watches the dragging and visual-effect settings as well as animations to keep your choice.
+- Animation and dragging changes apply immediately. Some Explorer effects may need sign-out; apps with their own effects may have separate settings.
+
 **Everything does what its name says: a full check of the app**
 
 - **Performance visual effects** now really does what Windows' "Adjust for best performance" does — animations, window shadows, the translucent selection box and showing window contents while dragging are switched off, and it applies right away. Before, it only set a flag Windows doesn't act on.

@@ -663,6 +663,7 @@ function planned({ quiet = false, rig }) {
   const s = settings.get();
   const vendor = rig && rig.gpu ? rig.gpu.vendor : null;
   return TWEAKS.filter((t) => {
+    if (t.id === 'visual_effects' && s.animations === 'on') return false;
     if (quiet && t.oneShot) return false;
     if (t.overclock) return s.overclock && t.vendor === vendor;
     return s.tweaks[t.id];

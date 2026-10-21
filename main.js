@@ -1805,7 +1805,7 @@ ipcMain.handle('anim:set', async (_e, on) => {
   animFp = null; // the watcher takes a fresh baseline after the change
   if (on) await dropVisualEffectsBoost('Windows animations switched on in Settings');
   const r = await animations.set(!!on);
-  changes.put('animations', { name: `Windows animations ${on ? 'on' : 'off'}`, summary: on ? 'Every Windows animation is on. FrameForge keeps it that way, even if a tweak tool or Windows Settings turns them off.' : 'Every Windows animation is off for a snappier, faster-feeling PC. FrameForge keeps it that way, even if a tweak tool or Windows Settings turns them back on.', details: r.details || [], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+  changes.put('animations', { name: r.ok ? `Windows animations ${on ? 'on' : 'off'}` : 'Windows animations need attention', summary: !r.ok ? r.message : on ? 'Windows animations and live window contents while dragging are on, with visual effects restored. FrameForge keeps your choice.' : 'Windows animations and live window contents while dragging are off. FrameForge keeps your choice.', details: r.ok ? r.details || [] : [r.message], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
   send('changes', changeList());
   return { ...r, want: settings.get().animations, ...(await animations.get()) };
 });

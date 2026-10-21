@@ -1787,15 +1787,25 @@ async function refreshAnim(st) {
   sw.checked = st.want ? st.want === 'on' : st.on;
   const now = st.on ? 'all on' : st.off ? 'all off' : 'some on, some off';
   $('#animLine').textContent = st.want ? `Right now: ${now}. FrameForge keeps them ${st.want} — even if another tool or Windows Settings changes them.` : `Right now in Windows: ${now}. Flip the switch and FrameForge takes over.`;
+  if (st.want === 'on' && !st.on && st.details) {
+    const missing = st.details.filter((d) => d.group !== 'separate' && !d.on).map((d) => d.name);
+    if (missing.length) $('#animLine').textContent += ` Still off or unavailable: ${missing.join(', ')}.`;
+  }
 }
 $('#animSwitch').addEventListener('change', async (e) => {
   const on = e.target.checked;
   e.target.disabled = true;
-  const r = await ff.anim.set(on);
-  e.target.disabled = false;
-  toast(r.ok ? (on ? 'Windows animations are on — FrameForge keeps them on.' : 'All Windows animations are off — FrameForge keeps them off.') : r.message || 'Windows didn’t accept every part of the change.', 5000);
-  refreshAnim(r);
-  refreshChanges();
+  try {
+    const r = await ff.anim.set(on);
+    toast(r.ok ? (on ? 'Windows animations and window dragging effects are on.' : 'Windows animations and window dragging effects are off.') : r.message || 'Windows didn’t accept every part of the change.', 5000);
+    await refreshAnim(r);
+    refreshChanges();
+  } catch (err) {
+    toast(`Couldn’t change Windows animations: ${err.message || err}`, 5000);
+    refreshAnim().catch(() => {});
+  } finally {
+    e.target.disabled = false;
+  }
 });
 ff.anim.onChanged(() => refreshAnim());
 

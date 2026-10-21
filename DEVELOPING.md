@@ -176,6 +176,21 @@ maximize animation, client-area "Animation effects", menu/tooltip/combo/list ani
 plus TaskbarAnimations, MinAnimate, VisualFXSetting=3 and the DWM `DisallowAnimations` policy. Setting
 `animations` ('on'/'off'); `enforceAnimations()` re-applies it at start, after Auto Mode and whenever `animWatch()` (main.js, every 8 s) sees the registry fingerprint from `animations.fingerprint()` change — plus a full check every minute; after 5 re-applies in 5 minutes it checks once a minute only. Animations On also drops the `visual_effects` boost (`dropVisualEffectsBoost`).
 
+In 1.3.4 the switch also applies and reads `SPI_SET/GETDRAGFULLWINDOWS`, so dragging shows live window contents
+when On and an outline when Off. On restores the other Performance Options effects (shadows, font smoothing,
+selection effects and thumbnails). Off leaves these static effects alone. Transparency stays under its separate
+tweak. Native SPI getters report an unknown value on failure; `get().on` requires all controlled animations and
+effects plus an unblocked policy, while `get().off` requires every controlled animation and dragging to be off.
+`set()` checks command success and native readback, returns per-effect details, and failed changes are logged as
+needing attention. Auto Mode skips the conflicting visual-effects boost while animations are On. SPI changes
+use save-and-broadcast flags; Explorer settings receive WM_SETTINGCHANGE notifications (some shell effects
+still need sign-out). Apps with their own visual effects can have separate settings.
+
+Regression checks: `node --test tests/animations.test.js` covers missing dragging effects, enforcing the saved
+choice, both toggle directions, native failures and demo tampering. Native tests on this PC verified animation,
+dragging and visual-effect readback and restored the original snapshot. Changing the protected animation
+policy could not be verified from the unelevated development shell; installed FrameForge requests elevation.
+
 ## AI chat
 
 A chat tab powered by Claude (Anthropic) with your own API key from console.anthropic.com (stored
