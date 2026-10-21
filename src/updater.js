@@ -48,7 +48,7 @@ function friendlyError(e, feed) {
   return 'Couldn’t check for updates: ' + msg.split('\n')[0].slice(0, 140);
 }
 
-function setup({ send, getSettings, onEvent = () => {} }) {
+function setup({ send, getSettings, onEvent = () => {}, isActive = () => true }) {
   const state = { status: 'idle', version: null, progress: 0, error: null, source: null, current: app.getVersion() };
   const push = (patch) => {
     Object.assign(state, patch);
@@ -66,6 +66,7 @@ function setup({ send, getSettings, onEvent = () => {} }) {
       },
       async download() {},
       maybeCheck() {},
+      settingsChanged() {},
       install() {},
       configure() {
         return state;
@@ -165,24 +166,24 @@ function setup({ send, getSettings, onEvent = () => {} }) {
   }
 
   configure();
-  // Check 5 seconds after start, then every 30 minutes, and whenever the window is opened
-  // (at most once every 10 minutes), if the user allows it.
+  // Check at startup, every five minutes in use (30 minutes in the tray), and on return.
   let lastAuto = 0;
   const autoCheck = (minGapMs) => {
     if (!getSettings().autoCheckUpdates) return;
     if (Date.now() - lastAuto < minGapMs) return;
     lastAuto = Date.now();
-    check();
+    return check();
   };
   setTimeout(() => autoCheck(0), 5000);
-  setInterval(() => autoCheck(0), 30 * 60 * 1000);
+  setInterval(() => autoCheck((isActive() ? 5 : 30) * 60 * 1000), 60 * 1000);
 
   return {
     state,
     check,
     download,
     /** Called when the window is opened or focused. */
-    maybeCheck: () => autoCheck(10 * 60 * 1000),
+    maybeCheck: () => autoCheck(60 * 1000),
+    settingsChanged: () => autoCheck(0),
     // Silent in-place install: no installer window, FrameForge reopens by itself on the new version.
     install,
     configure,

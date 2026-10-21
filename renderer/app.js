@@ -1216,6 +1216,10 @@ document.addEventListener('change', async (e) => {
     return;
   }
   S = await ff.setSettings({ [k]: el.type === 'checkbox' ? el.checked : el.value });
+  if (k === 'autoCheckUpdates') {
+    if (S.autoCheckUpdates) maybeShowUpdate(await ff.updateState());
+    toast(S.autoCheckUpdates ? 'Auto update is on. New versions will show a popup while you use FrameForge.' : 'Auto update is off. You can still check for updates manually.');
+  }
   if (S && S._error) {
     // The change didn't fully work (Windows refused it, or the shortcut is taken): say so, and show the real state.
     toast(S._error, 8000);
@@ -1263,6 +1267,29 @@ $('#resetProfileBtn').onclick = async () => {
 
 /* ---------- Updates ---------- */
 let updDismissed = null;
+let updState = null;
+let updDisplayedVersion = null;
+let updManualCheck = false;
+const updAnnounced = new Set();
+function maybeShowUpdate(u = updState) {
+  if (!S || !S.autoCheckUpdates || !u || !u.version || !['available', 'downloading', 'ready'].includes(u.status)) return;
+  if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  if (updDismissed === u.version || updAnnounced.has(u.version)) return;
+  showUpdate(u);
+}
+function receiveUpdate(u) {
+  updState = u;
+  updLine(u);
+  updSide(u);
+  if (['available', 'downloading', 'ready'].includes(u.status)) {
+    if (updManualCheck || (!$('#updModal').classList.contains('hidden') && updDisplayedVersion === u.version)) {
+      updManualCheck = false;
+      showUpdate(u);
+    } else maybeShowUpdate(u);
+  } else if (['latest', 'error', 'dev', 'unconfigured'].includes(u.status)) updManualCheck = false;
+}
+window.addEventListener('focus', () => maybeShowUpdate());
+document.addEventListener('visibilitychange', () => maybeShowUpdate());
 function updLine(u) {
   const map = {
     idle: 'Not checked yet.',
@@ -1284,6 +1311,9 @@ function updLine(u) {
   if (u.source && document.activeElement !== $('#updSource') && !$('#updSource').value) $('#updSource').value = u.source.replace(/^github\.com\//, '');
 }
 function showUpdate(u) {
+  if (!u || !u.version) return;
+  updDisplayedVersion = u.version;
+  updAnnounced.add(u.version);
   $('#updModal').classList.remove('hidden');
   $('#updBadge').textContent = u.current ? `${u.current} → ${u.version}` : 'New';
   $('#updTitle').textContent = u.status === 'ready' ? `FrameForge ${u.version} is ready` : `FrameForge ${u.version} is out`;
@@ -1311,19 +1341,14 @@ function updSide(u) {
   b.textContent = u.status === 'ready' ? `Update ${u.version} ready — install` : u.status === 'downloading' ? `Downloading ${u.version}… ${u.progress || 0}%` : `Update ${u.version} available`;
 }
 $('#sideUpdate').onclick = async () => showUpdate(await ff.updateState());
-ff.onUpdate((u) => {
-  updLine(u);
-  updSide(u);
-  if (['available', 'downloading', 'ready'].includes(u.status) && updDismissed !== `${u.version}:${u.status}`) showUpdate(u);
-});
+ff.onUpdate(receiveUpdate);
 $('#updGo').onclick = async () => {
   const u = await ff.updateState();
   if (u.status === 'ready') ff.installUpdate();
   else ff.downloadUpdate();
 };
-$('#updLater').onclick = async () => {
-  const u = await ff.updateState();
-  updDismissed = u ? `${u.version}:${u.status}` : null;
+$('#updLater').onclick = () => {
+  updDismissed = updDisplayedVersion;
   $('#updModal').classList.add('hidden');
 };
 $('#updSourceSave').onclick = async () => {
@@ -1335,7 +1360,11 @@ $('#checkUpdBtn').onclick = async () => {
   updDismissed = null;
   const u = await ff.updateState();
   if (u && u.status === 'ready') return ff.installUpdate();
-  if (u && u.status === 'available') return ff.downloadUpdate();
+  if (u && u.status === 'available') {
+    showUpdate(u);
+    return ff.downloadUpdate();
+  }
+  updManualCheck = true;
   ff.checkUpdate();
 };
 
@@ -1860,11 +1889,7 @@ ff.anim.onChanged(() => refreshAnim());
   renderSettings();
   renderAuto(S.autoMode, INFO.active);
   const u = await ff.updateState();
-  if (u) {
-    updLine(u);
-    updSide(u);
-    if (['available', 'downloading', 'ready'].includes(u.status)) showUpdate(u);
-  }
+  if (u) receiveUpdate(u);
   if (S.updateSource) $('#updSource').value = S.updateSource;
   $('#overlayBtn').textContent = 'Hide overlay';
   const st = await ff.autoState();

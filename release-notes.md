@@ -1,3 +1,10 @@
+**Auto update toggle in Settings**
+
+- **Auto update** now sits directly under the update button. Turn it on to check for new versions automatically and show the update popup while you use FrameForge.
+- Checks run at startup, every five minutes while the app is in use, and when you return (at most once a minute on focus). Tray checks remain every 30 minutes.
+- Turn it off to stop automatic checks and popups; you can still check and update manually. Your existing automatic-check preference is preserved.
+- Choosing **Later** dismisses that version for the session, including its download progress and ready-to-install popup. A newer version can announce itself. Updates found while the app is hidden are shown when you return.
+
 **FrameForge opens on screen after an update**
 
 - After an update installs, FrameForge restarts and opens its main window automatically, even if it normally starts hidden in the tray.

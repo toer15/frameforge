@@ -79,7 +79,7 @@ async function boot() {
   createMainWindow(process.argv.includes('--hidden') && !reopenedAfterUpdate, reopenedAfterUpdate);
   createTray();
   scanjob.init({ send, onFinished: onScanFinished });
-  updates = updater.setup({ send, getSettings: settings.get, onEvent: onUpdateEvent });
+  updates = updater.setup({ send, getSettings: settings.get, onEvent: onUpdateEvent, isActive: () => !windowHidden() && mainWin.isFocused() });
 
   reclassifyOldCttProblem();
   rig = await hardware.scan(settings.get().manualHardware).catch(() => null);
@@ -2127,6 +2127,7 @@ ipcMain.handle('settings:set', async (_e, patch) => {
   if ('scanSchedule' in patch) patch.autoScan = true; // the old on/off switch is replaced by the schedule menu
   const before = settings.get();
   const s = settings.set(patch);
+  if ('autoCheckUpdates' in patch && updates) updates.settingsChanged();
   if ('startWithWindows' in patch && IS_WIN && !DEMO) {
     const r = patch.startWithWindows ? await setStartWithWindows(true) : await setStartWithWindows(false);
     if (!r.ok) {

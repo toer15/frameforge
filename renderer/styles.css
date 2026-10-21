@@ -583,6 +583,7 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .upd-card p { margin: 4px 0 0; color: var(--muted); font-weight: 600; }
 .upd-card button { margin-left: auto; white-space: nowrap; }
 .upd-card.has-update { border-color: rgba(255, 107, 44, 0.6); }
+.auto-update-row { padding: 16px 22px; margin-bottom: 16px; }
 .upd-card.has-update p { color: var(--heat-hot); }
 
 .panel-head { flex-wrap: wrap; row-gap: 8px; }

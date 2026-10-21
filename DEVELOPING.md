@@ -226,11 +226,20 @@ forced-run path still handles itself. Unit tests cover quit/install flags and ma
 tests inspect the real window visibility for hidden startup, update flags, hidden launchers and saved handoffs:
 `node --test tests/update-relaunch.test.js tests/update-window.test.js`.
 
-Installed copies check `toer15/frameforge` on GitHub when they start, every 30 minutes, and when the window
-is opened. A newer release downloads in the background, is checked against its SHA-512 fingerprint (a
+The **Auto update** switch sits directly below the Settings update card and uses the existing
+`autoCheckUpdates` preference, preserving users' saved choices. When On, installed copies check
+`toer15/frameforge` at startup, every five minutes while focused (30 minutes while inactive), and on return
+with a one-minute minimum gap. Enabling the switch checks immediately. Off stops automatic checks and
+automatic renderer popups; manual checks and downloads remain available. A newer release downloads in the background, is checked against its SHA-512 fingerprint (a
 tampered file is thrown away), and a popup offers **Update now** — a silent install that reopens the app in
 about 10 seconds. When the app is hidden in the tray, a Windows notification appears instead. If the user
 picks **Later**, the update installs when FrameForge quits.
+
+The renderer keeps the latest update state and announces each version once per session while the document
+is visible and focused. Updates found in the tray are announced on return. Later/Escape do not reopen the
+same version for download progress or completion; an already open popup still receives progress updates.
+Explicit manual checks can show a popup with Auto update Off. `tests/auto-update.test.js` verifies polling
+cadence with a simulated clock and exercises the persisted toggle and popup policy in the Electron demo.
 
 **Publishing a new version**
 1. Raise `"version"` in `package.json` (e.g. `1.0.5`).

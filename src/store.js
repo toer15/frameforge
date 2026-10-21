@@ -36,7 +36,7 @@ const DEFAULT_SETTINGS = {
   tempMonitor: true,
   overlayPosition: 'top-left',
   overlayHotkey: 'Ctrl+Shift+F',
-  autoCheckUpdates: true,
+  autoCheckUpdates: true, // Settings > Auto update: automatic checks and foreground update popups
   updateSource: '', // 'owner/repo' on GitHub, or an https folder with latest.yml
   backgroundDownloadUpdates: true, // updates arrive ready to install
   startWithWindows: false,
