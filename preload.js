@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('ff', {
     onEvent: on('ai:event'),
     local: (opts) => ipcRenderer.invoke('ai:local', opts),
     install: (model) => ipcRenderer.invoke('ai:install', model),
+    uninstall: (model) => ipcRenderer.invoke('ai:uninstall', model),
     cancelInstall: () => ipcRenderer.invoke('ai:installCancel'),
     onInstall: on('ai:installProgress'),
   },

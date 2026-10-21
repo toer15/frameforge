@@ -337,7 +337,10 @@
             <select id="chatModelPick" class="select" aria-label="AI model"></select>
           </label>
           <button class="primary heat small hidden" id="aiInstallBtn">Install</button>
-          <span class="ai-ready hidden" id="aiReadyChip">Installed</span>
+          <div class="ai-installed-group hidden" id="aiInstalledGroup">
+            <span class="ai-ready hidden" id="aiReadyChip">Installed</span>
+            <button class="ghost small hidden" id="aiUninstallBtn" title="Remove the selected downloaded model. You can reinstall it later.">Uninstall AI model</button>
+          </div>
           <button class="ghost small" id="newChatBtn">New chat</button>
         </div>
       </div>

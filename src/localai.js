@@ -55,8 +55,9 @@ async function running() {
 async function installedModels() {
   if (DEMO) return demo.models.slice();
   const r = await net.fetch(`${base()}/api/tags`, { signal: AbortSignal.timeout(5000) });
-  if (!r.ok) return [];
+  if (!r.ok) throw new Error(`Couldn’t read Ollama’s installed models (${r.status}).`);
   const j = await r.json();
+  if (!Array.isArray(j.models)) throw new Error('Ollama returned an invalid installed-model list.');
   return (j.models || []).map((m) => m.name);
 }
 
@@ -91,7 +92,7 @@ async function status({ start: startIt = true } = {}) {
   const found = DEMO ? demo.installed : !!findOllama();
   if (!up && found && startIt) up = await start();
   const models = up ? await installedModels().catch(() => []) : [];
-  return { installed: found || up, running: up, model, ready: up && hasModel(models, model), models, catalog: LOCAL_MODELS, busy: !!installing };
+  return { installed: found || up, running: up, model, ready: up && hasModel(models, model), models, catalog: LOCAL_MODELS, busy: !!(installing || removing) };
 }
 
 /** Install Ollama itself. */
@@ -142,7 +143,7 @@ async function pull(model, progress, signal) {
       await sleep(120);
       progress({ stage: 'model', pct: i / 20, text: `${(i * 0.1).toFixed(1)} of 2.0 GB · every part is checked against its fingerprint` });
     }
-    demo.models.push(`${model}:latest`);
+    demo.models.push(model.includes(':') ? model : `${model}:latest`);
     return;
   }
   const res = await net.fetch(`${base()}/api/pull`, { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, stream: true }) });
@@ -184,9 +185,10 @@ async function pull(model, progress, signal) {
 }
 
 let installing = null;
+let removing = null;
 /** Everything the chosen model needs: Ollama itself, running, and the model downloaded. */
 async function install(model, progress = () => {}) {
-  if (installing) return { busy: true };
+  if (installing || removing) return { ok: false, busy: true, message: 'Another model operation is still running.' };
   installing = new AbortController();
   try {
     if (!(DEMO ? demo.installed : findOllama() || (await running()))) await installApp(progress, installing.signal);
@@ -210,4 +212,37 @@ function cancel() {
   return true;
 }
 
-module.exports = { LOCAL_MODELS, status, install, cancel, start, findOllama, hasModel };
+/** Remove exactly the selected model/tag through Ollama and verify that it is gone. */
+async function uninstall(model) {
+  if (installing || removing) return { ok: false, busy: true, message: 'Another model operation is still running.' };
+  if (typeof model !== 'string' || !/^[a-z0-9][a-z0-9._\-/:]{0,80}$/i.test(model)) return { ok: false, message: 'That doesn’t look like an Ollama model name.' };
+  removing = model;
+  try {
+    if (!(await start())) throw new Error('Ollama couldn’t start. Start it and try uninstalling again.');
+    const have = await installedModels();
+    const target = have.find((name) => name === model || name === (model.includes(':') ? model : `${model}:latest`));
+    if (!target) return { ok: true, message: 'That AI model is already uninstalled.' };
+    if (DEMO) demo.models = have.filter((name) => name !== target);
+    else {
+      const unloaded = await net.fetch(`${base()}/api/generate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: target, keep_alive: 0, stream: false }), signal: AbortSignal.timeout(30000),
+      });
+      if (!unloaded.ok && unloaded.status !== 404) throw new Error(`Ollama couldn’t unload the model (${unloaded.status}).`);
+      const removed = await net.fetch(`${base()}/api/delete`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: target }), signal: AbortSignal.timeout(30000),
+      });
+      if (!removed.ok && removed.status !== 404) throw new Error(`Ollama couldn’t uninstall the model (${removed.status}).`);
+    }
+    if (hasModel(await installedModels(), model)) throw new Error('Ollama still lists this model as installed. Please try again.');
+    const name = (LOCAL_MODELS.find((m) => m.id === model) || { name: model }).name;
+    return { ok: true, message: `${name} is uninstalled. You can install it again any time.` };
+  } catch (e) {
+    return { ok: false, message: String(e.message || e) };
+  } finally {
+    removing = null;
+  }
+}
+
+module.exports = { LOCAL_MODELS, status, install, uninstall, removing: () => !!removing, cancel, start, findOllama, hasModel };

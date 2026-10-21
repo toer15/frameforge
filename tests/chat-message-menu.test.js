@@ -102,6 +102,7 @@ test('user message menu edits, cancels, deletes and persists; next reply receive
     assert.equal(requests[0].messages.some((m) => 'id' in m || 'deleted' in m), false);
     assert.equal((await evaluate('ff.ai.edit(window.firstId, "Blocked")')).ok, false);
     assert.equal((await evaluate('ff.ai.delete(window.firstId)')).ok, false);
+    assert.equal((await evaluate('ff.ai.uninstall("llama3.1")')).busy, true);
     await evaluate('document.querySelector(".msg-menu summary").click()');
     assert.equal(await evaluate('document.querySelector(".msg-menu").open'), false);
     heldResponse.end(JSON.stringify({ done: true }) + '\n');

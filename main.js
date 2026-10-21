@@ -1989,6 +1989,7 @@ ipcMain.handle('ai:setKey', (_e, key) => ai.setKey(key));
 // Free local AI: is Ollama + the chosen model there? If not, the chat shows an Install button (top right).
 ipcMain.handle('ai:local', (_e, opts) => localAi.status(opts || {}));
 ipcMain.handle('ai:install', async (_e, model) => {
+  if (localAi.removing()) return { ok: false, busy: true, message: 'Wait for the model uninstall to finish.' };
   const m = String(model || settings.get().ollamaModel || 'llama3.1').trim();
   if (!/^[a-z0-9][a-z0-9._\-/:]{0,80}$/i.test(m)) return { ok: false, message: 'That doesn’t look like an Ollama model name.' };
   settings.set({ aiProvider: 'ollama', ollamaModel: m });
@@ -1997,6 +1998,10 @@ ipcMain.handle('ai:install', async (_e, model) => {
   return r;
 });
 ipcMain.handle('ai:installCancel', () => localAi.cancel());
+ipcMain.handle('ai:uninstall', (_e, model) => {
+  if (aiAbort) return { ok: false, busy: true, message: 'Wait for the reply to finish or press Stop before uninstalling the model.' };
+  return localAi.uninstall(model);
+});
 ipcMain.handle('ai:history', () => chatView());
 ipcMain.handle('ai:edit', (_e, id, text) => aiAbort ? { ok: false, message: 'Wait for the reply to finish or press Stop before editing messages.' } : ai.changeMessage(id, text));
 ipcMain.handle('ai:delete', (_e, id) => aiAbort ? { ok: false, message: 'Wait for the reply to finish or press Stop before deleting messages.' } : ai.changeMessage(id, null, true));
@@ -2019,7 +2024,7 @@ ipcMain.handle('ai:approve', (_e, id, ok) => {
   return true;
 });
 ipcMain.handle('ai:send', async (_e, text) => {
-  if (aiAbort) return { busy: true };
+  if (aiAbort || localAi.removing()) return { busy: true };
   const msg = String(text || '').trim();
   if (!msg) return { empty: true };
   const chat = ai.loadChat();

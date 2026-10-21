@@ -892,6 +892,7 @@ $('#fixAllBtn').onclick = async () => {
 
 /* ---------- AI chat ---------- */
 let AI = null;
+let aiUninstalling = false;
 let aiBusy = false;
 let liveBubble = null;
 let liveText = '';
@@ -959,11 +960,22 @@ function addBubble(role, text, extra = '', id = null) {
 }
 function setAiBusy(b) {
   aiBusy = b;
+  if (AI) AI.busy = b;
   $$('#chatLog [data-chat-menu]').forEach((el) => el.setAttribute('aria-disabled', String(b || !el.closest('.user-message').dataset.messageId)));
   $$('#chatLog [data-chat-save]').forEach((el) => { el.disabled = b; });
   if (b) $$('#chatLog .msg-menu[open]').forEach((el) => { el.open = false; });
   $('#chatSend').classList.toggle('hidden', b);
   $('#chatStop').classList.toggle('hidden', !b);
+  updateUninstallButton();
+}
+
+function updateUninstallButton() {
+  const ready = AI && AI.provider === 'ollama' && LOCAL && LOCAL.ready;
+  const button = $('#aiUninstallBtn');
+  $('#aiInstalledGroup').classList.toggle('hidden', !ready);
+  button.classList.toggle('hidden', !ready);
+  button.disabled = aiBusy || !!(AI && AI.busy) || aiInstalling || aiUninstalling || !!(LOCAL && LOCAL.busy);
+  button.textContent = aiUninstalling ? 'Uninstalling…' : 'Uninstall AI model';
 }
 
 function renderUserContent(row) {
@@ -1066,7 +1078,7 @@ async function refreshAi() {
   renderModelPick();
   const needKey = AI.provider === 'claude' && !AI.hasKey;
   const needInstall = AI.provider === 'ollama' && !(LOCAL && LOCAL.ready);
-  const busyInstall = aiInstalling || !!(LOCAL && LOCAL.busy);
+  const busyInstall = aiInstalling || aiUninstalling || !!(LOCAL && LOCAL.busy);
   $('#chatSetup').classList.toggle('hidden', !needKey);
   $('#localSetup').classList.toggle('hidden', !needInstall || busyInstall);
   if (needInstall) {
@@ -1080,8 +1092,10 @@ async function refreshAi() {
   $('#aiInstallBtn').classList.toggle('hidden', !needInstall || busyInstall);
   $('#aiReadyChip').classList.toggle('hidden', !(AI.provider === 'ollama' && LOCAL && LOCAL.ready));
   $('#aiReadyChip').textContent = 'Installed · runs on your PC';
-  $('#chatIn').disabled = needKey || needInstall;
-  $('#chatSend').disabled = needKey || needInstall;
+  updateUninstallButton();
+  $('#chatModelPick').disabled = aiUninstalling;
+  $('#chatIn').disabled = needKey || needInstall || aiUninstalling;
+  $('#chatSend').disabled = needKey || needInstall || aiUninstalling;
   $('#chatIn').placeholder = needInstall ? 'Press Install at the top right first…' : needKey ? 'Add your Claude API key above first…' : 'Ask FrameForge AI…';
   const m = AI.models.find((x) => x.id === AI.model);
   $('#chatModelLine').textContent = AI.provider === 'ollama' ? `${localInfo(AI.ollamaModel).name} runs on this PC with Ollama — free and private. Knows your PC, your preset and everything FrameForge changed.` : `${m ? m.name.split(' —')[0] : AI.model} · Knows your PC, your preset and everything FrameForge changed, and can make changes with your OK.`;
@@ -1103,7 +1117,7 @@ async function loadChatHistory() {
 
 async function sendChat(text) {
   const t = String(text || '').trim();
-  if (!t || aiBusy || chatChanging || pendingUserBubble) return;
+  if (!t || aiBusy || aiUninstalling || chatChanging || pendingUserBubble) return;
   $('#chatIn').value = '';
   autoGrow();
   setAiBusy(true);
@@ -1189,6 +1203,25 @@ $('#chatForm').addEventListener('submit', (e) => {
   sendChat($('#chatIn').value);
 });
 $('#chatStop').onclick = () => ff.ai.stop();
+
+$('#aiUninstallBtn').onclick = async () => {
+  if (aiBusy || aiInstalling || aiUninstalling || !AI || AI.provider !== 'ollama' || !(LOCAL && LOCAL.ready)) return;
+  const model = AI.ollamaModel;
+  aiUninstalling = true;
+  updateUninstallButton();
+  $('#chatModelPick').disabled = true;
+  $('#chatIn').disabled = true;
+  $('#chatSend').disabled = true;
+  try {
+    const r = await ff.ai.uninstall(model);
+    toast(r.message || (r.ok ? 'AI model uninstalled.' : 'Couldn’t uninstall the AI model.'), 5000);
+  } catch (err) {
+    toast(`Couldn’t uninstall the AI model: ${err.message || err}`, 5000);
+  } finally {
+    aiUninstalling = false;
+    await refreshAi();
+  }
+};
 
 // One click: FrameForge installs Ollama (if needed), starts it and downloads the chosen model.
 const INSTALL_TITLE = { app: 'Installing Ollama (free)…', start: 'Starting Ollama…', model: 'Downloading the AI model…', done: 'Installed', error: 'The install didn’t finish' };

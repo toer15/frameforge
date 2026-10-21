@@ -1,3 +1,9 @@
+**Uninstall a local AI model from AI Chat**
+
+- A red **Uninstall AI model** button now appears beside **Installed · runs on your PC** at the top of AI Chat.
+- It unloads and removes the selected downloaded model, then checks that removal succeeded. Other models and your chat history are kept.
+- The Install button returns afterwards, so you can download the model again. Uninstall waits while an AI reply or another model operation is running, and failures show a clear message.
+
 **AI Chat message menu: red text on black**
 
 - **Edit message** and **Delete message** now use red text on a black background, including when hovered or focused. Removed the default white button backgrounds.

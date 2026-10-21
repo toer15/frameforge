@@ -200,6 +200,15 @@ policy could not be verified from the unelevated development shell; installed Fr
 
 ## AI chat
 
+In 1.5.0, `aiUninstallBtn` is grouped with the local installed badge and uses red text. It is shown for a ready
+Ollama model and disabled during replies or model operations. IPC `ai:uninstall` refuses an active AI request;
+`localAi.uninstall()` locks model operations, resolves only the selected name/tag from `/api/tags`, unloads it
+with `/api/generate` (`keep_alive: 0`), deletes it with `DELETE /api/delete`, then verifies it no longer appears.
+The operation preserves other tags/models, Ollama itself, settings and chat history. The UI refreshes to Install
+after success. List-read failures and a still-present model are errors, not successful removal. Tests cover
+the API sequence/failure/locking with simulated responses and install-uninstall-reinstall in the demo UI;
+real installed-model removal has not been tested on this PC.
+
 In 1.4.0, user text messages have stable UUIDs (legacy history is migrated on read). `chatView()` exposes the
 IDs only on user bubbles; each bubble has a three-dot details menu for edit/delete. Inline edits save in place
 without regenerating replies; delete removes only that user's visible message. IPC `ai:edit`/`ai:delete` checks

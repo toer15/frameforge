@@ -423,6 +423,8 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .model-pick .select { min-width: 250px; text-transform: none; letter-spacing: 0; font-size: 15px; }
 .chat-tools .primary.small, .chat-tools .ghost.small { height: 37px; }
 #aiInstallBtn { white-space: nowrap; box-shadow: 0 0 0 1px rgba(255, 107, 44, 0.35), 0 0 22px rgba(255, 107, 44, 0.28); }
+#aiUninstallBtn, #aiUninstallBtn:hover, #aiUninstallBtn:focus-visible { color: #ff3333; border-color: #ff3333; white-space: nowrap; }
+.ai-installed-group { display: flex; align-items: center; gap: 10px; }
 .ai-ready { display: inline-flex; align-items: center; gap: 6px; height: 37px; padding: 0 12px; border: 1px solid rgba(63, 216, 255, 0.45); color: #9fdcff; font-weight: 700; font-size: 14px; white-space: nowrap; }
 .ai-ready::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--coolant); box-shadow: 0 0 10px var(--coolant); }
 .ai-install { margin: 0 0 14px auto; padding: 12px 14px; background: var(--panel); border: 1px solid rgba(255, 107, 44, 0.35); width: min(460px, 100%); }
