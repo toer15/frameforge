@@ -528,3 +528,28 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .fr-summary { margin-top: 12px; font-weight: 700; }
 .fix-item .how { margin-top: 6px; }
 .fix-item .how summary { cursor: pointer; color: var(--brass); font-weight: 700; font-size: 14px; }
+
+/* ---------- Counters beside list names ---------- */
+.counts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.counts:empty { display: none; }
+.cnt { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 9px; border: 1px solid var(--line-2); font-weight: 700; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.cnt b { font: 700 14px var(--display); color: var(--text); }
+.cnt.on { border-color: rgba(63, 216, 255, 0.5); color: #9fdcff; }
+.cnt.on b { color: var(--coolant); }
+.cnt.warn { border-color: rgba(255, 179, 71, 0.5); color: #ffd9a8; }
+.cnt.warn b { color: var(--warn); }
+.cnt.bad { border-color: rgba(255, 77, 109, 0.5); color: #ffb3c1; }
+.cnt.bad b { color: var(--bad); }
+.cnt.run b { color: var(--heat); }
+
+/* ---------- Update card at the top of Settings ---------- */
+.upd-card { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; padding: 18px 22px; }
+.upd-card .upd-ico { width: 34px; height: 34px; fill: var(--coolant); flex: none; }
+.upd-card h2 { font: 900 20px var(--display); }
+.upd-card p { margin: 4px 0 0; color: var(--muted); font-weight: 600; }
+.upd-card button { margin-left: auto; white-space: nowrap; }
+.upd-card.has-update { border-color: rgba(255, 107, 44, 0.6); }
+.upd-card.has-update p { color: var(--heat-hot); }
+
+.panel-head { flex-wrap: wrap; row-gap: 8px; }
+.panel-head h2 { white-space: nowrap; }

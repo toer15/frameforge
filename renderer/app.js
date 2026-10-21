@@ -160,6 +160,18 @@ ff.onBusy(({ on, quiet }) => {
   }
 });
 
+const cnt = (n, label, cls = '') => (n ? `<span class="cnt ${cls}"><b>${n}</b>${label}</span>` : '');
+function updateLogCounts() {
+  const list = $('#logList');
+  const c = (cls) => list.querySelectorAll(`li.${cls}`).length;
+  const done = c('st-done');
+  const warn = c('st-warn');
+  const bad = c('st-error');
+  const run = c('st-running');
+  $('#logCounts').innerHTML = cnt(done, 'done', 'on') + cnt(run, 'working', 'run') + cnt(warn, 'skipped', 'warn') + cnt(bad, 'failed', 'bad');
+}
+new MutationObserver(updateLogCounts).observe($('#logList'), { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+
 ff.onStep((s) => {
   // Live detail for the running step (e.g. "Tweak 5 of 16: Windows telemetry turned off") on the progress line.
   if (s.status === 'running' && s.message && busy && !$('#stopBtn').disabled) $('#runNow').textContent = `${s.name}: ${s.message}`;
@@ -445,6 +457,9 @@ function renderChanges(c) {
   $('#restartNotice').classList.toggle('hidden', !c.restartedNotice);
   $('#changesEmpty').classList.toggle('hidden', CHANGES.length > 0);
   const live = CHANGES.filter((e) => e.undoable).length;
+  const once = CHANGES.length - live;
+  const restart = CHANGES.filter((e) => e.pendingRestart).length;
+  $('#chCounts').innerHTML = cnt(live, 'turned on', 'on') + cnt(once, 'done once') + cnt(restart, 'need a restart', 'warn');
   $('#undoAllBtn').classList.toggle('hidden', !live);
   $('#clearHistBtn').classList.toggle('hidden', !CHANGES.some((e) => !e.undoable));
   const pn = (id) => (PRESETS.find((p) => p.id === id) || { name: id }).name;
@@ -453,7 +468,7 @@ function renderChanges(c) {
       <div class="ch-top"><b>${esc(e.name)}</b>
         <span class="ch-meta">${when(e.at)} · ${esc(pn(e.preset))}</span>
         ${e.undoable ? '<span class="ch-state active">Still active</span>' : '<span class="ch-state once">Done once</span>'}
-        ${e.reboot ? '<span class="ch-state reboot">Needs a restart</span>' : ''}
+        ${e.pendingRestart ? '<span class="ch-state reboot">Needs a restart</span>' : ''}
       </div>
       <p>${esc(e.summary)}</p>
       ${e.details && e.details.length ? `<details><summary>Exact changes (${e.details.length})</summary><ul class="ch-exact">${e.details.map((d) => `<li><code>${esc(d)}</code></li>`).join('')}</ul></details>` : ''}
@@ -1039,6 +1054,10 @@ function updLine(u) {
     unconfigured: 'Set where updates come from above, then check.',
   };
   $('#updLine').textContent = map[u.status] || '';
+  $('#updCard').classList.toggle('has-update', ['available', 'downloading', 'ready'].includes(u.status));
+  const btn = $('#checkUpdBtn');
+  btn.textContent = u.status === 'ready' ? 'Update now' : u.status === 'available' ? 'Download update' : u.status === 'checking' ? 'Checking…' : 'Check for updates';
+  btn.disabled = u.status === 'checking' || u.status === 'downloading';
   $('#updSourceLine').textContent = u.source ? `Checking ${u.source}` : u.status === 'dev' ? '' : 'No update source set yet.';
   if (u.source && document.activeElement !== $('#updSource') && !$('#updSource').value) $('#updSource').value = u.source.replace(/^github\.com\//, '');
 }
@@ -1090,8 +1109,11 @@ $('#updSourceSave').onclick = async () => {
   if (st) updLine(st);
   toast(st && st.source ? `Updates now come from ${st.source}.` : st && st.status === 'dev' ? 'Saved. Updates work in the installed version.' : 'That doesn’t look like username/repo or an https link.');
 };
-$('#checkUpdBtn').onclick = () => {
+$('#checkUpdBtn').onclick = async () => {
   updDismissed = null;
+  const u = await ff.updateState();
+  if (u && u.status === 'ready') return ff.installUpdate();
+  if (u && u.status === 'available') return ff.downloadUpdate();
   ff.checkUpdate();
 };
 

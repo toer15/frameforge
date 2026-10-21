@@ -459,8 +459,9 @@ function revertPhase(t, why = '') {
 
 function changeList() {
   const s = settings.get();
+  const boot = Date.now() - os.uptime() * 1000;
   const entries = Object.entries(changes.all())
-    .map(([id, e]) => ({ id, ...e }))
+    .map(([id, e]) => ({ id, ...e, pendingRestart: !!e.reboot && e.at > boot })) // restarted since? then it's finished
     .sort((a, b) => b.at - a.at);
   return { entries, restartedNotice: !!s.restartedNotice };
 }

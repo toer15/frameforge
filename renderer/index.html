@@ -129,6 +129,7 @@
       <div class="panel changes" id="changesPanel">
         <div class="panel-head">
           <h2>What FrameForge changed on your PC</h2>
+          <span class="counts" id="chCounts"></span>
           <div class="head-actions">
             <button class="ghost small" id="clearHistBtn">Clear history</button>
             <button class="ghost small stop" id="undoAllBtn">Undo all changes</button>
@@ -159,6 +160,7 @@
         <div class="panel log">
           <div class="panel-head">
             <h2>What FrameForge did</h2>
+            <span class="counts" id="logCounts"></span>
             <button class="primary small hidden" id="restartBtn">Restart PC to finish</button>
           </div>
           <ol id="logList" class="log-list">
@@ -284,6 +286,15 @@
     <section class="view hidden" id="view-settings">
       <div class="settings-wrap">
         <h1 class="page-title">Settings</h1>
+
+        <div class="upd-card panel" id="updCard">
+          <svg class="upd-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-2.05-4.95L14 10h7V3l-2.64 2.64A8.97 8.97 0 0 0 12 3Z"/></svg>
+          <div class="set-text">
+            <h2 id="verLine">FrameForge</h2>
+            <p id="updLine">Not checked yet.</p>
+          </div>
+          <button class="primary" id="checkUpdBtn">Check for updates</button>
+        </div>
 
         <div class="automode panel" id="autoCard">
           <div class="set-text">
@@ -460,13 +471,6 @@
               </div>
               <p class="why" id="updSourceLine"></p>
             </div>
-          </div>
-          <div class="set-row">
-            <div class="set-text">
-              <h3 id="verLine">FrameForge 1.0.0</h3>
-              <p id="updLine">Not checked yet.</p>
-            </div>
-            <button class="primary small" id="checkUpdBtn">Check for updates</button>
           </div>
         </section>
 
