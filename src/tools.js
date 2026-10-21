@@ -165,13 +165,21 @@ async function runWinutil(ids, onLine = () => {}, names = {}) {
       onLine(`Tweak ${i + 1} of ${ids.length}: ${names[id] || id}`);
     }
     const harmless = /Telemetry/.test(ids.join()) ? ["[Tweaks] Non-terminating error : Service wermgr was not found on computer '.'."] : [];
-    return { ok: harmless.length === 0, code: harmless.length ? 1 : 0, lines: [], errors: [], harmless, warnings: [], steps: [{ name: 'Tweaks', items: ids.length, state: harmless.length ? '1 error(s)' : 'ok' }], logPath: null };
+    // Test hook: FRAMEFORGE_DEMO_CTT_FAIL=WPFTweaksServices makes that tweak fail, like on a real PC.
+    const bad = (process.env.FRAMEFORGE_DEMO_CTT_FAIL || '').split(',').filter((b) => b && ids.includes(b));
+    if (bad.length) {
+      const errors = bad.map((b) => `[Tweaks] ${b}: timed out after 300 s`);
+      return { ok: false, code: 1, lines: [], errors, harmless, warnings: [], steps: [{ name: 'Tweaks', items: ids.length, state: `${bad.length} error(s)` }], logPath: null, failedIds: bad };
+    }
+    return { ok: harmless.length === 0, code: harmless.length ? 1 : 0, lines: [], errors: [], harmless, warnings: [], steps: [{ name: 'Tweaks', items: ids.length, state: harmless.length ? '1 error(s)' : 'ok' }], logPath: null, failedIds: [] };
   }
   const p = await ensureWinutil();
   const cfg = path.join(dir(), 'winutil-frameforge.json');
   fs.writeFileSync(cfg, JSON.stringify(ids, null, 1));
   const lines = [];
   let n = 0;
+  let current = null; // the tweak winutil is running right now — a real error belongs to it
+  const failed = new Set();
   const { runLines } = require('./fixes');
   const code = await runLines(
     'powershell.exe',
@@ -181,8 +189,17 @@ async function runWinutil(ids, onLine = () => {}, names = {}) {
       const e = parseWinutilLine(l);
       if (!e) return;
       const t = e.text.match(/^(Applying|Running) tweak:\s*(\S+)/i);
-      if (t) onLine(`Tweak ${Math.min(++n, ids.length)} of ${ids.length}: ${names[t[2]] || t[2]}`);
-      else if (e.level === 'ERROR') onLine(HARMLESS.test(e.text) ? `Skipped something that isn't on this PC (${e.text.replace(/^Non-terminating error\s*:\s*/i, '').slice(0, 80)})` : `Problem: ${e.text.slice(0, 100)}`);
+      if (t) {
+        current = t[2];
+        onLine(`Tweak ${Math.min(++n, ids.length)} of ${ids.length}: ${names[t[2]] || t[2]}`);
+      } else if (e.level === 'ERROR') {
+        if (!HARMLESS.test(e.text)) {
+          const named = (e.text.match(/\b(WPF[A-Za-z0-9_]+)\b/) || [])[1];
+          if (named && ids.includes(named)) failed.add(named);
+          else if (current) failed.add(current);
+        }
+        onLine(HARMLESS.test(e.text) ? `Skipped something that isn't on this PC (${e.text.replace(/^Non-terminating error\s*:\s*/i, '').slice(0, 80)})` : `Problem: ${e.text.slice(0, 100)}`);
+      }
     },
     45 * 60 * 1000
   );
@@ -206,6 +223,7 @@ async function runWinutil(ids, onLine = () => {}, names = {}) {
     steps,
     logPath,
     fatal,
+    failedIds: [...failed], // which tweaks hit a real error (so Fix mode can leave just those out)
   };
 }
 
@@ -278,4 +296,139 @@ async function wingetInstall(id) {
   return { ok: false, message: (r.stdout.split(/\r?\n/).filter(Boolean).pop() || 'winget failed').slice(0, 160) };
 }
 
-module.exports = { HARMLESS, ensureWinutil, runWinutil, openWinutil, winutilPath, install, status, presentMonPath, lhmPath, startLhm, TOOLS, WINGET_APPS, hasWinget, wingetKnows, wingetInstall };
+// ---------- Big downloads (straight to disk, with progress and an optional SHA-256 check) ----------
+
+async function downloadFile(url, dest, { headers = {}, onProgress = null, signal, sha256 = null } = {}) {
+  const crypto = require('crypto');
+  const res = await net.fetch(url, { headers: { 'User-Agent': 'FrameForge', ...headers }, signal });
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  const total = Number(res.headers.get('content-length')) || 0;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const tmp = dest + '.part';
+  const out = fs.createWriteStream(tmp);
+  const hash = crypto.createHash('sha256');
+  const reader = res.body.getReader();
+  let got = 0;
+  let lastPct = -1;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const buf = Buffer.from(value);
+      hash.update(buf);
+      if (!out.write(buf)) await new Promise((r) => out.once('drain', r));
+      got += buf.length;
+      const pct = total ? Math.floor((got / total) * 100) : -1;
+      if (onProgress && pct !== lastPct) {
+        lastPct = pct;
+        onProgress(total ? got / total : null, got, total);
+      }
+    }
+    await new Promise((resolve, reject) => out.end((e) => (e ? reject(e) : resolve())));
+  } catch (e) {
+    out.destroy();
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
+  const digest = hash.digest('hex');
+  if (sha256 && digest.toLowerCase() !== String(sha256).toLowerCase()) {
+    fs.rmSync(tmp, { force: true });
+    throw new Error('The download didn’t match its official fingerprint (SHA-256), so it was deleted and not run.');
+  }
+  fs.renameSync(tmp, dest);
+  return { bytes: got, sha256: digest };
+}
+
+/** Ask Windows whether a file carries a valid digital signature from the expected company. */
+async function verifySignature(file, publisher) {
+  if (DEMO) return { ok: true, status: 'Valid', subject: 'CN=Demo' };
+  const r = await ps(`$s = Get-AuthenticodeSignature -LiteralPath '${file.replace(/'/g, "''")}'; "$($s.Status)|$($s.SignerCertificate.Subject)"`);
+  const [status, subject = ''] = r.stdout.trim().split('|');
+  return { ok: status === 'Valid' && publisher.test(subject), status, subject };
+}
+
+// ---------- AMD Software: Adrenalin Edition ----------
+// AMD doesn't publish its driver app in Microsoft's winget store. So FrameForge reads the download link from
+// AMD's own driver page for your card, downloads AMD's full package from drivers.amd.com, and lets Windows
+// check its digital signature. Only a file signed by Advanced Micro Devices, Inc. is ever started.
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+const AMD_RDNA3_PAGE = 'https://www.amd.com/en/support/downloads/previous-drivers.html/graphics/radeon-rx/radeon-rx-7000-series/amd-radeon-rx-7900-xt.html';
+
+function amdDriverPages(gpuName) {
+  const m = String(gpuName || '').match(/RX\s*(\d)(\d{3})\s*(XTX|XT|GRE|S)?\b/i);
+  if (!m || Number(m[1]) < 5) return [];
+  const model = `amd-radeon-rx-${m[1]}${m[2]}${m[3] ? '-' + m[3].toLowerCase() : ''}`;
+  const series = `radeon-rx-${m[1]}000-series`;
+  const pages = [
+    `https://www.amd.com/en/support/downloads/drivers.html/graphics/radeon-rx/${series}/${model}.html`,
+    `https://www.amd.com/en/support/downloads/previous-drivers.html/graphics/radeon-rx/${series}/${model}.html`,
+  ];
+  // RX 7000 and RX 9000 cards share one driver package, so another RX 7000 page works as a backup.
+  if (Number(m[1]) >= 7) pages.push(AMD_RDNA3_PAGE);
+  return pages;
+}
+
+/** Newest official AMD driver package link on AMD's page for this card (prefers WHQL-certified ones). */
+async function amdDriverLink(gpuName) {
+  for (const page of amdDriverPages(gpuName)) {
+    try {
+      const res = await net.fetch(page, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' } });
+      if (!res.ok) continue;
+      const html = await res.text();
+      // AMD's small "Auto-Detect and Install" setup (~50 MB, fetches the rest itself) is preferred over the
+      // full ~900 MB package. Both are signed by AMD.
+      const mini = (html.match(/https:\/\/drivers\.amd\.com\/drivers\/installer\/[\d.]+\/whql\/amd-software-adrenalin-edition-[A-Za-z0-9.\-_]*minimalsetup[A-Za-z0-9.\-_]*\.exe/) || [])[0];
+      if (mini) return { url: mini, page, small: true };
+      const links = [...new Set(html.match(/https:\/\/drivers\.amd\.com\/drivers\/(?:whql-)?amd-software-adrenalin-edition-[A-Za-z0-9.\-_]+\.exe/g) || [])];
+      const pick = links.find((l) => /\/whql-/.test(l)) || links[0];
+      if (pick) return { url: pick, page, small: false };
+    } catch {}
+  }
+  return null;
+}
+
+async function amdDriverInstall(gpuName, onLine = () => {}, signal) {
+  if (DEMO) {
+    for (let i = 1; i <= 5; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      onLine(`Downloading AMD Software from drivers.amd.com… ${i * 20}%`);
+    }
+    return { ok: true, started: true, message: 'AMD’s installer is open — its digital signature checked out.' };
+  }
+  onLine('Finding the newest AMD driver for your card on amd.com…');
+  const link = await amdDriverLink(gpuName);
+  if (!link) return { ok: false, message: 'AMD’s driver page couldn’t be read for your card.' };
+  const file = path.join(app.getPath('temp'), 'FrameForge', path.basename(link.url));
+  if (!fs.existsSync(file)) {
+    onLine(`Downloading ${path.basename(link.url)} from drivers.amd.com${link.small ? '' : ' (about 900 MB)'}…`);
+    let lastShown = -1;
+    await downloadFile(link.url, file, {
+      headers: { 'User-Agent': BROWSER_UA, Referer: 'https://www.amd.com/' }, // drivers.amd.com refuses downloads without it
+      signal,
+      onProgress: (p) => {
+        const pct = p == null ? -1 : Math.floor(p * 100);
+        if (pct >= 0 && pct % 5 === 0 && pct !== lastShown) {
+          lastShown = pct;
+          onLine(`Downloading AMD Software… ${pct}%`);
+        }
+      },
+    });
+  }
+  onLine('Asking Windows to check AMD’s digital signature on the download…');
+  const sig = await verifySignature(file, /O="?Advanced Micro Devices/i);
+  if (!sig.ok) {
+    fs.rmSync(file, { force: true });
+    return { ok: false, message: `The download isn’t signed by AMD (Windows says: ${sig.status || 'unknown'}), so it was deleted and not run.` };
+  }
+  onLine('Signature OK — signed by Advanced Micro Devices, Inc. Starting AMD’s installer…');
+  const { spawn } = require('child_process');
+  const child = spawn(file, [], { detached: true, stdio: 'ignore' });
+  await new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('spawn', resolve);
+  });
+  child.unref();
+  return { ok: true, started: true, message: 'AMD’s own installer is open (signature checked by Windows). Click Install in its window — FrameForge checks again when it’s done.' };
+}
+
+module.exports = { HARMLESS, ensureWinutil, runWinutil, openWinutil, winutilPath, install, status, presentMonPath, lhmPath, startLhm, TOOLS, WINGET_APPS, hasWinget, wingetKnows, wingetInstall, downloadFile, verifySignature, amdDriverInstall, amdDriverPages };

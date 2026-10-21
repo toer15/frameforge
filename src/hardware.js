@@ -156,7 +156,7 @@ async function scan(manual) {
     const p = DEMO ? null : findVendorApp(v);
     rig.vendorApp = {
       name: VENDOR_APPS[v].name,
-      installed: DEMO ? true : !!p,
+      installed: DEMO ? process.env.FRAMEFORGE_DEMO_NO_VENDOR !== '1' : !!p,
       path: p,
       download: VENDOR_APPS[v].download,
     };

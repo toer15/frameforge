@@ -340,9 +340,14 @@ TWEAKS.push({
     const preset = settings.get().cttPreset || 'Standard';
     // FrameForge already made a restore point, and Windows allows only one per 24 hours, so winutil's
     // own restore-point step would fail — leave it out.
-    const ids = (CTT_PRESETS[preset] || []).filter((i) => i !== 'WPFTweaksRestorePoint');
+    // Tweaks Fix mode found to fail on this PC are left out, so the rest of the preset can finish.
+    const skip = new Set(settings.get().cttSkip || []);
+    const all = (CTT_PRESETS[preset] || []).filter((i) => i !== 'WPFTweaksRestorePoint');
+    const ids = all.filter((i) => !skip.has(i));
+    const left = all.filter((i) => skip.has(i));
     const r = await tools.runWinutil(ids, (line) => ctx.progress && ctx.progress(line), CTT_NAMES);
-    const names = ids.map((i) => `winutil ${preset}: ${CTT_NAMES[i] || i}`);
+    const names = ids.map((i) => `winutil ${preset}: ${CTT_NAMES[i] || i}`).concat(left.map((i) => `Left out (fails on this PC): ${CTT_NAMES[i] || i}`));
+    const leftNote = left.length ? ` Left out ${left.length} tweak${left.length === 1 ? '' : 's'} that fail${left.length === 1 ? 's' : ''} on this PC (${left.map((i) => CTT_NAMES[i] || i).join(', ')}).` : '';
     const timedOut = r.steps.some((st) => /TIMED OUT/i.test(st.state));
     const skipped = r.harmless.map((e) => `Skipped (not on this PC — normal): ${e.replace(/^\[[^\]]+\]\s*/, '').replace(/^Non-terminating error\s*:\s*/i, '')}`);
     const log = r.logPath ? [`Full winutil log: ${r.logPath}`] : [];
@@ -352,7 +357,7 @@ TWEAKS.push({
       const n = r.harmless.length;
       return {
         ok: true,
-        message: `Applied Chris Titus’s ${preset} preset (${ids.length} tweaks).${n ? ` ${n} item${n === 1 ? ' was' : 's were'} skipped because ${n === 1 ? 'it isn’t' : 'they aren’t'} on your version of Windows — that’s normal.` : ''}`,
+        message: `Applied Chris Titus’s ${preset} preset (${ids.length} tweaks).${n ? ` ${n} item${n === 1 ? ' was' : 's were'} skipped because ${n === 1 ? 'it isn’t' : 'they aren’t'} on your version of Windows — that’s normal.` : ''}${leftNote}`,
         details: [...names, ...skipped, ...r.warnings.map((w) => `Warning: ${w}`), ...log],
       };
     }
@@ -364,6 +369,7 @@ TWEAKS.push({
       message: `Most of the ${preset} preset ran, but winutil reported a real problem${first ? `: ${String(first).replace(/^\[[^\]]+\]\s*/, '').replace(/^Non-terminating error\s*:\s*/i, '').replace(/\.+$/, '').slice(0, 160)}` : ''}. Try again, or open the Chris Titus tool from Fix mode.`,
       details: [...r.errors.map((e) => `Error: ${e}`), ...r.steps.filter((st) => st.state !== 'ok').map((st) => `${st.name}: ${st.state}`), ...skipped, ...log],
       fix: 'ctt',
+      failedIds: r.failedIds || [],
     };
   },
 });
@@ -489,6 +495,7 @@ TWEAKS.push({
   overclock: true,
   vendor: 'nvidia',
   async apply() {
+    if (backup.get('gpu_cool')) return { ok: false, warn: true, message: 'Left alone: FrameForge lowered this card’s power limit because it ran hot. Undo “Cooler graphics card” under What FrameForge changed to allow overclocking again.' };
     const q = await run('nvidia-smi', ['--query-gpu=power.limit,power.default_limit,power.max_limit', '--format=csv,noheader,nounits']);
     if (q.code !== 0) return { ok: false, warn: true, message: 'Couldn’t read the power limit from the NVIDIA driver.' };
     const [cur, , max] = q.stdout.trim().split(/\r?\n/)[0].split(',').map((x) => parseFloat(x));
@@ -505,6 +512,43 @@ TWEAKS.push({
   async revert() {
     const b = backup.get(this.id);
     if (b && b.prev) await run('nvidia-smi', ['-pl', String(Math.round(b.prev))]);
+    backup.remove(this.id);
+    return { ok: true };
+  },
+});
+
+// Fix mode: an NVIDIA card that stays hot gets a slightly lower power limit (90 % of its normal limit).
+// Lower power is always safe for the hardware; it usually costs only a few percent FPS and runs much cooler.
+// NVIDIA resets power limits on every restart, so FrameForge sets it again when it starts.
+TWEAKS.push({
+  id: 'gpu_cool',
+  name: 'Cooler graphics card (power limit 90 %)',
+  desc: 'Lowers the NVIDIA power limit to 90 % of normal because the card kept running hot. Usually only a few percent fewer FPS, and much less heat and fan noise.',
+  admin: true,
+  vendor: 'nvidia',
+  fixOnly: true, // only Fix mode uses it — never part of a preset
+  demoMessage: 'Power limit lowered from 320 W to 288 W (90 %).',
+  demoDetails: ['NVIDIA GPU power limit: 320 W → 288 W (90 % of normal — set again after every restart)'],
+  async apply() {
+    const q = await run('nvidia-smi', ['--query-gpu=power.limit,power.default_limit,power.min_limit', '--format=csv,noheader,nounits']);
+    if (q.code !== 0) return { ok: false, warn: true, message: 'Couldn’t read the power limit from the NVIDIA driver.' };
+    const [cur, def, min] = q.stdout.trim().split(/\r?\n/)[0].split(',').map((x) => parseFloat(x));
+    if (!def || isNaN(def)) return { ok: false, warn: true, message: 'This card doesn’t report its power limit.' };
+    const to = Math.max(Math.ceil(min || 0), Math.round(def * 0.9));
+    if (!backup.get(this.id)) backup.put(this.id, { prev: cur, to });
+    if (Math.abs(cur - to) < 1) return { ok: true, message: `Already at ${to} W (90 % of normal).` };
+    const r = await run('nvidia-smi', ['-pl', String(to)]);
+    if (r.code !== 0) {
+      backup.remove(this.id);
+      return { ok: false, warn: true, message: 'This card doesn’t allow its power limit to be changed from Windows.' };
+    }
+    return { ok: true, message: `Power limit lowered from ${Math.round(cur)} W to ${to} W (90 % of normal) — the card runs cooler.`, details: [`NVIDIA GPU power limit: ${Math.round(cur)} W → ${to} W (90 % of normal — set again after every restart)`] };
+  },
+  async revert() {
+    const b = backup.get(this.id);
+    const q = await run('nvidia-smi', ['--query-gpu=power.default_limit', '--format=csv,noheader,nounits']);
+    const def = parseFloat(q.stdout);
+    await run('nvidia-smi', ['-pl', String(Math.round(!isNaN(def) && def ? def : (b && b.prev) || 0))]);
     backup.remove(this.id);
     return { ok: true };
   },
@@ -581,7 +625,7 @@ const VENDOR_GUIDES = {
 };
 
 function list() {
-  return TWEAKS.filter((t) => !t.overclock).map(({ id, name, desc, admin, reboot, oneShot }) => ({
+  return TWEAKS.filter((t) => !t.overclock && !t.fixOnly).map(({ id, name, desc, admin, reboot, oneShot }) => ({
     id,
     name,
     desc,
@@ -614,7 +658,7 @@ async function runOne(t, { admin, progress } = {}) {
     // Test hook: reproduce a real winutil failure once.
     runOne.failedOnce = true;
     await sleep(800);
-    res = { ok: false, warn: true, fix: 'ctt', message: 'Most of the Standard preset ran, but winutil reported a problem: [Tweaks] WPFTweaksServices: timed out after 300 s. Open Fix mode to retry it or open the Chris Titus tool.', details: ['Error: [Tweaks] WPFTweaksServices: timed out after 300 s', 'Tweaks: 1 error(s)', 'Full winutil log: C:\\Users\\Tommy\\AppData\\Local\\winutil\\logs\\winutil_2026-10-20_19-01-40.log'] };
+    res = { ok: false, warn: true, fix: 'ctt', message: 'Most of the Standard preset ran, but winutil reported a problem: [Tweaks] WPFTweaksServices: timed out after 300 s. Open Fix mode to retry it or open the Chris Titus tool.', details: ['Error: [Tweaks] WPFTweaksServices: timed out after 300 s', 'Tweaks: 1 error(s)', 'Full winutil log: C:\\Users\\Tommy\\AppData\\Local\\winutil\\logs\\winutil_2026-10-20_19-01-40.log'], failedIds: ['WPFTweaksServices'] };
   } else if (DEMO && t.id === 'ctt_tweaks') {
     res = await t.apply({ progress });
   } else if (DEMO) {
@@ -632,7 +676,7 @@ async function runOne(t, { admin, progress } = {}) {
   }
   let message = res.message || '';
   if (res.ok && (!message || message === 'Done.')) message = t.desc.split(/(?<=\.)\s/)[0]; // first sentence of what it does
-  return { status: res.ok ? 'done' : res.warn ? 'warn' : 'error', message, reboot: res.ok && (!!t.reboot || !!res.rebootNow), details: res.details || [], fix: res.fix || null, adminSkipped: t.admin && !admin, locked: !!res.locked };
+  return { status: res.ok ? 'done' : res.warn ? 'warn' : 'error', message, reboot: res.ok && (!!t.reboot || !!res.rebootNow), details: res.details || [], fix: res.fix || null, adminSkipped: t.admin && !admin, locked: !!res.locked, failedIds: res.failedIds || [] };
 }
 
 /** Turn Auto Mode off: undo everything in reverse order. */

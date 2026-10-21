@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld('ff', {
     stop: () => ipcRenderer.invoke('ai:stop'),
     approve: (id, ok) => ipcRenderer.invoke('ai:approve', id, ok),
     onEvent: on('ai:event'),
+    local: (opts) => ipcRenderer.invoke('ai:local', opts),
+    install: (model) => ipcRenderer.invoke('ai:install', model),
+    cancelInstall: () => ipcRenderer.invoke('ai:installCancel'),
+    onInstall: on('ai:installProgress'),
   },
   fix: {
     list: () => ipcRenderer.invoke('fix:list'),
@@ -58,6 +62,11 @@ contextBridge.exposeInMainWorld('ff', {
     onRepair: on('fix:repair'),
     onLine: on('fix:line'),
     onAll: on('fixall'),
+    background: () => ipcRenderer.invoke('fix:background'),
+    onAuto: on('fix:auto'),
+    cancelRestart: () => ipcRenderer.invoke('restart:cancel'),
+    restartNow: () => ipcRenderer.invoke('restart:now'),
+    onRestart: on('restart:countdown'),
   },
   tw: {
     catalog: () => ipcRenderer.invoke('tweaks:catalog'),

@@ -1,5 +1,5 @@
 // FrameForge — main process
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, screen, nativeImage, dialog, clipboard, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, screen, nativeImage, dialog, clipboard, Notification, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -17,6 +17,7 @@ const { FpsReader } = require('./src/fps');
 const { Sensors } = require('./src/sensors');
 const updater = require('./src/updater');
 const ai = require('./src/ai');
+const localAi = require('./src/localai');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -82,13 +83,27 @@ async function boot() {
   registerHotkey();
   setInterval(telemetryTick, 1000);
   detectExtra().then(() => send('fix:changed', true)).catch(() => {});
-  setInterval(() => detectExtra().then(() => send('fix:changed', true)).catch(() => {}), 2 * 60 * 1000);
-  if (settings.get().resumeFixAll && (admin || DEMO)) {
+  setInterval(() => detectExtra().then(() => {
+    send('fix:changed', true);
+    backgroundFix('check');
+  }).catch(() => {}), 2 * 60 * 1000);
+  const resuming = settings.get().resumeFixAll || process.argv.includes('--resume-fix');
+  if (resuming) removeResumeTask();
+  if (resuming && (admin || DEMO)) {
     settings.set({ resumeFixAll: false });
     setTimeout(() => {
+      showMain();
       send('goto', 'fix');
-      fixEverything();
+      fixEverything({ resumed: true });
     }, 3000);
+  } else {
+    // Fix mode works on its own: a little after start, and after every re-check, it fixes what it safely can.
+    setTimeout(() => backgroundFix('start'), DEMO ? 8000 : 25000);
+  }
+  // NVIDIA resets power limits on every restart: put back the cooler limit Fix mode set for a hot card.
+  if (backup.get('gpu_cool') && !DEMO && admin) {
+    const t = tweakById('gpu_cool');
+    if (t) t.apply().catch(() => {});
   }
 
   // After a PC restart, Auto Mode switches itself off. The changes stay exactly as they are —
@@ -230,6 +245,7 @@ function rebuildTrayMenu() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open FrameForge', click: showMain },
+      ...(restartTimer ? [{ label: 'Cancel the restart', click: cancelRestart }] : []),
       busy ? { label: 'Stop Auto Mode', click: stopAuto } : { label: s.autoMode ? 'Auto Mode: on' : 'Auto Mode: off', enabled: false },
       { label: 'Show/hide overlay', click: toggleOverlay },
       { type: 'separator' },
@@ -336,6 +352,9 @@ let runQuiet = false;
 function telemetryTick() {
   const s = settings.get();
   const t = sensors.read();
+  // Test hooks: pretend a part runs hot (demo / test runs only).
+  if (DEMO && process.env.FRAMEFORGE_FAKE_GPU_TEMP) t.gpuTemp = Number(process.env.FRAMEFORGE_FAKE_GPU_TEMP);
+  if (DEMO && process.env.FRAMEFORGE_FAKE_CPU_TEMP) t.cpuTemp = Number(process.env.FRAMEFORGE_FAKE_CPU_TEMP);
   let f = null;
   if (s.fpsCounter) {
     if (DEMO) {
@@ -355,8 +374,67 @@ function telemetryTick() {
     sensorsReady: tl.lhm,
   };
   lastStats = stats;
+  trackLoad(stats);
   send('stats', stats);
   if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.send('stats', stats);
+}
+
+// ---------- Heat and gaming, measured over time (one hot second isn't a problem; a hot minute is) ----------
+
+/** The temperature where this CPU counts as too hot. Some chips are built to run hotter than others. */
+function cpuHotLimit() {
+  const n = (rig && rig.cpu && rig.cpu.name) || '';
+  if (/Ryzen.*\b7\d{3}X3D/i.test(n)) return 87; // Ryzen 7000 X3D chips stop at 89 °C
+  if (/Ryzen.*\b[79]\d{3}/i.test(n)) return 95; // Ryzen 7000/9000 are designed to run up to 95 °C
+  if (/Core\(TM\) i\d-1[234]\d{3}|1[234]th Gen|Core\(TM\) Ultra|Core Ultra/i.test(n)) return 95; // Intel 12th–14th gen / Core Ultra: up to 100 °C
+  return 90;
+}
+const GPU_HOT = 87;
+const heat = { cpu: { since: 0, last: 0, peak: 0 }, gpu: { since: 0, last: 0, peak: 0 } };
+let gpuBusySince = 0;
+let lastGameSeen = 0;
+function trackOne(h, temp, limit) {
+  const now = Date.now();
+  if (temp != null && temp >= limit) {
+    if (!h.since) h.since = now;
+    if (now - h.since >= (process.env.FRAMEFORGE_FAST_HEAT ? 0 : 30000)) {
+      h.last = now; // hot for 30 seconds in a row
+      h.peak = Math.max(h.peak, temp);
+    }
+  } else {
+    h.since = 0;
+    if (now - h.last > 5 * 60 * 1000) h.peak = 0;
+  }
+}
+function trackLoad(st) {
+  trackOne(heat.cpu, st.cpuTemp, cpuHotLimit());
+  trackOne(heat.gpu, st.gpuTemp, GPU_HOT);
+  const now = Date.now();
+  if (st.fps && st.fps.fps > 0) lastGameSeen = now;
+  if (!DEMO && st.gpuLoad != null && st.gpuLoad >= 70) {
+    if (!gpuBusySince) gpuBusySince = now;
+    if (now - gpuBusySince > 20000) lastGameSeen = now;
+  } else gpuBusySince = 0;
+}
+/** Hot for 30 s in a row within the last 5 minutes → { temp } */
+function hotNow(kind) {
+  const h = heat[kind];
+  return h.last && Date.now() - h.last < 5 * 60 * 1000 ? { temp: h.peak } : null;
+}
+/** A game (or anything that keeps the graphics card busy) ran in the last minute. */
+function gameRunning() {
+  if (process.env.FRAMEFORGE_FAKE_GAME === '1') return true;
+  if (DEMO) return false;
+  return Date.now() - lastGameSeen < 60000;
+}
+/** Minutes since the last mouse or keyboard input. */
+function idleMinutes() {
+  if (process.env.FRAMEFORGE_FAKE_IDLE) return Number(process.env.FRAMEFORGE_FAKE_IDLE);
+  try {
+    return powerMonitor.getSystemIdleTime() / 60;
+  } catch {
+    return 0;
+  }
 }
 
 // ---------- Auto Mode ----------
@@ -419,7 +497,7 @@ function tweakPhase(t) {
       }
     }
     if (r.status === 'done') problems.remove(t.id);
-    else if (!r.locked) problems.put(t.id, { id: t.id, name: t.name, status: r.status, message: r.message, details: r.details, fix: r.fix, adminSkipped: r.adminSkipped, at: Date.now() });
+    else if (!r.locked) problems.put(t.id, { id: t.id, name: t.name, status: r.status, message: r.message, details: r.details, fix: r.fix, adminSkipped: r.adminSkipped, failedIds: r.failedIds || [], at: Date.now() });
     // Remember settings this PC locks, so the Tweaks tab can say so instead of offering a switch that can't work.
     const locked = { ...(settings.get().lockedTweaks || {}) };
     if (r.locked) locked[t.id] = r.message;
@@ -785,9 +863,9 @@ function fixedTitleFor(it) {
       disk: 'Freed up space on drive C:',
       tool_presentmon: 'Installed PresentMon — the FPS counter works',
       tool_lhm: 'Installed LibreHardwareMonitor — temperatures can be read',
-      vendor_app: 'Driver app installed',
-      hot_cpu: 'CPU temperature is back to normal',
-      hot_gpu: 'Graphics card temperature is back to normal',
+      vendor_app: rig && rig.gpu && rig.gpu.vendor === 'amd' ? 'Started AMD’s verified installer' : 'Driver app installed',
+      hot_cpu: 'Cooled the CPU down',
+      hot_gpu: backup.get('gpu_power_limit') ? 'Cooled the graphics card down (power limit back to normal)' : 'Cooled the graphics card down (power limit 90 %)',
       not_admin: 'FrameForge runs as administrator',
       insight_ram_speed: 'RAM runs at full speed',
       insight_single_stick: 'RAM runs in dual channel',
@@ -825,9 +903,14 @@ function fixList() {
       it.actions.push(A(`retry:${p.id}`, 'Try again'), A('open_ctt', 'Open Chris Titus tool'));
       const log = (p.details || []).find((d) => d.startsWith('Full winutil log: '));
       if (log) it.actions.push(A(`openfile:${log.slice(18)}`, 'Open winutil log'));
-      it.strategies.push(A(`retry:${p.id}`, 'Run the Chris Titus preset again'), A('redownload_ctt', 'Download a fresh copy of the Chris Titus tool and run it again'));
+      it.strategies.push(
+        A(`retry:${p.id}`, 'Run the Chris Titus preset again'),
+        A('ctt_isolate', 'Find the Chris Titus tweak that fails on this PC and run the preset without it'),
+        A('redownload_ctt', 'Download a fresh copy of the Chris Titus tool and run it again')
+      );
       it.manual = ['FrameForge opened the Chris Titus tool for you.', 'Go to the Tweaks tab in it, tick the tweaks you want and click “Run Tweaks”.', 'If one tweak keeps failing, leave it unticked — the rest still work.'];
       it.manualAction = 'open_ctt';
+      it.bg = 'idle'; // takes a few minutes and works the CPU: only while you're away
     } else if (p.id === 'power_plan') {
       it.actions.push(A('retry:power_plan', 'Try again'), A('open:ms-settings:powersleep', 'Open Power mode settings'));
       it.strategies.push(A('retry:power_plan', 'Set the Ultimate Performance plan again'));
@@ -837,38 +920,58 @@ function fixList() {
       it.actions.push(A(`retry:${p.id}`, 'Try again'));
       it.strategies.push(A(`retry:${p.id}`, `Apply “${t.name}” again`), A(`retry:${p.id}`, 'Try once more'));
     }
+    if (!it.bg && !p.adminSkipped) it.bg = 'quiet';
     add(it);
   }
   if (extra.reverted.length) {
     const names = extra.reverted.map((id) => (tweakById(id) || {}).name).filter(Boolean);
-    add({ id: 'reverted', level: 'medium', title: `Windows switched off ${names.length} of your tweak${names.length === 1 ? '' : 's'}`, body: `Windows updates sometimes reset settings: ${names.join(', ')}.`, actions: [A('reapply', 'Turn them back on')], strategies: [A('reapply', 'Turn them back on')] });
+    add({ id: 'reverted', level: 'medium', title: `Windows switched off ${names.length} of your tweak${names.length === 1 ? '' : 's'}`, body: `Windows updates sometimes reset settings: ${names.join(', ')}.`, actions: [A('reapply', 'Turn them back on')], strategies: [A('reapply', 'Turn them back on')], bg: 'quiet' });
   }
   if (extra.presetOff.length) {
     const names = extra.presetOff.map((id) => (tweakById(id) || {}).name).filter(Boolean);
     const pn = presets.PRESETS[s.preset].name;
-    add({ id: 'preset_off', level: 'medium', title: `${names.length} setting${names.length === 1 ? '' : 's'} from your ${pn} preset ${names.length === 1 ? 'isn’t' : 'aren’t'} on yet`, body: `${names.join(', ')}.`, actions: [A('preset_apply', 'Turn them on')], strategies: [A('preset_apply', `Turn on the missing ${pn} settings`)] });
+    add({ id: 'preset_off', level: 'medium', title: `${names.length} setting${names.length === 1 ? '' : 's'} from your ${pn} preset ${names.length === 1 ? 'isn’t' : 'aren’t'} on yet`, body: `${names.join(', ')}.`, actions: [A('preset_apply', 'Turn them on')], strategies: [A('preset_apply', `Turn on the missing ${pn} settings`)], bg: 'quiet' });
   }
   if (extra.display && extra.display.cur < extra.display.max) {
     const d = extra.display;
-    add({ id: 'display', level: 'big', title: `Your display runs at ${d.cur} Hz, but it can do ${d.max} Hz`, body: `Windows is only using ${Math.round((d.cur / d.max) * 100)}% of what your monitor can show at ${d.res}.`, actions: [A('tweak:max_refresh', `Switch to ${d.max} Hz`)], strategies: [A('tweak:max_refresh', `Switch the display to ${d.max} Hz`)], manual: guides.displayCable(d) });
+    add({ id: 'display', level: 'big', title: `Your display runs at ${d.cur} Hz, but it can do ${d.max} Hz`, body: `Windows is only using ${Math.round((d.cur / d.max) * 100)}% of what your monitor can show at ${d.res}.`, actions: [A('tweak:max_refresh', `Switch to ${d.max} Hz`)], strategies: [A('tweak:max_refresh', `Switch the display to ${d.max} Hz`)], manual: guides.displayCable(d), bg: 'quiet' });
   }
   if (extra.disk && (extra.disk.usePct >= 92 || extra.disk.freeGB < 15)) {
-    add({ id: 'disk', level: 'medium', title: `Drive C: is almost full (${extra.disk.freeGB} GB free)`, body: 'A nearly full system drive makes Windows and game updates slow, and can cause stutter.', actions: [A('free_space', 'Free up space')], strategies: [A('free_space', 'Clear temp files and old Windows update leftovers')], manual: guides.diskFull(extra.disk) });
+    add({ id: 'disk', level: 'medium', title: `Drive C: is almost full (${extra.disk.freeGB} GB free)`, body: 'A nearly full system drive makes Windows and game updates slow, and can cause stutter.', actions: [A('free_space', 'Free up space')], strategies: [A('free_space', 'Clear temp files and old Windows update leftovers')], manual: guides.diskFull(extra.disk), bg: 'idle' });
   }
   const tl = tools.status();
-  if (s.fpsCounter && !tl.presentmon) add({ id: 'tool_presentmon', level: 'medium', title: 'The FPS counter needs PresentMon', body: 'A free tool from Intel that reads real in-game FPS.', actions: [A('install:presentmon', 'Download it')], strategies: [A('install:presentmon', 'Download PresentMon from Intel’s GitHub'), A('install:presentmon', 'Try the download again')] });
-  if (s.tempMonitor && !tl.lhm && (!lastStats || lastStats.cpuTemp == null)) add({ id: 'tool_lhm', level: 'medium', title: 'CPU temperature can’t be read yet', body: 'Windows doesn’t share the real CPU sensor. LibreHardwareMonitor (free, open source) does.', actions: [A('install:lhm', 'Download it')], strategies: [A('install:lhm', 'Download LibreHardwareMonitor from its GitHub'), A('install:lhm', 'Try the download again')] });
+  if (s.fpsCounter && !tl.presentmon) add({ id: 'tool_presentmon', level: 'medium', title: 'The FPS counter needs PresentMon', body: 'A free tool from Intel that reads real in-game FPS.', actions: [A('install:presentmon', 'Download it')], strategies: [A('install:presentmon', 'Download PresentMon from Intel’s GitHub'), A('install:presentmon', 'Try the download again')], bg: 'quiet' });
+  if (s.tempMonitor && !tl.lhm && (!lastStats || lastStats.cpuTemp == null)) add({ id: 'tool_lhm', level: 'medium', title: 'CPU temperature can’t be read yet', body: 'Windows doesn’t share the real CPU sensor. LibreHardwareMonitor (free, open source) does.', actions: [A('install:lhm', 'Download it')], strategies: [A('install:lhm', 'Download LibreHardwareMonitor from its GitHub'), A('install:lhm', 'Try the download again')], bg: 'quiet' });
   if (rig && rig.vendorApp && !rig.vendorApp.installed) {
     const amd = rig.gpu.vendor === 'amd';
-    add({ id: 'vendor_app', level: 'medium', title: `${rig.vendorApp.name} isn’t installed`, body: 'The driver checklist and the vendor’s own auto-overclock and undervolt live in it.', actions: [A(amd ? 'vendor' : 'vendor_install', 'Get it')], strategies: amd ? [] : [A('vendor_install', `Install ${rig.vendorApp.name} from Microsoft’s verified app store`)], manual: amd ? guides.amdDriverApp() : null, manualAction: amd ? 'vendor' : null });
+    const amdAuto = amd && tools.amdDriverPages(rig.gpu.name).length > 0;
+    add({
+      id: 'vendor_app',
+      level: 'medium',
+      title: `${rig.vendorApp.name} isn’t installed`,
+      body: 'The driver checklist and the vendor’s own auto-overclock and undervolt live in it.',
+      actions: [A(amd ? (amdAuto ? 'amd_install' : 'vendor') : 'vendor_install', 'Get it')],
+      strategies: amd ? (amdAuto ? [A('amd_install', 'Download AMD Software from drivers.amd.com, let Windows check AMD’s signature, and start AMD’s installer')] : []) : [A('vendor_install', `Install ${rig.vendorApp.name} from Microsoft’s verified app store`)],
+      manual: amd ? guides.amdDriverApp(false) : null,
+      manualAfter: amd ? guides.amdDriverApp(true) : null, // when AMD's installer was started: only its Install click is left
+      manualAction: amd ? 'vendor' : null,
+      bg: amd ? false : 'idle',
+    });
   }
-  if (lastStats && lastStats.cpuTemp >= 90) {
-    const heat = ['cpu_min', 'cpu_boost', 'core_parking'].filter((id) => backup.get(id));
-    add({ id: 'hot_cpu', level: 'big', title: `CPU is hot (${lastStats.cpuTemp} °C)`, body: heat.length ? 'FrameForge’s CPU speed tweaks add some heat. Usually it’s dust, a weak fan setting or old thermal paste.' : 'Above 90 °C the CPU slows itself down. Usually dust, a weak fan setting or old thermal paste.', strategies: heat.length ? [A('cool_cpu', 'Switch off FrameForge’s heat-adding CPU tweaks')] : [], manual: guides.hotCpu(rig, lastStats.cpuTemp) });
+  const hc = hotNow('cpu');
+  if (hc) {
+    const heatTweaks = ['cpu_min', 'cpu_boost', 'core_parking'].filter((id) => backup.get(id));
+    const lim = cpuHotLimit();
+    add({ id: 'hot_cpu', level: 'big', title: `CPU is hot (${hc.temp} °C)`, body: heatTweaks.length ? 'FrameForge’s CPU speed tweaks add some heat. Usually it’s dust, a weak fan setting or old thermal paste.' : `It stayed above ${lim} °C for over 30 seconds, so the CPU slows itself down. Usually dust, a weak fan setting or old thermal paste.`, strategies: heatTweaks.length ? [A('cool_cpu', 'Switch off FrameForge’s heat-adding CPU tweaks')] : [], manual: guides.hotCpu(rig, hc.temp), bg: 'game', verifyLater: true });
   }
-  if (lastStats && lastStats.gpuTemp >= 87) {
+  const hg = hotNow('gpu');
+  if (hg) {
     const oc = !!backup.get('gpu_power_limit');
-    add({ id: 'hot_gpu', level: 'big', title: `Graphics card is hot (${lastStats.gpuTemp} °C)`, body: oc ? 'FrameForge raised its power limit for overclocking — that’s the likely cause.' : 'It may be lowering its clocks to protect itself.', strategies: oc ? [A('revert_oc', 'Put the graphics card power limit back to normal')] : [], manual: guides.hotGpu(rig, lastStats.gpuTemp) });
+    const nv = rig && rig.gpu && rig.gpu.vendor === 'nvidia';
+    const strategies = [];
+    if (oc) strategies.push(A('revert_oc', 'Put the graphics card power limit back to normal'));
+    if (nv && !backup.get('gpu_cool')) strategies.push(A('gpu_cool', 'Lower the graphics card power limit to 90 % (a few percent fewer FPS, much cooler)'));
+    add({ id: 'hot_gpu', level: 'big', title: `Graphics card is hot (${hg.temp} °C)`, body: oc ? 'FrameForge raised its power limit for overclocking — that’s the likely cause.' : 'It stayed above 87 °C for over 30 seconds and may be lowering its clocks to protect itself.', strategies, manual: guides.hotGpu(rig, hg.temp), bg: 'game', verifyLater: true });
   }
   if (rig) {
     for (const ins of profile.insights(rig)) {
@@ -879,15 +982,15 @@ function fixList() {
         continue;
       }
       const manual = ins.id === 'ram_speed' ? guides.ramSpeed(rig) : ins.id === 'single_stick' ? guides.singleStick(rig) : null;
-      add({ id: `insight_${ins.id}`, level: ins.level, title: ins.title, body: ins.body, manual, bios: ins.id === 'ram_speed' });
+      add({ id: `insight_${ins.id}`, level: ins.level, title: ins.title, body: ins.body, manual, bios: ins.id === 'ram_speed', actions: ins.id === 'ram_speed' ? [A('bios', 'Restart into BIOS')] : [] });
     }
   }
   const pending = restartNeededFor();
-  if (extra.rebootPending || pending.length) add({ id: 'restart', level: 'info', title: 'A restart is needed', body: pending.length ? `To finish: ${pending.join(', ')}.` : 'Windows has updates waiting for a restart.', actions: [A('restart', 'Restart now')], manual: guides.restartPending(), manualAction: null });
-  if (app.isPackaged && updates && updates.state.status === 'unconfigured') add({ id: 'updates', level: 'info', title: 'In-app updates aren’t set up', body: 'FrameForge can’t find where new versions come from.', actions: [A('set_update_source', 'Fix it')], strategies: [A('set_update_source', 'Use the official FrameForge update source')] });
-  // A problem is fixable automatically when it has strategies.
+  if (extra.rebootPending || pending.length) add({ id: 'restart', level: 'info', title: 'A restart is needed', body: pending.length ? `To finish: ${pending.join(', ')}.` : 'Windows has updates waiting for a restart.', actions: [A('restart', 'Restart now')], manual: guides.restartPending(), manualAction: null, restartItem: true });
+  if (app.isPackaged && updates && updates.state.status === 'unconfigured') add({ id: 'updates', level: 'info', title: 'In-app updates aren’t set up', body: 'FrameForge can’t find where new versions come from.', actions: [A('set_update_source', 'Fix it')], strategies: [A('set_update_source', 'Use the official FrameForge update source')], bg: 'game' });
+  // A problem is fixable automatically when it has strategies. A restart counts too: FrameForge does it.
   for (const it of items) {
-    it.auto = it.strategies.length > 0;
+    it.auto = it.strategies.length > 0 || (it.restartItem && settings.get().autoRestart);
     it.fixedTitle = fixedTitleFor(it);
   }
   return items;
@@ -989,6 +1092,61 @@ async function runFixAction(action) {
       } catch {}
       return runFixAction('retry:ctt_tweaks');
     }
+    case 'ctt_isolate': {
+      // Find which of Chris Titus's tweaks fails on this PC, leave just those out, and run the rest.
+      const p = problems.all().ctt_tweaks;
+      const preset = settings.get().cttPreset || 'Standard';
+      const skip = new Set(settings.get().cttSkip || []);
+      let bad = ((p && p.failedIds) || []).filter((id) => !skip.has(id));
+      if (!bad.length) {
+        const ids = (optimizer.CTT_PRESETS[preset] || []).filter((i) => i !== 'WPFTweaksRestorePoint' && !skip.has(i));
+        for (const [n, id] of ids.entries()) {
+          const name = optimizer.CTT_NAMES[id] || id;
+          send('fix:line', { line: `Testing Chris Titus tweak ${n + 1} of ${ids.length}: ${name}…` });
+          const r = await tools.runWinutil([id], () => {}, optimizer.CTT_NAMES).catch((e) => ({ ok: false, code: -1, errors: [String(e.message || e)], fatal: null }));
+          const worked = r.ok || (r.code === 1 && !(r.errors || []).length && !r.fatal);
+          if (!worked) {
+            bad.push(id);
+            send('fix:line', { line: `  ✗ ${name} fails on this PC` });
+          }
+        }
+      }
+      if (!bad.length) return runFixAction('retry:ctt_tweaks');
+      settings.set({ cttSkip: [...new Set([...skip, ...bad])] });
+      const names = bad.map((id) => optimizer.CTT_NAMES[id] || id).join(', ');
+      send('fix:line', { line: `Leaving out: ${names}. Running the rest of the ${preset} preset…` });
+      const r = await runFixAction('retry:ctt_tweaks');
+      return r.ok ? { ok: true, message: `The ${preset} preset is applied. Left out ${names} — ${bad.length === 1 ? 'it fails' : 'they fail'} on this PC.` } : r;
+    }
+    case 'gpu_cool': {
+      const t = tweakById('gpu_cool');
+      if (!t) return { ok: false, message: 'Unknown fix' };
+      const r = await tweakPhase(t)();
+      return { ok: r.status === 'done', message: r.message, cooling: true };
+    }
+    case 'amd_install': {
+      if (!rig || rig.gpu.vendor !== 'amd') return { ok: false, message: 'This PC doesn’t have an AMD graphics card.' };
+      const r = await tools.amdDriverInstall(rig.gpu.name, (line) => send('fix:line', { line })).catch((e) => ({ ok: false, message: String(e.message || e) }));
+      if (!r.ok) {
+        if (rig.vendorApp) shell.openExternal(rig.vendorApp.download);
+        return { ok: false, message: `${r.message} FrameForge opened AMD’s download page instead.` };
+      }
+      // AMD Software may need a restart once it's installed: check again in a few minutes.
+      setTimeout(async () => {
+        rig = await hardware.scan(settings.get().manualHardware).catch(() => rig);
+        send('rig', rig);
+        send('fix:changed', true);
+      }, 5 * 60 * 1000);
+      return r;
+    }
+    case 'bios': {
+      // Windows can restart straight into the BIOS/UEFI setup (no key tapping). The BIOS setting itself can
+      // only be changed there — no app can reach it from Windows.
+      settings.set({ biosCheck: { mts: (rig && rig.ram && rig.ram.speedMTs) || null, at: Date.now() } });
+      const ok = await restartCountdown({ seconds: 20, reason: 'Restarting into the BIOS so you can turn on XMP/EXPO', bios: true });
+      if (!ok) settings.set({ biosCheck: null });
+      return { ok, message: ok ? 'Restarting into the BIOS…' : 'Restart cancelled.' };
+    }
     case 'free_space': {
       const before = extra.disk;
       const t = tweakById('temp_cleanup');
@@ -1029,12 +1187,10 @@ async function runFixAction(action) {
         updates.check();
       }
       return { ok: true, message: 'Updates come from the official FrameForge page again.' };
-    case 'restart':
-      return { ok: true, restarted: await (async () => {
-        const r = await dialog.showMessageBox(mainWin, { type: 'question', buttons: ['Restart now', 'Later'], defaultId: 1, title: 'Restart PC', message: 'Restart your PC now?', detail: 'Save anything you have open first.' });
-        if (r.response === 0 && IS_WIN && !DEMO) run('shutdown', ['/r', '/t', '5']);
-        return r.response === 0;
-      })() };
+    case 'restart': {
+      const ok = await restartCountdown({ seconds: 10, reason: 'Restarting to finish the changes' });
+      return { ok, restarted: ok, message: ok ? 'Restarting — FrameForge opens again by itself afterwards and finishes up.' : 'Restart cancelled.' };
+    }
     case 'repair':
       return runRepair(arg);
     case 'install': {
@@ -1065,29 +1221,143 @@ async function runFixAction(action) {
   return { ok: false, message: 'Unknown fix' };
 }
 
+// ---------- Restarting the PC for a fix: a countdown you can cancel, then FrameForge carries on by itself ----------
+let restartTimer = null;
+let restartResolve = null;
+let restartInfo = null;
+const RESUME_TASK = 'FrameForge Resume';
+const RUNONCE = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce';
+
+/** Make FrameForge start by itself right after the restart and finish fixing. */
+async function prepareResume() {
+  settings.set({ resumeFixAll: true });
+  if (!IS_WIN || DEMO) return;
+  const cmd = `"${process.execPath}" --resume-fix`;
+  // A sign-in task with highest rights starts FrameForge as administrator (no extra prompt)…
+  const r = admin ? await run('schtasks', ['/Create', '/TN', RESUME_TASK, '/TR', cmd, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/F']) : { code: 1 };
+  // …and without admin rights, Windows' "run once at next sign-in" list does it.
+  if (r.code !== 0) await run('reg', ['add', RUNONCE, '/v', 'FrameForgeResume', '/t', 'REG_SZ', '/d', cmd, '/f']);
+}
+function removeResumeTask() {
+  if (!IS_WIN || DEMO) return;
+  run('schtasks', ['/Delete', '/TN', RESUME_TASK, '/F']).catch(() => {});
+  run('reg', ['delete', RUNONCE, '/v', 'FrameForgeResume', '/f']).catch(() => {});
+}
+
+async function doRestart({ bios = false, auto = false } = {}) {
+  await prepareResume();
+  if (auto) settings.set({ lastAutoRestart: Date.now() });
+  send('restart:countdown', { left: 0, restarting: true, bios });
+  if (!IS_WIN || DEMO) return true;
+  // No /f: an app with unsaved work can still stop the restart and ask you, so nothing gets lost.
+  const r = await run('shutdown', bios ? ['/r', '/fw', '/t', '0'] : ['/r', '/t', '0']);
+  if (r.code !== 0) {
+    settings.set({ resumeFixAll: false });
+    removeResumeTask();
+    const message = bios
+      ? 'This PC can’t restart straight into the BIOS from Windows (older “Legacy” BIOS mode). Restart it and tap Delete or F2 as the screen turns on.'
+      : `Windows didn’t accept the restart (${(r.stderr || r.stdout || '').trim().slice(0, 120) || `code ${r.code}`}).`;
+    send('restart:countdown', { failed: true, message });
+    return false;
+  }
+  quitting = true;
+  return true;
+}
+
+/** Count down (shown in FrameForge, with Restart now / Cancel), then restart. Resolves true if restarting. */
+function restartCountdown({ seconds = 60, reason = 'Restarting to finish the fixes', bios = false, auto = false } = {}) {
+  if (restartTimer) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let left = seconds;
+    restartResolve = resolve;
+    restartInfo = { total: seconds, reason, bios, auto };
+    const finish = async () => {
+      clearInterval(restartTimer);
+      restartTimer = null;
+      restartResolve = null;
+      restartInfo = null;
+      resolve(await doRestart({ bios, auto }));
+    };
+    const tick = () => {
+      if (left <= 0) return finish();
+      send('restart:countdown', { left, total: seconds, reason, bios });
+      if (tray) tray.setToolTip(`FrameForge — restarting in ${left} s`);
+      left--;
+    };
+    restartCountdown.now = finish;
+    if (windowHidden() && Notification.isSupported()) {
+      const n = new Notification({ title: `FrameForge restarts your PC in ${seconds} seconds`, body: `${reason}. Click to open FrameForge to cancel or restart now. Save anything you have open.`, icon: ICON });
+      n.on('click', showMain);
+      n.show();
+    }
+    showMain();
+    tick();
+    restartTimer = setInterval(tick, 1000);
+    rebuildTrayMenu();
+  });
+}
+function cancelRestart() {
+  if (!restartTimer) return false;
+  clearInterval(restartTimer);
+  restartTimer = null;
+  restartInfo = null;
+  if (tray) tray.setToolTip('FrameForge');
+  settings.set({ resumeFixAll: false });
+  send('restart:countdown', { cancelled: true });
+  const r = restartResolve;
+  restartResolve = null;
+  if (r) r(false);
+  rebuildTrayMenu();
+  return true;
+}
+ipcMain.handle('restart:cancel', () => cancelRestart());
+ipcMain.handle('restart:now', () => (restartTimer && restartCountdown.now ? (restartCountdown.now(), true) : false));
+
+/** Restarting by itself is allowed at most once every 3 hours — a restart that doesn't clear the problem never loops. */
+function mayAutoRestart() {
+  const s = settings.get();
+  return s.autoRestart && Date.now() - (s.lastAutoRestart || 0) > 3 * 60 * 60 * 1000;
+}
+
 /**
  * "Fix everything automatically": check the PC, then for each problem try its fixes in order, checking after
- * each one whether the problem is gone. What only the user can do gets step-by-step instructions.
- * If admin rights are missing, FrameForge restarts itself as administrator last and carries on by itself.
+ * each one whether the problem is gone. If a fix needs a restart, FrameForge restarts the PC itself (with a
+ * countdown you can cancel) and finishes after the restart. If admin rights are missing, it restarts itself
+ * as administrator and carries on. Only what no app can do (BIOS, cables, dust) is left for you, with steps.
+ *
+ *   silent – background run: only fixes marked safe for the moment, opens nothing, never restarts
+ *   only   – limit the run to these problem ids
  */
 let fixAllRunning = false;
-async function fixEverything() {
+async function fixEverything({ silent = false, only = null, resumed = false } = {}) {
   if (fixAllRunning) return { busy: true };
   if (busy) return { busy: true, message: 'Auto Mode is running — wait for it to finish.' };
   fixAllRunning = true;
-  const ev = (e) => send('fixall', e);
-  const tally = { fixed: 0, you: 0, failed: 0 };
+  const ev = (e) => send('fixall', { ...e, background: silent });
+  const tally = { fixed: 0, you: 0, failed: 0, fixedTitles: [] };
   try {
-    ev({ type: 'start' });
-    ev({ type: 'phase', text: 'Checking your whole PC…' });
-    if (rig) rig = await hardware.scan(settings.get().manualHardware).catch(() => rig);
+    ev({ type: 'start', resumed });
+    ev({ type: 'phase', text: resumed ? 'Back after the restart — checking that everything worked…' : silent ? 'Fixing in the background…' : 'Checking your whole PC…' });
+    if (rig && !silent) rig = await hardware.scan(settings.get().manualHardware).catch(() => rig);
     await detectExtra();
-    const items = fixList();
-    ev({ type: 'found', count: items.length });
+    const items = fixList().filter((i) => !only || only.includes(i.id));
+    ev({ type: 'found', count: items.filter((i) => !i.restartItem).length });
+    // Back from the BIOS: did the RAM speed change?
+    const bc = settings.get().biosCheck;
+    if (resumed && bc) {
+      settings.set({ biosCheck: null });
+      const mts = rig && rig.ram && rig.ram.speedMTs;
+      if (mts && bc.mts && mts > bc.mts && !items.some((i) => i.id === 'insight_ram_speed')) {
+        tally.fixed++;
+        tally.fixedTitles.push(`RAM runs at ${mts} MT/s`);
+        ev({ type: 'item', id: 'bios_check', title: 'RAM speed after the BIOS change', outcome: 'fixed', message: `Your RAM now runs at ${mts} MT/s instead of ${bc.mts} — XMP/EXPO is on.` });
+      }
+    }
     const needAdmin = items.find((i) => i.id === 'not_admin');
     for (const it of items) {
-      if (it.id === 'not_admin') continue;
+      if (it.id === 'not_admin' || it.restartItem) continue; // both happen last
       if (!it.strategies.length) {
+        if (silent) continue;
         if (it.manualAction) await runFixAction(it.manualAction).catch(() => {});
         if (it.manual) {
           tally.you++;
@@ -1102,29 +1372,52 @@ async function fixEverything() {
         ev({ type: 'try', id: it.id, text: st.label, n: n + 1, of: it.strategies.length });
         last = await runFixAction(st.id).catch((e) => ({ ok: false, message: String(e.message || e) }));
         await detectExtra();
-        fixed = !fixList().some((x) => x.id === it.id); // check: is the problem really gone?
+        // Check: is the problem really gone? (Heat can't drop in a second — a cooling fix that worked counts,
+        // and if the part is still hot after a few minutes the problem simply shows up again.)
+        fixed = !fixList().some((x) => x.id === it.id) || (it.verifyLater && last && last.ok);
         if (fixed) break;
       }
       if (fixed) {
         tally.fixed++;
+        tally.fixedTitles.push(it.fixedTitle || it.title);
+        if (it.verifyLater) heat[it.id === 'hot_gpu' ? 'gpu' : 'cpu'].last = 0; // start measuring again from now
         ev({ type: 'item', id: it.id, title: it.title, outcome: 'fixed', message: last && last.message });
         send('fix:changed', true); // the problem leaves the list and the count goes down right away
+      } else if (silent) {
+        ev({ type: 'item', id: it.id, title: it.title, outcome: 'failed', message: (last && last.message) || 'Didn’t work yet — FrameForge tries again later.' });
       } else if (it.manual) {
-        if (it.manualAction) await runFixAction(it.manualAction).catch(() => {});
+        const started = last && last.ok && it.manualAfter;
+        if (it.manualAction && !started) await runFixAction(it.manualAction).catch(() => {});
         tally.you++;
-        ev({ type: 'item', id: it.id, title: it.title, outcome: 'you', message: last && last.message, steps: it.manual, buttons: it.actions.filter((a) => !it.strategies.some((st) => st.id === a.id)) });
+        ev({ type: 'item', id: it.id, title: it.title, outcome: 'you', message: last && last.message, steps: started ? it.manualAfter : it.manual, buttons: it.actions.filter((a) => !it.strategies.some((st) => st.id === a.id)) });
       } else {
         tally.failed++;
         ev({ type: 'item', id: it.id, title: it.title, outcome: 'failed', message: (last && last.message) || 'It didn’t work after trying every fix FrameForge knows.' });
       }
     }
-    if (needAdmin) {
+    // A restart that's needed now (by Windows or by a fix that just ran): FrameForge does it itself.
+    await detectExtra();
+    const restartIt = fixList().find((i) => i.restartItem);
+    if (restartIt && !silent) {
+      if (mayAutoRestart() && !needAdmin) {
+        ev({ type: 'item', id: 'restart', title: restartIt.title, outcome: 'working', message: `${restartIt.body} Restarting in 60 seconds — FrameForge opens again by itself afterwards and checks everything. Save anything you have open, or press Cancel.` });
+        ev({ type: 'done', ...tally, restarting: 'pc' });
+        const ok = await restartCountdown({ seconds: 60, reason: restartIt.body.replace(/\.$/, ''), auto: true });
+        if (ok) return { ...tally, restarting: 'pc' };
+        ev({ type: 'item', id: 'restart', title: restartIt.title, outcome: 'you', message: 'Restart cancelled — restart whenever it suits you. FrameForge finishes up by itself afterwards.', buttons: [A('restart', 'Restart now')] });
+        ev({ type: 'done', ...tally });
+        return tally;
+      }
+      tally.you++;
+      ev({ type: 'item', id: 'restart', title: restartIt.title, outcome: 'you', message: settings.get().autoRestart ? 'FrameForge already restarted the PC for this in the last few hours, so it won’t do it again by itself (no restart loops). Restart when it suits you.' : `${restartIt.body} Automatic restarts are off in Settings.`, buttons: [A('restart', 'Restart now')] });
+    }
+    if (needAdmin && !silent) {
       ev({ type: 'item', id: 'not_admin', title: needAdmin.title, outcome: 'working', message: 'Restarting FrameForge as administrator — it carries on fixing by itself after the restart.' });
-      ev({ type: 'done', ...tally, restarting: true });
+      ev({ type: 'done', ...tally, restarting: 'admin' });
       settings.set({ resumeFixAll: true });
       await new Promise((r) => setTimeout(r, 2500));
       await runFixAction('admin');
-      return { restarting: true };
+      return { restarting: 'admin' };
     }
     ev({ type: 'done', ...tally });
     return tally;
@@ -1134,12 +1427,63 @@ async function fixEverything() {
   }
 }
 
+/**
+ * Fix mode on its own: after start and after every re-check (every 2 minutes) FrameForge fixes what it safely
+ * can without asking. What's safe depends on what you're doing:
+ *   'game'  – any time, even mid-game (e.g. cooling a hot graphics card — no flicker, no lag)
+ *   'quiet' – not while a game runs (e.g. switching the display to its full refresh rate makes it blink once)
+ *   'idle'  – only when you've been away for 10+ minutes (e.g. cleanup or Chris Titus — they keep the CPU busy)
+ * Each problem is tried at most once every 6 hours, so a fix that doesn't work never runs in a loop.
+ */
+const bgTried = new Map();
+let bgRunning = false;
+async function backgroundFix(why = 'check') {
+  const s = settings.get();
+  if (!s.autoFix || bgRunning || fixAllRunning || busy || fixBusy || restartTimer) return null;
+  if (IS_WIN && !DEMO && !admin) return null;
+  bgRunning = true;
+  try {
+    await detectExtra();
+    const game = gameRunning();
+    const idle = idleMinutes();
+    const ok = (it) => it.bg && it.strategies.length && (it.bg === 'game' || (it.bg === 'quiet' && !game) || (it.bg === 'idle' && !game && idle >= 10));
+    const now = Date.now();
+    const todo = fixList().filter((it) => ok(it) && !(now - (bgTried.get(it.id) || 0) < 6 * 60 * 60 * 1000));
+    if (todo.length) {
+      todo.forEach((it) => bgTried.set(it.id, now));
+      const r = await fixEverything({ silent: true, only: todo.map((i) => i.id) });
+      if (r && r.fixed) {
+        const n = r.fixedTitles.length;
+        if (Notification.isSupported() && windowHidden()) {
+          const note = new Notification({ title: `FrameForge fixed ${n} thing${n === 1 ? '' : 's'} by itself`, body: r.fixedTitles.slice(0, 3).join(' · '), icon: ICON, silent: true });
+          note.on('click', () => {
+            showMain();
+            send('goto', 'fix');
+          });
+          note.show();
+        }
+        send('fix:auto', { fixed: r.fixedTitles, why });
+      }
+    }
+    // A restart that FrameForge's own changes need: done while you're away (20+ min idle, no game running).
+    const pending = restartNeededFor();
+    if (pending.length && mayAutoRestart() && !game && idle >= 20 && !fixAllRunning) {
+      await restartCountdown({ seconds: 120, reason: `To finish ${pending.join(', ')}`, auto: true });
+    }
+    return todo.length;
+  } finally {
+    bgRunning = false;
+  }
+}
+
 ipcMain.handle('fix:list', async () => {
   if (Date.now() - extra.at > 30000) await detectExtra();
-  return { items: fixList(), repairs: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, desc: r.desc, reboot: !!r.reboot })), busy: fixBusy || fixAllRunning };
+  const s = settings.get();
+  return { items: fixList(), repairs: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, desc: r.desc, reboot: !!r.reboot })), busy: fixBusy || fixAllRunning, autoFix: s.autoFix, autoRestart: s.autoRestart, restart: restartInfo };
 });
 ipcMain.handle('fix:action', (_e, action) => runFixAction(action));
 ipcMain.handle('fix:all', () => fixEverything());
+ipcMain.handle('fix:background', () => backgroundFix('manual'));
 
 // ---------- AI chat ----------
 
@@ -1258,9 +1602,20 @@ function chatView() {
 
 ipcMain.handle('ai:status', () => {
   const s = settings.get();
-  return { provider: s.aiProvider, hasKey: !!ai.getKey(), model: s.aiModel, models: ai.MODELS, ollamaModel: s.ollamaModel, busy: !!aiAbort };
+  return { provider: s.aiProvider, hasKey: !!ai.getKey(), model: s.aiModel, models: ai.MODELS, ollamaModel: s.ollamaModel, localModels: localAi.LOCAL_MODELS, busy: !!aiAbort };
 });
 ipcMain.handle('ai:setKey', (_e, key) => ai.setKey(key));
+// Free local AI: is Ollama + the chosen model there? If not, the chat shows an Install button (top right).
+ipcMain.handle('ai:local', (_e, opts) => localAi.status(opts || {}));
+ipcMain.handle('ai:install', async (_e, model) => {
+  const m = String(model || settings.get().ollamaModel || 'llama3.1').trim();
+  if (!/^[a-z0-9][a-z0-9._\-/:]{0,80}$/i.test(m)) return { ok: false, message: 'That doesn’t look like an Ollama model name.' };
+  settings.set({ aiProvider: 'ollama', ollamaModel: m });
+  const r = await localAi.install(m, (p) => send('ai:installProgress', { model: m, ...p }));
+  send('ai:installProgress', { model: m, stage: r.ok ? 'done' : 'error', pct: r.ok ? 1 : null, text: r.message, final: true });
+  return r;
+});
+ipcMain.handle('ai:installCancel', () => localAi.cancel());
 ipcMain.handle('ai:history', () => chatView());
 ipcMain.handle('ai:clear', () => {
   ai.saveChat({ messages: [] });
@@ -1437,18 +1792,7 @@ ipcMain.handle('vendor:open', () => {
 ipcMain.handle('link:open', (_e, url) => {
   if (/^https:\/\//.test(url)) shell.openExternal(url);
 });
-ipcMain.handle('pc:restart', async () => {
-  const r = await dialog.showMessageBox(mainWin, {
-    type: 'question',
-    buttons: ['Restart now', 'Later'],
-    defaultId: 1,
-    title: 'Restart PC',
-    message: 'Restart your PC now to finish applying boosts?',
-    detail: 'Save anything you have open first.',
-  });
-  if (r.response === 0 && IS_WIN && !DEMO) run('shutdown', ['/r', '/t', '5', '/c', 'FrameForge is restarting your PC to finish applying boosts.']);
-  return r.response === 0;
-});
+ipcMain.handle('pc:restart', () => restartCountdown({ seconds: 10, reason: 'Restarting to finish applying boosts' }));
 ipcMain.handle('overlay:toggle', () => {
   toggleOverlay();
   return overlayShown;

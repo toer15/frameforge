@@ -764,7 +764,7 @@ ff.fix.onAll((e) => {
     $('#frList').innerHTML = '';
     $('#frSummary').classList.add('hidden');
     $('#frSpin').classList.remove('hidden');
-    $('#frTitle').textContent = 'Fixing everything…';
+    $('#frTitle').textContent = e.background ? 'Fixing by itself in the background…' : e.resumed ? 'Back after the restart — finishing up…' : 'Fixing everything…';
     $('#fixAllBtn').disabled = true;
     $('#fixAllBtn').textContent = 'Fixing…';
   } else if (e.type === 'phase') {
@@ -787,12 +787,54 @@ ff.fix.onAll((e) => {
     if (e.fixed) parts.push(`fixed ${e.fixed}`);
     if (e.you) parts.push(`${e.you} need${e.you === 1 ? 's' : ''} you (steps below each)`);
     if (e.failed) parts.push(`${e.failed} couldn’t be fixed`);
-    $('#frTitle').textContent = e.restarting ? 'Restarting as administrator to finish…' : parts.length ? `Done — ${parts.join(', ')}.` : 'Done — nothing needed fixing.';
+    $('#frTitle').textContent =
+      e.restarting === 'admin'
+        ? 'Restarting as administrator to finish…'
+        : e.restarting === 'pc'
+          ? `${parts.length ? `So far: ${parts.join(', ')}. ` : ''}Restarting the PC to finish — FrameForge opens again by itself afterwards.`
+          : e.background
+            ? `Fixed by itself in the background — ${parts.join(', ') || 'nothing needed fixing'}.`
+            : parts.length
+              ? `Done — ${parts.join(', ')}.`
+              : 'Done — nothing needed fixing.';
     $('#fixAllBtn').textContent = 'Fix everything automatically';
     refreshFix();
     refreshChanges();
   }
 });
+ff.fix.onAuto((a) => {
+  if (a && a.fixed && a.fixed.length) toast(`Fixed by itself: ${a.fixed.join(' · ')}`, 6000);
+});
+
+/* Restart countdown — FrameForge restarts the PC itself when a fix needs it (you can cancel). */
+const RS_C = 2 * Math.PI * 52;
+ff.fix.onRestart((r) => {
+  const modal = $('#rsModal');
+  if (r.cancelled || r.failed) {
+    modal.classList.add('hidden');
+    toast(r.failed ? r.message : 'Restart cancelled. Restart whenever it suits you — FrameForge finishes up by itself afterwards.', r.failed ? 9000 : 5000);
+    refreshFix();
+    return;
+  }
+  modal.classList.remove('hidden');
+  if (r.restarting) {
+    $('#rsLeft').textContent = '0';
+    $('#rsArc').style.strokeDashoffset = RS_C;
+    $('#rsTitle').textContent = r.bios ? 'Restarting into the BIOS…' : 'Restarting…';
+    $$('#rsCancel, #rsNow').forEach((b) => (b.disabled = true));
+    return;
+  }
+  $$('#rsCancel, #rsNow').forEach((b) => (b.disabled = false));
+  $('#rsLeft').textContent = r.left;
+  $('#rsArc').style.strokeDashoffset = RS_C * (1 - r.left / r.total);
+  $('#rsTitle').textContent = r.bios ? `Restarting into the BIOS in ${r.left} s` : `Restarting your PC in ${r.left} s`;
+  $('#rsText').textContent = r.bios
+    ? 'Your PC restarts straight into the BIOS — no key tapping. Change the one setting from the steps (take a photo of them now), press F10 to save, and FrameForge checks the RAM speed when Windows is back.'
+    : `${r.reason}. FrameForge opens again by itself afterwards and checks that everything worked.`;
+});
+$('#rsCancel').onclick = () => ff.fix.cancelRestart();
+$('#rsNow').onclick = () => ff.fix.restartNow();
+
 $('#fixAllBtn').onclick = async () => {
   if (fixAllRunning) return;
   const r = await ff.fix.all();
@@ -857,14 +899,61 @@ function setAiBusy(b) {
   $('#chatStop').classList.toggle('hidden', !b);
 }
 
+/* The model picker (top right of the chat) and the Install button for models that run on this PC. */
+let LOCAL = null;
+let aiInstalling = false;
+const localInfo = (id) => (AI && AI.localModels.find((m) => m.id === id)) || { id, name: id, size: '' };
+function renderModelPick() {
+  const have = (LOCAL && LOCAL.models) || [];
+  const installed = (id) => have.some((n) => n === id || n === `${id}:latest`);
+  const local = [...AI.localModels];
+  if (AI.ollamaModel && !local.some((m) => m.id === AI.ollamaModel)) local.push({ id: AI.ollamaModel, name: AI.ollamaModel, size: '' });
+  $('#chatModelPick').innerHTML =
+    `<optgroup label="Claude — smartest, can make changes (API key)">${AI.models.map((x) => `<option value="claude:${esc(x.id)}">${esc(x.name.split(' —')[0])}</option>`).join('')}</optgroup>` +
+    `<optgroup label="Free — runs on your PC (Ollama)">${local.map((m) => `<option value="ollama:${esc(m.id)}">${esc(m.name)}${m.size ? ` · ${esc(m.size)}` : ''}${installed(m.id) ? ' · installed' : ''}</option>`).join('')}</optgroup>`;
+  $('#chatModelPick').value = AI.provider === 'ollama' ? `ollama:${AI.ollamaModel}` : `claude:${AI.model}`;
+}
+$('#chatModelPick').addEventListener('change', async (e) => {
+  const v = e.target.value;
+  const i = v.indexOf(':');
+  const prov = v.slice(0, i);
+  const id = v.slice(i + 1);
+  S = await ff.setSettings(prov === 'claude' ? { aiProvider: 'claude', aiModel: id } : { aiProvider: 'ollama', ollamaModel: id });
+  renderSettings();
+  await refreshAi();
+  if (prov === 'ollama' && LOCAL && !LOCAL.ready) toast(`${localInfo(id).name} isn’t installed yet — press Install at the top right.`, 5000);
+});
+function installLabel() {
+  const m = localInfo(AI.ollamaModel);
+  if (LOCAL && !LOCAL.installed) return `Install Ollama + ${m.name}`;
+  return `Install ${m.name}${m.size ? ` · ${m.size}` : ''}`;
+}
+
 async function refreshAi() {
   AI = await ff.ai.status();
+  LOCAL = await ff.ai.local({ start: AI.provider === 'ollama' }).catch(() => null);
+  renderModelPick();
   const needKey = AI.provider === 'claude' && !AI.hasKey;
+  const needInstall = AI.provider === 'ollama' && !(LOCAL && LOCAL.ready);
+  const busyInstall = aiInstalling || !!(LOCAL && LOCAL.busy);
   $('#chatSetup').classList.toggle('hidden', !needKey);
-  $('#chatIn').disabled = needKey;
-  $('#chatSend').disabled = needKey;
+  $('#localSetup').classList.toggle('hidden', !needInstall || busyInstall);
+  if (needInstall) {
+    const m = localInfo(AI.ollamaModel);
+    $('#localSetupTitle').textContent = LOCAL && !LOCAL.installed ? `${m.name} needs the free Ollama app` : `${m.name} isn’t downloaded yet`;
+    $('#localSetupText').innerHTML = LOCAL && !LOCAL.installed
+      ? `Press <b>${esc(installLabel())}</b> at the top right. FrameForge installs Ollama from Microsoft’s verified app store, starts it, and downloads the model${m.size ? ` (${esc(m.size)})` : ''} — nothing else to do.`
+      : `Press <b>${esc(installLabel())}</b> at the top right and FrameForge downloads it with Ollama${m.size ? ` (${esc(m.size)})` : ''}. Every part is checked against its fingerprint.`;
+  }
+  $('#aiInstallBtn').textContent = installLabel();
+  $('#aiInstallBtn').classList.toggle('hidden', !needInstall || busyInstall);
+  $('#aiReadyChip').classList.toggle('hidden', !(AI.provider === 'ollama' && LOCAL && LOCAL.ready));
+  $('#aiReadyChip').textContent = 'Installed · runs on your PC';
+  $('#chatIn').disabled = needKey || needInstall;
+  $('#chatSend').disabled = needKey || needInstall;
+  $('#chatIn').placeholder = needInstall ? 'Press Install at the top right first…' : needKey ? 'Add your Claude API key above first…' : 'Ask FrameForge AI…';
   const m = AI.models.find((x) => x.id === AI.model);
-  $('#chatModelLine').textContent = AI.provider === 'ollama' ? `Running ${AI.ollamaModel} on this PC with Ollama. Knows your PC, your preset and everything FrameForge changed.` : `${m ? m.name.split(' —')[0] : AI.model} · Knows your PC, your preset and everything FrameForge changed, and can make changes with your OK.`;
+  $('#chatModelLine').textContent = AI.provider === 'ollama' ? `${localInfo(AI.ollamaModel).name} runs on this PC with Ollama — free and private. Knows your PC, your preset and everything FrameForge changed.` : `${m ? m.name.split(' —')[0] : AI.model} · Knows your PC, your preset and everything FrameForge changed, and can make changes with your OK.`;
   $('#aiModelSel').innerHTML = AI.models.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
   $('#aiModelSel').value = AI.model;
   $('#aiKeyLine').textContent = AI.hasKey ? 'Saved and encrypted on this PC.' : 'Not set. Get one at console.anthropic.com › API keys.';
@@ -955,6 +1044,39 @@ $('#chatForm').addEventListener('submit', (e) => {
   sendChat($('#chatIn').value);
 });
 $('#chatStop').onclick = () => ff.ai.stop();
+
+// One click: FrameForge installs Ollama (if needed), starts it and downloads the chosen model.
+const INSTALL_TITLE = { app: 'Installing Ollama (free)…', start: 'Starting Ollama…', model: 'Downloading the AI model…', done: 'Installed', error: 'The install didn’t finish' };
+$('#aiInstallBtn').onclick = async () => {
+  if (aiInstalling) return;
+  aiInstalling = true;
+  $('#aiInstallBtn').classList.add('hidden');
+  $('#localSetup').classList.add('hidden');
+  $('#aiInstallBar').classList.remove('hidden');
+  $('#aiInstallCancel').classList.remove('hidden');
+  $('#aiInstallTitle').textContent = 'Getting ready…';
+  $('#aiInstallText').textContent = '';
+  const r = await ff.ai.install(AI.ollamaModel);
+  aiInstalling = false;
+  $('#aiInstallCancel').classList.add('hidden');
+  if (r && r.ok) {
+    toast(r.message, 5000);
+    setTimeout(() => $('#aiInstallBar').classList.add('hidden'), 2200);
+  }
+  await refreshAi();
+  if (r && !r.ok) $('#aiInstallBtn').textContent = 'Try again';
+};
+$('#aiInstallCancel').onclick = () => ff.ai.cancelInstall();
+ff.ai.onInstall((p) => {
+  $('#aiInstallBar').classList.remove('hidden');
+  const name = localInfo(p.model).name;
+  $('#aiInstallTitle').textContent = p.stage === 'model' ? `Downloading ${name}…` : p.stage === 'done' ? `${name} is installed` : INSTALL_TITLE[p.stage] || 'Installing…';
+  const bar = $('#aiInstallBar .bar');
+  bar.classList.toggle('indet', p.pct == null && !['done', 'error'].includes(p.stage));
+  $('#aiInstallFill').style.width = p.pct == null ? '' : `${Math.round(p.pct * 100)}%`;
+  $('#aiInstallText').textContent = p.text || '';
+  $('#aiInstallBar').classList.toggle('err', p.stage === 'error');
+});
 $('#newChatBtn').onclick = async () => {
   if (aiBusy) await ff.ai.stop();
   await ff.ai.clear();
@@ -1046,6 +1168,11 @@ document.addEventListener('change', async (e) => {
   }
   S = await ff.setSettings({ [k]: el.type === 'checkbox' ? el.checked : el.value });
   if (['aiProvider', 'aiModel', 'ollamaModel'].includes(k)) refreshAi();
+  if (k === 'autoFix' || k === 'autoRestart') {
+    renderSettings(); // the same switch is in Fix mode and in Settings
+    refreshFix();
+    if (k === 'autoFix' && el.checked) ff.fix.background();
+  }
   if (k === 'cttPreset' && el.value === 'Advanced') toast('Advanced removes OneDrive, Widgets and Windows AI features. Use the restore point if you want them back.', 6000);
   if (k === 'smartProfile' || k === 'overclock') {
     if (k === 'smartProfile' && el.checked) S = await ff.resetProfile();

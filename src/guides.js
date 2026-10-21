@@ -24,12 +24,13 @@ function ramSpeed(rig) {
     other: `Look for “${profile}”, “XMP”, “EXPO”, “DOCP” or “Memory Profile” — usually under Overclocking, Tweaker or Advanced › Memory — and pick Profile 1.`,
   }[b];
   return [
-    `Restart the PC and tap Delete (or F2) as soon as the screen turns on, to open the ${BOARD_NAME[b]} BIOS.`,
+    'Take a photo of these steps with your phone — FrameForge can’t show them while you’re in the BIOS.',
+    `Click “Restart into BIOS” below: FrameForge restarts the PC straight into the ${BOARD_NAME[b]} BIOS — no key tapping needed. (Or restart and tap Delete / F2 as the screen turns on.)`,
     where,
     'Press F10 and choose Yes to save and restart.',
     'The first start can take 1–2 minutes while the RAM is tested — that’s normal. Don’t switch it off.',
     'If the PC doesn’t start after 3 tries, it goes back to safe settings by itself. Then try Profile 2, or update the BIOS first.',
-    'Back in Windows, open FrameForge — Fix mode checks the new speed by itself.',
+    'Back in Windows, FrameForge starts by itself and checks the new speed.',
   ];
 }
 
@@ -84,13 +85,20 @@ function laptop() {
   ];
 }
 
-function amdDriverApp() {
-  return [
-    'FrameForge opened AMD’s official download page.',
-    'Under “Auto-Detect and Install”, download and run the installer.',
-    'Choose “Full Install” so you get AMD Software (Adrenalin Edition) with the driver.',
-    'Restart when it asks, then open FrameForge — Fix mode checks it by itself.',
-  ];
+function amdDriverApp(started) {
+  return started
+    ? [
+        'FrameForge downloaded AMD Software from drivers.amd.com, Windows confirmed AMD’s digital signature, and AMD’s installer is now open.',
+        'AMD’s installer needs one OK from you: click Install in its window.',
+        'Choose “Full Install” if it asks, so you get AMD Software (Adrenalin Edition) with the driver.',
+        'Restart when it asks — FrameForge checks it by itself afterwards.',
+      ]
+    : [
+        'FrameForge opened AMD’s official download page.',
+        'Under “Auto-Detect and Install”, download and run the installer.',
+        'Choose “Full Install” so you get AMD Software (Adrenalin Edition) with the driver.',
+        'Restart when it asks, then open FrameForge — Fix mode checks it by itself.',
+      ];
 }
 
 function restartPending() {

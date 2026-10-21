@@ -16,7 +16,7 @@ Flip it off and every change is put back exactly how it was.
 
 ## Install
 
-Run `FrameForge-Setup-1.0.0.exe`. Because the app isn't code-signed yet, Windows SmartScreen will say
+Run `FrameForge-Setup-<version>.exe`. Because the app isn't code-signed yet, Windows SmartScreen will say
 "Windows protected your PC" — click **More info → Run anyway**. FrameForge asks for administrator
 rights because power plans, GPU scheduling and restore points need them.
 
@@ -105,17 +105,36 @@ Windows default if Windows already had it on. All tweaks share Auto Mode's undo,
 
 A built-in fixer (no AI service or key — offline logic). `fixList()` in main.js detects problems: failed Auto Mode
 steps, display below its max refresh rate, tweaks Windows reverted, drive C: almost full, missing tools or driver
-app, hot CPU/GPU, RAM at the slow default, a single RAM stick, pending restarts, not running as admin.
+app, hot CPU/GPU (sustained 30 s, per-CPU limits), RAM at the slow default, a single RAM stick, pending restarts,
+not running as admin.
 Each problem has **strategies** (fixes tried in order — after each one the problem list is rebuilt to check it's
 really gone) and/or **manual** steps from `src/guides.js`, tailored to the motherboard brand and CPU/GPU vendor.
 "Fix everything automatically" streams a live report (`fixall` events). If admin rights are missing it restarts
 elevated last and resumes by itself (`resumeFixAll`). Repair tools: clear shader caches, reset network,
 DISM + SFC, turn on System Protection.
 
+- **Background fixing** (`backgroundFix`, setting `autoFix`): runs 25 s after start and after every 2-minute
+  re-check. Each problem has a `bg` level — `game` (safe mid-game), `quiet` (not while a game runs), `idle`
+  (user away 10+ min) — and is tried at most once per 6 hours. Games are detected from PresentMon FPS or
+  sustained GPU load; idle time from `powerMonitor.getSystemIdleTime()`.
+- **Restarts** (`restartCountdown`, setting `autoRestart`): countdown modal (Restart now / Cancel), then
+  `shutdown /r /t 0` (no `/f`, so unsaved work can block it). Before restarting, a `FrameForge Resume` logon task
+  (highest rights) or HKCU RunOnce starts FrameForge with `--resume-fix` to finish. At most one automatic restart
+  per 3 hours. In the background only for FrameForge's own pending changes, after 20 min idle with no game.
+- **Restart into BIOS**: `shutdown /r /fw /t 0`; the RAM speed is saved first (`biosCheck`) and compared after.
+- **Chris Titus**: `runWinutil` attributes real errors to the tweak that was running (`failedIds`); the
+  `ctt_isolate` fix adds them to `cttSkip` (or tests tweaks one by one) and runs the rest.
+- **Hot NVIDIA GPU**: `gpu_cool` sets the power limit to 90 % of default (re-applied at start; NVIDIA resets it on
+  reboot). **AMD Software**: `tools.amdDriverInstall` reads the download link from AMD's page for the card, downloads
+  from drivers.amd.com (Referer required), checks the Authenticode signature is AMD's, and starts AMD's installer.
+
 ## AI chat
 
 A chat tab powered by Claude (Anthropic) with your own API key from console.anthropic.com (stored
-encrypted with Windows DPAPI), or a free local model through Ollama. Every message carries a live snapshot
+encrypted with Windows DPAPI), or a free local model through Ollama. The model menu at the top right of the chat
+lists both; for a local model that isn't there yet an **Install** button appears. `src/localai.js` installs Ollama
+(winget `Ollama.Ollama`, or the GitHub release checked against GitHub's SHA-256 digest), starts it, and pulls the
+model through Ollama's `/api/pull` with live progress. Every message carries a live snapshot
 of the PC — hardware, sensors, preset, every change with exact before/after values, and the Fix mode list.
 With Claude it can also act — switch preset, run or undo Auto Mode, fix a problem, run a repair, open the
 Chris Titus tool — and every action that changes the PC shows an **Allow / Don't allow** card first.
@@ -154,7 +173,10 @@ Set `FRAMEFORGE_DEMO=1` on Windows to try the UI without touching the system.
 - `src/hardware.js` – CPU/GPU/RAM/display detection
 - `src/fps.js` – PresentMon FPS reader
 - `src/sensors.js` – temperatures and load
-- `src/tools.js` – downloads PresentMon and LibreHardwareMonitor from their GitHub releases
+- `src/tools.js` – downloads PresentMon and LibreHardwareMonitor from their GitHub releases, runs winutil,
+  winget installs, verified big downloads (SHA-256 / Authenticode), AMD Software installer
+- `src/localai.js` – installs and starts Ollama and downloads local AI models for the chat
+- `src/guides.js` – step-by-step instructions for what no app can do (BIOS, cables, dust)
 - `src/updater.js` – update checks, download, fingerprint check, popup events
 - `src/games.js` – finds installed Steam and Epic games
 - `.github/workflows/release.yml` – builds and publishes a release when the version in package.json changes

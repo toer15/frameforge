@@ -212,9 +212,20 @@
       <div class="fix-head">
         <div>
           <h1 class="page-title">Fix mode</h1>
-          <p class="muted" id="fixLead">Everything that didn’t work or is holding this PC back. “Fix everything automatically” tries every fix FrameForge knows for each problem, checks that it worked, and tells you exactly what to do for anything only you can change.</p>
+          <p class="muted" id="fixLead">Everything that didn’t work or is holding this PC back. FrameForge fixes it for you: it tries every fix it knows, checks that it worked, and restarts the PC itself when a fix needs it. Only things no app can reach — BIOS settings, cables, dust — are left for you, with exact steps.</p>
         </div>
         <button class="primary heat" id="fixAllBtn">Fix everything automatically</button>
+      </div>
+
+      <div class="fix-auto">
+        <label class="fa-row">
+          <span class="switch"><input type="checkbox" data-key="autoFix" /><span></span></span>
+          <span><b>Fix problems by itself</b><small>In the background, without a click. Mid-game it only does things you won’t notice; bigger fixes wait until you’re away from the PC.</small></span>
+        </label>
+        <label class="fa-row">
+          <span class="switch"><input type="checkbox" data-key="autoRestart" /><span></span></span>
+          <span><b>Restart the PC by itself when a fix needs it</b><small>60-second countdown with Cancel, then FrameForge opens again and finishes. Apps with unsaved work can still stop it.</small></span>
+        </label>
       </div>
 
       <div class="fix-report hidden" id="fixReport" aria-live="polite">
@@ -249,7 +260,26 @@
           <h1 class="page-title">FrameForge AI</h1>
           <p class="muted" id="chatModelLine">Knows your PC, your preset and everything FrameForge changed.</p>
         </div>
-        <button class="ghost small" id="newChatBtn">New chat</button>
+        <div class="chat-tools">
+          <label class="model-pick">
+            <span>AI model</span>
+            <select id="chatModelPick" class="select" aria-label="AI model"></select>
+          </label>
+          <button class="primary heat small hidden" id="aiInstallBtn">Install</button>
+          <span class="ai-ready hidden" id="aiReadyChip">Installed</span>
+          <button class="ghost small" id="newChatBtn">New chat</button>
+        </div>
+      </div>
+      <div class="ai-install hidden" id="aiInstallBar" aria-live="polite">
+        <div class="ai-install-top"><b id="aiInstallTitle">Installing…</b><button class="ghost small stop" id="aiInstallCancel">Stop</button></div>
+        <div class="bar"><i id="aiInstallFill"></i></div>
+        <span class="muted" id="aiInstallText"></span>
+      </div>
+
+      <div class="panel chat-setup hidden" id="localSetup">
+        <h2 id="localSetupTitle">This AI model isn’t installed yet</h2>
+        <p id="localSetupText">Press <b>Install</b> at the top right. FrameForge installs the free Ollama app and downloads the model for you — nothing else to do.</p>
+        <p class="muted small-note">Runs completely on your PC: free, private, works offline. It can answer questions but can’t take actions — pick a Claude model for that.</p>
       </div>
 
       <div class="panel chat-setup hidden" id="chatSetup">
@@ -263,7 +293,7 @@
           <input id="chatKeyIn" class="text-in" type="password" placeholder="sk-ant-…" spellcheck="false" autocomplete="off" />
           <button class="primary small" id="chatKeySave">Save key</button>
         </div>
-        <p class="muted small-note">Want it free instead? Pick <b>Ollama</b> in Settings › AI chat — it runs a smaller AI on your own PC. It can answer questions but can’t take actions.</p>
+        <p class="muted small-note">Want it free instead? Pick a model under <b>Free — runs on your PC</b> in the AI model menu at the top right, then press <b>Install</b> — FrameForge sets it up for you. It can answer questions but can’t take actions.</p>
       </div>
 
       <div class="chat-log" id="chatLog" aria-live="polite"></div>
@@ -420,6 +450,18 @@
         </section>
 
         <section class="set-group">
+          <div class="set-head"><h2>Fix mode</h2></div>
+          <div class="set-row">
+            <div class="set-text"><h3>Fix problems by itself</h3><p>FrameForge checks the PC every 2 minutes and fixes what it safely can without a click: tweaks Windows switched off, a display stuck at 60 Hz, a hot graphics card, missing tools. Mid-game it only does things you won’t notice; cleanups and the Chris Titus tool wait until you’ve been away for 10 minutes. You get a notification for everything it fixed.</p></div>
+            <label class="switch"><input type="checkbox" data-key="autoFix" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>Restart the PC by itself when a fix needs it</h3><p>Shows a 60-second countdown with Cancel and Restart now, then restarts and opens FrameForge again to finish. In the background it only restarts after you’ve been away for 20 minutes with no game running, and never twice within 3 hours. Apps with unsaved work can still stop the restart.</p></div>
+            <label class="switch"><input type="checkbox" data-key="autoRestart" /><span></span></label>
+          </div>
+        </section>
+
+        <section class="set-group">
           <div class="set-head"><h2>AI chat</h2></div>
           <div class="set-row">
             <div class="set-text"><h3>AI provider</h3><p><b>Claude</b>: smartest, can take actions in FrameForge with your OK, needs an API key (pay per use). <b>Ollama</b>: free, runs on your PC, answers only.</p></div>
@@ -444,7 +486,7 @@
             </div>
           </div>
           <div class="set-row hidden" id="rowOllama">
-            <div class="set-text"><h3>Ollama model</h3><p>Install Ollama from ollama.com, then run <b>ollama pull llama3.1</b> (or type another model you have).</p></div>
+            <div class="set-text"><h3>Ollama model</h3><p>Pick one in the AI Chat tab — if it isn’t installed, press <b>Install</b> there and FrameForge installs Ollama and the model for you. You can also type any model name from ollama.com/library here.</p></div>
             <input data-key="ollamaModel" class="text-in narrow" spellcheck="false" />
           </div>
         </section>
@@ -545,6 +587,21 @@
         <span class="spacer"></span>
         <button class="ghost" id="ocNo">Keep it off</button>
         <button class="primary heat" id="ocYes">Turn on overclocking</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Restart countdown (a fix needs a restart) -->
+  <div class="modal hidden" id="rsModal" role="dialog" aria-modal="true" aria-labelledby="rsTitle">
+    <div class="modal-card rs-card">
+      <div class="rs-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" class="rs-bg"/><circle cx="60" cy="60" r="52" class="rs-fg" id="rsArc"/></svg><b id="rsLeft">60</b></div>
+      <h2 id="rsTitle">Restarting your PC</h2>
+      <p class="muted" id="rsText">To finish the fixes. FrameForge opens again by itself afterwards and checks that everything worked.</p>
+      <p class="rs-warn">Save anything you have open. Apps with unsaved work can still stop the restart.</p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="ghost" id="rsCancel">Cancel</button>
+        <button class="primary heat" id="rsNow">Restart now</button>
       </div>
     </div>
   </div>

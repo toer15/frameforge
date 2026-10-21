@@ -48,6 +48,11 @@ const DEFAULT_SETTINGS = {
   aiKeyEnc: null, // encrypted with Windows DPAPI
   ollamaModel: 'llama3.1',
   ollamaUrl: 'http://127.0.0.1:11434',
+  autoFix: true, // Fix mode fixes what it safely can in the background, without a click
+  autoRestart: true, // restart the PC by itself (with a countdown) when a fix needs it
+  lastAutoRestart: 0, // never restart by itself twice within a few hours (no restart loops)
+  cttSkip: [], // Chris Titus tweaks that fail on this PC — left out of the preset
+  biosCheck: null, // RAM speed before "Restart into BIOS", to check the change worked
 };
 
 function file(name) {

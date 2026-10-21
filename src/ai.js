@@ -274,9 +274,9 @@ async function runOllama({ history, ctx, onText, signal }) {
   try {
     res = await net.fetch(`${base}/api/chat`, { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: s.ollamaModel || 'llama3.1', messages: msgs, stream: true }) });
   } catch {
-    throw new Error('Couldn’t reach Ollama. Install it from ollama.com, run “ollama pull llama3.1”, and keep it running.');
+    throw new Error('Ollama isn’t running on this PC yet. Press “Install” at the top right of the chat — FrameForge installs and starts it for you.');
   }
-  if (!res.ok) throw new Error(res.status === 404 ? `Ollama doesn’t have the model “${s.ollamaModel || 'llama3.1'}”. Run: ollama pull ${s.ollamaModel || 'llama3.1'}` : `Ollama answered with an error (${res.status}).`);
+  if (!res.ok) throw new Error(res.status === 404 ? `The model “${s.ollamaModel || 'llama3.1'}” isn’t downloaded yet. Press “Install” at the top right of the chat — FrameForge downloads it for you.` : `Ollama answered with an error (${res.status}).`);
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
