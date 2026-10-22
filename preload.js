@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('ff', {
   profile: () => ipcRenderer.invoke('profile:get'),
   resetProfile: () => ipcRenderer.invoke('profile:reset'),
   tweaks: () => ipcRenderer.invoke('tweaks:list'),
+  limiter: { status: () => ipcRenderer.invoke('limiter:status') },
   settings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (p) => ipcRenderer.invoke('settings:set', p),
   setAuto: (on) => ipcRenderer.invoke('auto:set', on),

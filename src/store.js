@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   autoDownloadTools: false,
   openVendorApp: true,
   fpsCounter: false,
+  fpsLimitOn: false, // Settings > FPS limiter: cap games at fpsLimit through RTSS
+  fpsLimit: 60,
   tempMonitor: true,
   overlayPosition: 'top-left',
   overlayHotkey: 'Ctrl+Shift+F',

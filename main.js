@@ -22,6 +22,7 @@ const localAi = require('./src/localai');
 const scanner = require('./src/scanner');
 const scanjob = require('./src/scanjob');
 const animations = require('./src/animations');
+const fplimit = require('./src/fplimit');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -113,6 +114,9 @@ async function boot() {
   // Keep the "Start with Windows" task pointing at this copy of FrameForge (the install folder can change).
   if (settings.get().startWithWindows && admin && !DEMO) setStartWithWindows(true).catch(() => {});
   setInterval(() => animWatch(), 8000);
+  // FPS limiter: put the user's cap back after a restart, or if another tool changed it or RTSS was closed.
+  setTimeout(() => limiterWatch(), DEMO ? 3000 : 15000);
+  setInterval(() => limiterWatch(), 60 * 1000);
   if (DEMO && process.env.FRAMEFORGE_TEST_ANIM_TAMPER) setTimeout(() => animations.demoTamper(), 20000); // test: another app flips the animations
   setTimeout(() => refreshSecurity().then(() => send('fix:changed', true)).catch(() => {}), DEMO ? 4000 : 30000);
   setInterval(() => refreshSecurity().catch(() => {}), 30 * 60 * 1000);
@@ -1819,6 +1823,37 @@ async function animWatch() {
     animWatching = false;
   }
 }
+/** Cap games at the number chosen in Settings (or remove the cap). Returns { ok, limit, message }. */
+async function applyLimiter() {
+  const s = settings.get();
+  const want = s.fpsLimitOn ? fplimit.clamp(s.fpsLimit) : 0;
+  const r = await fplimit.apply(want, { install: () => tools.wingetInstall(fplimit.WINGET_ID) });
+  if (!want) changes.remove('fps_limiter');
+  else {
+    changes.put('fps_limiter', r.ok
+      ? { name: `FPS limit ${want}`, summary: `Games are capped at ${want} FPS by RivaTuner Statistics Server (RTSS). FrameForge keeps the cap in place.`, details: [], at: Date.now(), preset: s.preset, undoable: false, reboot: false }
+      : { name: 'FPS limit needs attention', summary: r.message || 'The FPS limit was not applied.', details: [], at: Date.now(), preset: s.preset, undoable: false, reboot: false });
+  }
+  send('changes', changeList());
+  return r;
+}
+let limiterBusy = false;
+let limiterFails = 0;
+async function limiterWatch() {
+  const s = settings.get();
+  if (!s.fpsLimitOn || limiterBusy || busy || limiterFails >= 3) return;
+  limiterBusy = true;
+  try {
+    if (await fplimit.drifted(s.fpsLimit)) {
+      const r = await applyLimiter();
+      limiterFails = r.ok ? 0 : limiterFails + 1; // give up after 3 failed tries instead of looping
+    } else limiterFails = 0;
+  } catch {
+  } finally {
+    limiterBusy = false;
+  }
+}
+ipcMain.handle('limiter:status', async () => ({ on: settings.get().fpsLimitOn, fps: settings.get().fpsLimit, ...(await fplimit.status()) }));
 ipcMain.handle('anim:get', async () => ({ want: settings.get().animations, ...(await animations.get()) }));
 ipcMain.handle('anim:set', async (_e, on) => {
   settings.set({ animations: on ? 'on' : 'off' });
@@ -2138,6 +2173,16 @@ ipcMain.handle('settings:set', async (_e, patch) => {
   const before = settings.get();
   const s = settings.set(patch);
   if ('autoCheckUpdates' in patch && updates) updates.settingsChanged();
+  if ('fpsLimit' in patch) settings.set({ fpsLimit: fplimit.clamp(patch.fpsLimit) });
+  let limiterError = null;
+  if ('fpsLimitOn' in patch || 'fpsLimit' in patch) {
+    limiterFails = 0;
+    const r = await applyLimiter();
+    if (!r.ok) {
+      limiterError = r.message || 'The FPS limit could not be applied.';
+      if (patch.fpsLimitOn) settings.set({ fpsLimitOn: false }); // the switch must not claim a cap that is not there
+    }
+  }
   if ('startWithWindows' in patch && IS_WIN && !DEMO) {
     const r = patch.startWithWindows ? await setStartWithWindows(true) : await setStartWithWindows(false);
     if (!r.ok) {
@@ -2149,7 +2194,8 @@ ipcMain.handle('settings:set', async (_e, patch) => {
   let hotkeyFailed = false;
   if ('overlayHotkey' in patch && patch.overlayHotkey !== before.overlayHotkey) hotkeyFailed = !registerHotkey();
   if ('fpsCounter' in patch || 'tempMonitor' in patch || 'overlayPosition' in patch) applyMonitoring();
-  return hotkeyFailed ? { ...s, _error: `“${s.overlayHotkey}” couldn’t be registered — another program is probably using it. Pick a different shortcut.` } : s;
+  if (limiterError) return { ...settings.get(), _error: limiterError };
+  return hotkeyFailed ? { ...settings.get(), _error: `“${s.overlayHotkey}” couldn’t be registered — another program is probably using it. Pick a different shortcut.` } : settings.get();
 });
 ipcMain.handle('auto:set', (_e, on) => runAuto(!!on));
 ipcMain.handle('auto:stop', () => stopAuto());

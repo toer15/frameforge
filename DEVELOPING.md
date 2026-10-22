@@ -38,6 +38,16 @@ rights because power plans, GPU scheduling and restore points need them.
 
 Backups are stored in `%APPDATA%\FrameForge\backup.json`.
 
+## FPS limiter
+
+- Settings > Overlay > **FPS limiter** (`fpsLimitOn`, `fpsLimit`, 20–1000). A game can only be capped from inside
+  its own process, so `src/fplimit.js` drives RivaTuner Statistics Server (RTSS): it writes `FramerateLimit` to
+  RTSS's *Global* profile through `RTSSHooks64.dll` (LoadProfile / SetProfileProperty / SaveProfile / UpdateProfiles),
+  reads the value back, and starts RTSS. RTSS is installed from winget (`Guru3D.RTSS`) the first time.
+- `limiterWatch()` (main.js) re-checks every minute and after start; if RTSS was closed or the number changed it
+  puts the cap back (gives up after 3 failed tries). If applying fails the switch turns back off and says why.
+- Demo mode simulates RTSS in memory. Not yet run against a real RTSS install.
+
 ## FPS counter and temperatures
 
 - **FPS**: uses PresentMon by Intel (open source). Works with DirectX, Vulkan and OpenGL. The overlay shows

@@ -506,6 +506,14 @@
           </div>
           <div class="set-row">
             <div class="set-text">
+              <h3>FPS limiter</h3>
+              <p>Caps every game at the number you set. Uses RivaTuner Statistics Server (RTSS), the standard frame limiter; FrameForge installs it for you the first time, keeps it running and puts your number back if something changes it.</p>
+            </div>
+            <input type="number" class="select" data-key="fpsLimit" min="20" max="1000" step="1" style="width:84px" aria-label="FPS limit" />
+            <label class="switch"><input type="checkbox" data-key="fpsLimitOn" aria-label="FPS limiter" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
               <h3>Temperature monitor</h3>
               <p>Shows CPU and GPU temperature on the overlay and on the Home tab.</p>
             </div>

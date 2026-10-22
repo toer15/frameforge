@@ -1344,7 +1344,10 @@ document.addEventListener('change', async (e) => {
     $('#ocModal').classList.remove('hidden');
     return;
   }
+  if (k === 'fpsLimitOn' && el.checked) toast('Setting up the FPS limiter… the first time this installs RTSS, which can take a minute.', 6000);
   S = await ff.setSettings({ [k]: el.type === 'checkbox' ? el.checked : el.value });
+  if ((k === 'fpsLimitOn' || k === 'fpsLimit') && S && !S._error && S.fpsLimitOn) toast(`Games are now capped at ${S.fpsLimit} FPS.`);
+  else if (k === 'fpsLimitOn' && S && !S._error) toast('FPS limit removed.');
   if (k === 'autoCheckUpdates') {
     if (S.autoCheckUpdates) maybeShowUpdate(await ff.updateState());
     toast(S.autoCheckUpdates ? 'Auto update is on. New versions will show a popup while you use FrameForge.' : 'Auto update is off. You can still check for updates manually.');

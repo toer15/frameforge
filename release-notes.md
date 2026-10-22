@@ -1,3 +1,9 @@
+**New: FPS limiter**
+
+- Settings now has an **FPS limiter**: type the FPS you want and switch it on. Games are capped at that number.
+- It uses RivaTuner Statistics Server (RTSS), the standard frame limiter. FrameForge installs it for you the first time, keeps it running, and puts your number back if something changes it.
+- If the cap can't be applied, the switch turns back off and tells you why.
+
 **Uninstall a local AI model from AI Chat**
 
 - A red **Uninstall AI model** button now appears beside **Installed · runs on your PC** at the top of AI Chat.
