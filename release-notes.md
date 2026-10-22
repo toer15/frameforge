@@ -1,3 +1,10 @@
+**Controller tab: pick your exact controller, see it move live**
+
+- Pick your controller from a list: Xbox Series X|S, Xbox Elite Series 2, Xbox One, Xbox 360, DualSense, DualSense Edge, DualShock 4, Switch Pro Controller, and Joy-Con (L, R or both).
+- FrameForge draws that controller with its own buttons and lights up every button as you press it. Sticks move exactly as you move them, triggers fill up as you squeeze, and fingers on the DualSense/DualShock touchpad show up.
+- Tilt a DualSense, DualShock 4, Switch Pro Controller or Joy-Con and the controller on screen tilts with it. Each Joy-Con moves on its own. Use **Re-centre motion** to set the straight position.
+- Works straight away on every PC: FrameForge reads the controller itself, no driver or extra program needed.
+
 **New: Controller tab**
 
 - A new **Controller** tab finds the controller you have plugged in (Xbox, DualSense, DualShock 4 and others) and shows its buttons with the right logos: A B X Y for Xbox, ✕ ○ □ △ for PlayStation.

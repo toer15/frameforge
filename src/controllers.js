@@ -7,40 +7,42 @@ const SONY = 0x054c;
 const MICROSOFT = 0x045e;
 const NINTENDO = 0x057e;
 
-// vendor:product (hex) -> { name, family }
+// vendor:product (hex) -> [name, family, drawing in the Controller tab]
 const MODELS = {
-  '054c:05c4': ['DualShock 4', 'playstation'],
-  '054c:09cc': ['DualShock 4', 'playstation'],
-  '054c:0ba0': ['DualShock 4 USB adapter', 'playstation'],
-  '054c:0ce6': ['DualSense', 'playstation'],
-  '054c:0df2': ['DualSense Edge', 'playstation'],
-  '045e:028e': ['Xbox 360 Controller', 'xbox'],
-  '045e:028f': ['Xbox 360 Wireless Controller', 'xbox'],
-  '045e:02d1': ['Xbox One Controller', 'xbox'],
-  '045e:02dd': ['Xbox One Controller', 'xbox'],
-  '045e:02e0': ['Xbox One Wireless Controller', 'xbox'],
-  '045e:02ea': ['Xbox One Controller', 'xbox'],
-  '045e:02fd': ['Xbox One Wireless Controller', 'xbox'],
-  '045e:0b00': ['Xbox Elite Series 2', 'xbox'],
-  '045e:0b05': ['Xbox Elite Series 2', 'xbox'],
-  '045e:0b12': ['Xbox Series X|S Controller', 'xbox'],
-  '045e:0b13': ['Xbox Series X|S Controller', 'xbox'],
-  '045e:0b20': ['Xbox Wireless Controller', 'xbox'],
-  '057e:2009': ['Switch Pro Controller', 'nintendo'],
-  '057e:2006': ['Joy-Con (L)', 'nintendo'],
-  '057e:2007': ['Joy-Con (R)', 'nintendo'],
+  '054c:05c4': ['DualShock 4', 'playstation', 'dualshock4'],
+  '054c:09cc': ['DualShock 4', 'playstation', 'dualshock4'],
+  '054c:0ba0': ['DualShock 4 USB adapter', 'playstation', 'dualshock4'],
+  '054c:0ce6': ['DualSense', 'playstation', 'dualsense'],
+  '054c:0df2': ['DualSense Edge', 'playstation', 'dualsense-edge'],
+  '045e:028e': ['Xbox 360 Controller', 'xbox', 'xbox-360'],
+  '045e:028f': ['Xbox 360 Wireless Controller', 'xbox', 'xbox-360'],
+  '045e:02d1': ['Xbox One Controller', 'xbox', 'xbox-one'],
+  '045e:02dd': ['Xbox One Controller', 'xbox', 'xbox-one'],
+  '045e:02e0': ['Xbox One Wireless Controller', 'xbox', 'xbox-one'],
+  '045e:02ea': ['Xbox One Controller', 'xbox', 'xbox-one'],
+  '045e:02fd': ['Xbox One Wireless Controller', 'xbox', 'xbox-one'],
+  '045e:0b00': ['Xbox Elite Series 2', 'xbox', 'xbox-elite2'],
+  '045e:0b05': ['Xbox Elite Series 2', 'xbox', 'xbox-elite2'],
+  '045e:0b12': ['Xbox Series X|S Controller', 'xbox', 'xbox-series'],
+  '045e:0b13': ['Xbox Series X|S Controller', 'xbox', 'xbox-series'],
+  '045e:0b20': ['Xbox Wireless Controller', 'xbox', 'xbox-series'],
+  '045e:0b21': ['Xbox Wireless Controller', 'xbox', 'xbox-series'],
+  '045e:0b22': ['Xbox Elite Series 2', 'xbox', 'xbox-elite2'],
+  '057e:2009': ['Switch Pro Controller', 'nintendo', 'switch-pro'],
+  '057e:2006': ['Joy-Con (L)', 'nintendo', 'joycon-l'],
+  '057e:2007': ['Joy-Con (R)', 'nintendo', 'joycon-r'],
 };
 
 /** Work out the family and a readable name from IDs and the Windows device name. */
 function classify(vid, pid, friendly = '') {
   const known = MODELS[`${vid}:${pid}`];
-  if (known) return { name: known[0], family: known[1] };
+  if (known) return { name: known[0], family: known[1], model: known[2] };
   const v = parseInt(vid, 16);
   const nice = friendly.replace(/^HID-compliant game controller$/i, '').trim();
-  if (v === SONY) return { name: nice || 'PlayStation controller', family: 'playstation' };
-  if (v === MICROSOFT || /xbox/i.test(friendly)) return { name: nice || 'Xbox controller', family: 'xbox' };
-  if (v === NINTENDO) return { name: nice || 'Nintendo controller', family: 'nintendo' };
-  return { name: nice || 'Game controller', family: 'other' };
+  if (v === SONY) return { name: nice || 'PlayStation controller', family: 'playstation', model: 'dualsense' };
+  if (v === MICROSOFT || /xbox/i.test(friendly)) return { name: nice || 'Xbox controller', family: 'xbox', model: 'xbox-series' };
+  if (v === NINTENDO) return { name: nice || 'Nintendo controller', family: 'nintendo', model: 'switch-pro' };
+  return { name: nice || 'Game controller', family: 'other', model: 'generic' };
 }
 
 const SCRIPT = `
@@ -103,7 +105,7 @@ function parse(out) {
   return { devices, xinput };
 }
 
-const DEMO_STATE = { devices: [{ name: 'DualSense', family: 'playstation', vid: '054c', pid: '0ce6', connection: 'USB cable' }], xinput: [] };
+const DEMO_STATE = { devices: [{ name: 'DualSense', family: 'playstation', model: 'dualsense', vid: '054c', pid: '0ce6', connection: 'USB cable' }], xinput: [] };
 
 /**
  * { devices: [{ name, family, vid, pid, connection }], xinput: [slot], gamesSee: 'xbox' | 'playstation' | 'nintendo' | 'other' | null }
@@ -117,7 +119,9 @@ async function detect() {
     st = parse(r.stdout);
   } else if (process.env.FRAMEFORGE_DEMO_PAD) {
     const [family, xinput] = process.env.FRAMEFORGE_DEMO_PAD.split(':');
-    st = { devices: family === 'none' ? [] : [{ name: family === 'xbox' ? 'Xbox Wireless Controller' : 'DualSense', family, vid: '0000', pid: '0000', connection: 'USB cable' }], xinput: xinput ? [0] : [] };
+    const model = { xbox: 'xbox-series', playstation: 'dualsense', nintendo: 'switch-pro' }[family] || 'generic';
+    const name = { xbox: 'Xbox Wireless Controller', playstation: 'DualSense', nintendo: 'Switch Pro Controller' }[family] || 'Game controller';
+    st = { devices: family === 'none' ? [] : [{ name, family, model, vid: '0000', pid: '0000', connection: 'USB cable' }], xinput: xinput ? [0] : [] };
   }
   let gamesSee = null;
   if (st.xinput.length) gamesSee = 'xbox';

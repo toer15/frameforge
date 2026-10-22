@@ -40,15 +40,21 @@ Backups are stored in `%APPDATA%\FrameForge\backup.json`.
 
 ## Controller tab
 
-- Sidebar > **Controller** (`controllerType`: auto | xbox | playstation). `src/controllers.js` finds the pads from Windows
-  (USB/Bluetooth vendor and product IDs of game controllers, plus the XInput slots) and works out what games will see:
-  an XInput pad means Xbox, otherwise the real pad's family. A DualSense with an XInput pad present is being emulated
-  (Steam Input / DS4Windows).
-- The tab draws the chosen layout (Xbox or PlayStation logos and names), a table of where the usual actions sit, and a
-  live tester using the browser Gamepad API (a pad shows up after its first button press).
-- It tells the user whether games already show the logos they picked. It does not change what games see: that needs a
-  controller-emulation driver (ViGEmBus + DS4Windows or Steam Input), which FrameForge does not install.
-- Demo mode: `FRAMEFORGE_DEMO_PAD=playstation|xbox:1|none` fakes the detected pad.
+- Sidebar > **Controller**. A dropdown (`controllerType`: auto, xbox-series, xbox-elite2, xbox-one, xbox-360, dualsense,
+  dualsense-edge, dualshock4, switch-pro, joycon-pair, joycon-l, joycon-r, generic) picks the drawing; Automatic uses
+  the pad that is plugged in. Old values `xbox` / `playstation` still work.
+- `renderer/controller.js` draws each model (SVG), lights up pressed buttons, fills the analog triggers, moves the stick
+  dots and touchpad points, and tilts the drawing in 3D with the pad's motion sensors.
+- Input sources: **WebHID** for Sony and Nintendo pads (main.js `allowPadHid` grants HID only for vendors 054C/057E).
+  FrameForge parses the raw reports itself: DualSense/Edge 0x01 (USB) / 0x31 (BT), DualShock 4 0x01 / 0x11, Switch
+  0x30 (it sends the full-report and IMU-on subcommands). No driver needed. Other pads (Xbox, generic) use the
+  Gamepad API (buttons, sticks, triggers; no motion).
+- Motion: Mahony filter (gyro + gravity) in a shared frame (x right, y out of the face, z toward the player; Switch axes
+  are converted like SDL does). The drawing shows the rotation since tracking started; **Re-centre motion** resets it.
+  Verified on a real DualSense Edge over USB (reports, gravity 1.0 g, sticks); Switch pads and the motion directions
+  have not been checked on hardware.
+- `src/controllers.js` still reports what Windows hands games (XInput pad = Xbox) for the status line.
+- Demo mode: `FRAMEFORGE_DEMO_PAD=playstation|xbox:1|nintendo|none` fakes the detected pad.
 
 ## FPS limiter
 

@@ -399,27 +399,57 @@
       <div class="tw-head">
         <div>
           <h1 class="page-title">Controller</h1>
-          <p class="muted">Pick the controller you play with. FrameForge shows its buttons with the right logos, tests it live, and tells you which logos your games will really show.</p>
+          <p class="muted">Pick your controller. FrameForge draws it, lights up every button you press, moves the sticks and triggers exactly as you do, and tilts the controller on screen as you tilt it in your hands (DualSense, DualShock 4, Switch Pro and Joy-Con have motion sensors).</p>
         </div>
         <div class="tw-actions"><button class="ghost" id="padRefresh">Refresh</button></div>
       </div>
       <div class="pad-card" id="padConnected"><p class="muted">Looking for controllers…</p></div>
-      <h2 class="pad-h">Which controller are you using?</h2>
-      <div class="pad-pick" id="padPick" role="radiogroup" aria-label="Controller type">
-        <button class="pad-opt" data-pad="auto" role="radio"><b>Automatic</b><span id="padAutoSub">Use the controller FrameForge finds</span></button>
-        <button class="pad-opt" data-pad="xbox" role="radio"><b>Xbox</b><span>A B X Y · LB RB · Xbox button</span></button>
-        <button class="pad-opt" data-pad="playstation" role="radio"><b>PlayStation</b><span>✕ ○ □ △ · L1 R1 · PS button (DualSense, DualShock 4)</span></button>
+      <div class="pad-pickrow">
+        <label for="padModel" class="pad-h">Your controller</label>
+        <select id="padModel" class="select pad-select" aria-label="Your controller">
+          <option value="auto">Automatic (the one plugged in)</option>
+          <optgroup label="Xbox">
+            <option value="xbox-series">Xbox Series X|S Controller</option>
+            <option value="xbox-elite2">Xbox Elite Series 2</option>
+            <option value="xbox-one">Xbox One Controller</option>
+            <option value="xbox-360">Xbox 360 Controller</option>
+          </optgroup>
+          <optgroup label="PlayStation">
+            <option value="dualsense">DualSense (PS5)</option>
+            <option value="dualsense-edge">DualSense Edge (PS5)</option>
+            <option value="dualshock4">DualShock 4 (PS4)</option>
+          </optgroup>
+          <optgroup label="Nintendo Switch">
+            <option value="switch-pro">Switch Pro Controller</option>
+            <option value="joycon-pair">Joy-Con (L + R)</option>
+            <option value="joycon-l">Joy-Con (L)</option>
+            <option value="joycon-r">Joy-Con (R)</option>
+          </optgroup>
+          <optgroup label="Other">
+            <option value="generic">Other gamepad</option>
+          </optgroup>
+        </select>
+        <span class="muted" id="padAutoSub"></span>
       </div>
       <div class="pad-status" id="padStatus"></div>
       <div class="pad-grid">
         <div class="pad-card">
-          <h2 class="pad-h" id="padDiagramTitle">Buttons</h2>
-          <svg id="padSvg" viewBox="0 0 400 270" class="pad-svg" role="img" aria-label="Controller button layout"></svg>
+          <div class="pad-cardhead">
+            <h2 class="pad-h" id="padDiagramTitle">Controller</h2>
+            <button class="ghost small hidden" id="padRecenter" title="Hold the controller the way you normally do, then click to make that the straight position">Re-centre motion</button>
+          </div>
+          <div class="pad-stage" id="padStage"></div>
           <p class="muted" id="padLive">Press any button on your controller to test it here.</p>
         </div>
-        <div class="pad-card">
-          <h2 class="pad-h">Where the usual actions are</h2>
-          <table class="pad-table" id="padKeys"></table>
+        <div class="pad-side">
+          <div class="pad-card">
+            <h2 class="pad-h">Live input</h2>
+            <div id="padReadout" class="pad-readout"></div>
+          </div>
+          <div class="pad-card">
+            <h2 class="pad-h">Where the usual actions are</h2>
+            <table class="pad-table" id="padKeys"></table>
+          </div>
         </div>
       </div>
     </section>
@@ -795,5 +825,6 @@
 
   <div class="toast hidden" id="toast"></div>
   <script src="app.js"></script>
+  <script src="controller.js"></script>
 </body>
 </html>

@@ -185,6 +185,20 @@ function reclassifyOldCttProblem() {
 
 // ---------- Windows ----------
 
+// Controller tab: the page reads Sony and Nintendo pads straight over HID (buttons, sticks, triggers, touchpad and
+// motion sensors), so no driver is needed. Only game controllers from those two vendors are allowed.
+const PAD_HID_VENDORS = [0x054c, 0x057e];
+function allowPadHid(ses) {
+  if (ses.__ffPadHid) return;
+  ses.__ffPadHid = true;
+  ses.setDevicePermissionHandler((d) => d.deviceType === 'hid' && PAD_HID_VENDORS.includes(d.device.vendorId));
+  ses.on('select-hid-device', (event, details, callback) => {
+    event.preventDefault();
+    const d = details.deviceList.find((x) => PAD_HID_VENDORS.includes(x.vendorId));
+    callback(d ? d.deviceId : '');
+  });
+}
+
 function createMainWindow(hidden, focusWhenReady = false) {
   if (showWhenReady) {
     hidden = false;
@@ -208,6 +222,7 @@ function createMainWindow(hidden, focusWhenReady = false) {
     // Also show after loading: a Windows launcher may suppress the first show request.
     mainWin.webContents.once('did-finish-load', showMain);
   }
+  allowPadHid(mainWin.webContents.session);
   mainWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWin.on('close', (e) => {
     if (!quitting && settings.get().minimizeToTray) {

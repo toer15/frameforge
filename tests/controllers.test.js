@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const c = require('../src/controllers');
 
 test('known controllers are named and sorted into Xbox / PlayStation families', () => {
-  assert.deepEqual(c.classify('054c', '0ce6'), { name: 'DualSense', family: 'playstation' });
-  assert.deepEqual(c.classify('054c', '0df2'), { name: 'DualSense Edge', family: 'playstation' });
+  assert.deepEqual(c.classify('054c', '0ce6'), { name: 'DualSense', family: 'playstation', model: 'dualsense' });
+  assert.deepEqual(c.classify('054c', '0df2'), { name: 'DualSense Edge', family: 'playstation', model: 'dualsense-edge' });
   assert.equal(c.classify('045e', '0b12').family, 'xbox');
   assert.equal(c.classify('2dc8', '3106', 'Xbox compatible pad').family, 'xbox');
   assert.equal(c.classify('1234', '5678', 'HID-compliant game controller').family, 'other');

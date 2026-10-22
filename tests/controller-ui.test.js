@@ -6,7 +6,7 @@ const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 
-test('Controller tab detects the pad, switches layouts and says what games will show', { skip: process.platform !== 'win32', timeout: 45000 }, async () => {
+test('Controller tab: dropdown of controllers, each drawn with its own buttons, live readout and motion controls', { skip: process.platform !== 'win32', timeout: 45000 }, async () => {
   const repo = path.resolve(__dirname, '..');
   const dir = fs.mkdtempSync(path.join(process.env.FRAMEFORGE_TEST_ARTIFACTS || os.tmpdir(), 'frameforge-controller-ui-'));
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ autoFix: false, autoCheckUpdates: false, tempMonitor: false }));
@@ -52,24 +52,34 @@ test('Controller tab detects the pad, switches layouts and says what games will 
     await command('Runtime.enable');
     await waitFor('typeof S !== "undefined" && !!S');
     await evaluate('document.querySelector(".nav-item[data-view=controller]").click()');
-    await waitFor('document.querySelector("#padConnected .pad-dev")');
-    assert.match(await evaluate('document.querySelector("#padConnected").textContent'), /DualSense/);
-    // Automatic follows the detected PlayStation pad.
-    assert.equal(await evaluate('document.querySelector("#padSvg .pad-key[data-k=a] .pad-sym") !== null'), true);
-    assert.match(await evaluate('document.querySelector("#padStatus").textContent'), /already show PlayStation/);
-    assert.match(await evaluate('document.querySelector("#padKeys").textContent'), /✕|○/);
-    // Choose Xbox: layout, logos and the warning about what games get.
-    await evaluate('document.querySelector("[data-pad=xbox]").click()');
-    await waitFor('S.controllerType === "xbox" && document.querySelector("#padDiagramTitle").textContent.startsWith("Xbox")');
-    assert.equal(await evaluate('document.querySelector("#padSvg .pad-sym") === null'), true);
-    assert.match(await evaluate('document.querySelector("#padStatus").textContent'), /games show PlayStation logos/);
-    assert.match(await evaluate('document.querySelector("#padKeys").textContent'), /LT/);
-    assert.equal(await evaluate('document.querySelector("[data-pad=xbox]").classList.contains("on")'), true);
-    // Choice survives a reload of the settings.
-    assert.equal((await evaluate('ff.settings()')).controllerType, 'xbox');
-    await evaluate('document.querySelector("[data-pad=playstation]").click()');
-    await waitFor('S.controllerType === "playstation" && document.querySelector("#padDiagramTitle").textContent.startsWith("PlayStation")');
-    assert.match(await evaluate('document.querySelector("#padStatus").textContent'), /already show PlayStation/);
+    await waitFor('document.querySelector("#padConnected .pad-dev") && document.querySelector("#padStage .pad-part")');
+    assert.match(await evaluate('document.querySelector("#padAutoSub").textContent'), /Showing: (DualSense|DualSense Edge)/);
+    const pick = async (v) => {
+      await evaluate(`(() => { const s = document.querySelector("#padModel"); s.value = "${v}"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+      await waitFor(`S.controllerType === "${v}"`);
+      await delay(100);
+    };
+    const title = () => evaluate('document.querySelector("#padDiagramTitle").textContent');
+    const keys = () => evaluate('[...document.querySelectorAll("#padStage .pad-key title")].map((t) => t.textContent).join(",")');
+    await pick('switch-pro');
+    assert.equal(await title(), 'Switch Pro Controller');
+    assert.match(await keys(), /ZL.*ZR|ZR.*ZL/);
+    assert.match(await keys(), /Home/);
+    assert.equal(await evaluate('document.querySelector("#padRecenter").classList.contains("hidden")'), false);
+    await pick('joycon-pair');
+    assert.equal(await evaluate('document.querySelectorAll("#padStage .pad-part").length'), 2);
+    assert.match(await keys(), /SL/);
+    await pick('xbox-elite2');
+    assert.equal(await title(), 'Xbox Elite Series 2');
+    assert.match(await keys(), /LT/);
+    assert.equal(await evaluate('document.querySelector("#padRecenter").classList.contains("hidden")'), true);
+    assert.match(await evaluate('document.querySelector("#padKeys").textContent'), /RT/);
+    await pick('dualshock4');
+    assert.match(await keys(), /Share/);
+    assert.match(await evaluate('document.querySelector("#padKeys").textContent'), /✕/);
+    assert.equal((await evaluate('ff.settings()')).controllerType, 'dualshock4');
+    assert.match(await evaluate('document.querySelector("#padReadout").textContent'), /Left stick/);
+    await pick('auto');
     assert.deepEqual(exceptions, []);
   } finally {
     if (socket) socket.close();
