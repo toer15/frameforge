@@ -1,3 +1,10 @@
+**New: Controller tab**
+
+- A new **Controller** tab finds the controller you have plugged in (Xbox, DualSense, DualShock 4 and others) and shows its buttons with the right logos: A B X Y for Xbox, ✕ ○ □ △ for PlayStation.
+- Pick **Automatic**, **Xbox** or **PlayStation**. You see where the usual actions (jump, shoot, aim, menu…) sit on that controller.
+- Test your controller live: press buttons and move the sticks and they light up.
+- It tells you which logos your games will really show, based on what Windows hands them.
+
 **New: FPS limiter**
 
 - Settings now has an **FPS limiter**: type the FPS you want and switch it on. Games are capped at that number.

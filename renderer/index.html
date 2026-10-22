@@ -42,6 +42,10 @@
         <svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm4 6.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>
         AI Chat
       </button>
+      <button class="nav-item" data-view="controller">
+        <svg viewBox="0 0 24 24"><path d="M7 7h10a5 5 0 0 1 4.9 6l-.8 4a2.5 2.5 0 0 1-4.3 1.2L15 16H9l-1.8 2.2A2.5 2.5 0 0 1 2.9 17l-.8-4A5 5 0 0 1 7 7Zm.5 2.5v1.2H6.3v1.6h1.2v1.2h1.6v-1.2h1.2v-1.6H9.1V9.5Zm8.5 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>
+        Controller
+      </button>
       <button class="nav-item" data-view="settings">
         <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.4 4.6-.1-2.2 2-1.6-2-3.4-2.4.8-1.9-1.1L15.5 3h-4l-.5 2.6-1.9 1.1-2.4-.8-2 3.4 2 1.6v2.2l-2 1.6 2 3.4 2.4-.8 1.9 1.1.5 2.6h4l.5-2.6 1.9-1.1 2.4.8 2-3.4z"/></svg>
         Settings
@@ -391,6 +395,35 @@
     </section>
 
     <!-- ================= SETTINGS ================= -->
+    <section class="view hidden" id="view-controller">
+      <div class="tw-head">
+        <div>
+          <h1 class="page-title">Controller</h1>
+          <p class="muted">Pick the controller you play with. FrameForge shows its buttons with the right logos, tests it live, and tells you which logos your games will really show.</p>
+        </div>
+        <div class="tw-actions"><button class="ghost" id="padRefresh">Refresh</button></div>
+      </div>
+      <div class="pad-card" id="padConnected"><p class="muted">Looking for controllers…</p></div>
+      <h2 class="pad-h">Which controller are you using?</h2>
+      <div class="pad-pick" id="padPick" role="radiogroup" aria-label="Controller type">
+        <button class="pad-opt" data-pad="auto" role="radio"><b>Automatic</b><span id="padAutoSub">Use the controller FrameForge finds</span></button>
+        <button class="pad-opt" data-pad="xbox" role="radio"><b>Xbox</b><span>A B X Y · LB RB · Xbox button</span></button>
+        <button class="pad-opt" data-pad="playstation" role="radio"><b>PlayStation</b><span>✕ ○ □ △ · L1 R1 · PS button (DualSense, DualShock 4)</span></button>
+      </div>
+      <div class="pad-status" id="padStatus"></div>
+      <div class="pad-grid">
+        <div class="pad-card">
+          <h2 class="pad-h" id="padDiagramTitle">Buttons</h2>
+          <svg id="padSvg" viewBox="0 0 400 270" class="pad-svg" role="img" aria-label="Controller button layout"></svg>
+          <p class="muted" id="padLive">Press any button on your controller to test it here.</p>
+        </div>
+        <div class="pad-card">
+          <h2 class="pad-h">Where the usual actions are</h2>
+          <table class="pad-table" id="padKeys"></table>
+        </div>
+      </div>
+    </section>
+
     <section class="view hidden" id="view-settings">
       <div class="settings-wrap">
         <h1 class="page-title">Settings</h1>

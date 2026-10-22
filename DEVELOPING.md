@@ -38,6 +38,18 @@ rights because power plans, GPU scheduling and restore points need them.
 
 Backups are stored in `%APPDATA%\FrameForge\backup.json`.
 
+## Controller tab
+
+- Sidebar > **Controller** (`controllerType`: auto | xbox | playstation). `src/controllers.js` finds the pads from Windows
+  (USB/Bluetooth vendor and product IDs of game controllers, plus the XInput slots) and works out what games will see:
+  an XInput pad means Xbox, otherwise the real pad's family. A DualSense with an XInput pad present is being emulated
+  (Steam Input / DS4Windows).
+- The tab draws the chosen layout (Xbox or PlayStation logos and names), a table of where the usual actions sit, and a
+  live tester using the browser Gamepad API (a pad shows up after its first button press).
+- It tells the user whether games already show the logos they picked. It does not change what games see: that needs a
+  controller-emulation driver (ViGEmBus + DS4Windows or Steam Input), which FrameForge does not install.
+- Demo mode: `FRAMEFORGE_DEMO_PAD=playstation|xbox:1|none` fakes the detected pad.
+
 ## FPS limiter
 
 - Settings > Overlay > **FPS limiter** (`fpsLimitOn`, `fpsLimit`, 20–1000). A game can only be capped from inside

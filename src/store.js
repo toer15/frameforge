@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS = {
   autoDownloadTools: false,
   openVendorApp: true,
   fpsCounter: false,
+  controllerType: 'auto', // Controller tab: auto | xbox | playstation
   fpsLimitOn: false, // Settings > FPS limiter: cap games at fpsLimit through RTSS
   fpsLimit: 60,
   tempMonitor: true,

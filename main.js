@@ -23,6 +23,7 @@ const scanner = require('./src/scanner');
 const scanjob = require('./src/scanjob');
 const animations = require('./src/animations');
 const fplimit = require('./src/fplimit');
+const controllers = require('./src/controllers');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -1853,6 +1854,7 @@ async function limiterWatch() {
     limiterBusy = false;
   }
 }
+ipcMain.handle('controllers:detect', () => controllers.detect());
 ipcMain.handle('limiter:status', async () => ({ on: settings.get().fpsLimitOn, fps: settings.get().fpsLimit, ...(await fplimit.status()) }));
 ipcMain.handle('anim:get', async () => ({ want: settings.get().animations, ...(await animations.get()) }));
 ipcMain.handle('anim:set', async (_e, on) => {
