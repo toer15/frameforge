@@ -1055,9 +1055,15 @@ function fixList() {
   if (extra.disk && (extra.disk.usePct >= 92 || extra.disk.freeGB < 15)) {
     add({ id: 'disk', level: 'medium', title: `Drive C: is almost full (${extra.disk.freeGB} GB free)`, body: 'A nearly full system drive makes Windows and game updates slow, and can cause stutter.', actions: [A('free_space', 'Free up space')], strategies: [A('free_space', 'Clear temp files and old Windows update leftovers')], manual: guides.diskFull(extra.disk), bg: 'idle' });
   }
+  // "Download performance tools" (Settings): with it off FrameForge never fetches a tool by itself — not even from
+  // Fix mode in the background. The item stays, with the button, and says why it's waiting.
   const tl = tools.status();
-  if (s.fpsCounter && !tl.presentmon) add({ id: 'tool_presentmon', level: 'medium', title: 'The FPS counter needs PresentMon', body: 'A free tool from Intel that reads real in-game FPS.', actions: [A('install:presentmon', 'Download it')], strategies: [A('install:presentmon', 'Download PresentMon from Intel’s GitHub'), A('install:presentmon', 'Try the download again')], bg: 'quiet' });
-  if (s.tempMonitor && !tl.lhm && (!lastStats || lastStats.cpuTemp == null)) add({ id: 'tool_lhm', level: 'medium', title: 'CPU temperature can’t be read yet', body: 'Windows doesn’t share the real CPU sensor. LibreHardwareMonitor (free, open source) does.', actions: [A('install:lhm', 'Download it')], strategies: [A('install:lhm', 'Download LibreHardwareMonitor from its GitHub'), A('install:lhm', 'Try the download again')], bg: 'quiet' });
+  const dlOk = !!s.autoDownloadTools;
+  const dlManual = ['Downloads are off in Settings (“Download performance tools”), so FrameForge won’t fetch it by itself.', 'Press “Download it” here, or turn that setting on.'];
+  if (s.fpsCounter && !tl.presentmon)
+    add({ id: 'tool_presentmon', level: 'medium', title: 'The FPS counter needs PresentMon', body: 'A free tool from Intel that reads real in-game FPS.', actions: [A('install:presentmon', 'Download it')], strategies: dlOk ? [A('install:presentmon', 'Download PresentMon from Intel’s GitHub'), A('install:presentmon', 'Try the download again')] : [], manual: dlOk ? null : dlManual, bg: 'quiet' });
+  if (s.tempMonitor && !tl.lhm && (!lastStats || lastStats.cpuTemp == null))
+    add({ id: 'tool_lhm', level: 'medium', title: 'CPU temperature can’t be read yet', body: 'Windows doesn’t share the real CPU sensor. LibreHardwareMonitor (free, open source) does.', actions: [A('install:lhm', 'Download it')], strategies: dlOk ? [A('install:lhm', 'Download LibreHardwareMonitor from its GitHub'), A('install:lhm', 'Try the download again')] : [], manual: dlOk ? null : dlManual, bg: 'quiet' });
   if (rig && rig.vendorApp && !rig.vendorApp.installed) {
     const amd = rig.gpu.vendor === 'amd';
     const amdAuto = amd && tools.amdDriverPages(rig.gpu.name).length > 0;

@@ -262,10 +262,16 @@ async function signatures(files) {
   if (DEMO || !IS_WIN) return out;
   const list = path.join(app.getPath('temp'), `ff-sig-${Date.now()}.txt`);
   fs.writeFileSync(list, files.join('\r\n'), 'utf8');
-  const r = await ps(`${UTF8}$r = foreach($f in (Get-Content -LiteralPath ${q(list)} -Encoding UTF8)){ $s = Get-AuthenticodeSignature -LiteralPath $f; [pscustomobject]@{ f=$f; st="$($s.Status)"; sub="$($s.SignerCertificate.Subject)" } }; @($r) | ConvertTo-Json -Compress`, { timeout: 180000 });
+  // [string] on purpose: in Windows PowerShell a Get-Content line carries note properties (PSPath, ReadCount…),
+  // which would arrive here as an object instead of a path and make every lookup fail silently.
+  const r = await ps(`${UTF8}$r = foreach($line in (Get-Content -LiteralPath ${q(list)} -Encoding UTF8)){ $f=[string]$line; $s = Get-AuthenticodeSignature -LiteralPath $f; [pscustomobject]@{ f="$f"; st="$($s.Status)"; sub="$($s.SignerCertificate.Subject)" } }; @($r) | ConvertTo-Json -Compress`, { timeout: 180000 });
   fs.rmSync(list, { force: true });
   try {
-    for (const x of [].concat(JSON.parse(r.stdout || '[]'))) out[x.f.toLowerCase()] = { status: x.st, signer: ((x.sub || '').match(/O="?([^",]+)/) || (x.sub || '').match(/CN="?([^",]+)/) || [])[1] || '' };
+    for (const x of [].concat(JSON.parse(r.stdout || '[]'))) {
+      const f = typeof x.f === 'string' ? x.f : String((x.f && (x.f.value || x.f.Path)) || '');
+      if (!f) continue;
+      out[f.toLowerCase()] = { status: x.st, signer: ((x.sub || '').match(/O="?([^",]+)/) || (x.sub || '').match(/CN="?([^",]+)/) || [])[1] || '' };
+    }
   } catch {}
   return out;
 }
@@ -332,7 +338,7 @@ async function engineStatus() {
     mode: o.mode || '',
     otherAv,
     purgeDays: o.purge || null,
-    exclusions: o.ex || { path: [], proc: [], ext: [] },
+    exclusions: { path: realEx(o.ex && o.ex.path), proc: realEx(o.ex && o.ex.proc), ext: realEx(o.ex && o.ex.ext) },
     lastQuick: o.qs && o.qe ? { at: o.qe, sec: Math.max(0, (Date.parse(o.qe) - Date.parse(o.qs)) / 1000) } : null,
     lastFull: o.fs && o.fe ? { at: o.fe, sec: Math.max(0, (Date.parse(o.fe) - Date.parse(o.fs)) / 1000) } : null,
     raw: o,
@@ -365,6 +371,8 @@ function hostsIssues() {
   return bad;
 }
 
+/** Unelevated, Get-MpPreference answers "N/A: Must be an administrator…" instead of the real lists. */
+const realEx = (arr) => (Array.isArray(arr) ? arr : []).filter((v) => typeof v === 'string' && v && !/^N\/A\b/i.test(v));
 const SUSPICIOUS_EXCL = (p) => /^[a-z]:\\?$/i.test(p) || /\\(users|appdata|temp|programdata|downloads|desktop|windows)\\?$/i.test(p) || /^%?(temp|appdata|userprofile)%?/i.test(p) || /\\appdata\\(local|roaming)(\\temp)?\\?$/i.test(p);
 const RISKY_EXT = /^\.?(exe|dll|ps1|bat|cmd|vbs|js|jse|scr|com|hta|msi|lnk|sys)$/i;
 const RISKY_PROC = /(powershell|pwsh|cmd|wscript|cscript|mshta|rundll32|regsvr32|svchost|explorer)\.exe$/i;
@@ -617,6 +625,22 @@ async function walk(root, st) {
   if (node.files > 40) node.names = null;
   return node;
 }
+/**
+ * Turn counted folders into roughly `max` scan jobs. Every job starts Microsoft Defender's engine, which costs
+ * one to two seconds, so a tree full of tiny folders (Windows\WinSxS, node_modules…) must not become thousands of
+ * jobs. The job size starts at ~1/120th of everything and doubles until the count fits.
+ */
+function planScan(roots, total, max = 120) {
+  let limit = Math.max(15000, Math.ceil((total || 0) / Math.max(1, max)));
+  let jobs = [];
+  for (let i = 0; i < 8; i++) {
+    jobs = [];
+    for (const n of roots) planChunks(n, limit, jobs);
+    if (jobs.length <= max) break;
+    limit *= 2;
+  }
+  return jobs;
+}
 /** Split a counted folder tree into scan jobs of a sensible size (each is one Defender scan). */
 function planChunks(node, limit, out = []) {
   if (!node.total) return out;
@@ -652,8 +676,11 @@ async function history() {
   for (const x of list) {
     const files = (x.res || []).map((s) => (String(s).match(/^(?:file|containerfile):_(.+)$/i) || [])[1]).filter(Boolean).map((f) => f.split('->')[0]);
     for (const f of files.length ? [...new Set(files)] : [null]) {
-      let status = STATUS[x.st] || 'unknown';
-      if (f && (status === 'active' || status === 'blocked')) status = fs.existsSync(f) ? 'active' : 'removed';
+      let status = STATUS[x.st];
+      // Defender reports more status numbers than its own docs spell out (103, 106, …). For anything outside the
+      // known list, the disk decides: still there → the user still has to choose, gone → already handled.
+      if (!status) status = f ? (fs.existsSync(f) ? 'active' : 'removed') : 'unknown';
+      else if (f && (status === 'active' || status === 'blocked')) status = fs.existsSync(f) ? 'active' : 'removed';
       out.push({ threat: x.name || `Threat ${x.id}`, threatId: x.id, file: f, status, at: x.at });
     }
   }
@@ -663,13 +690,32 @@ async function history() {
 // ---------------------------------------------------------------- FrameForge's own quarantine
 // Files are stored encoded (XOR with a random key) in a folder only SYSTEM and Administrators can open, so they
 // can't run or be opened by accident. Restore puts the exact original bytes back.
+let qDirCache = null;
 function qDir() {
-  const d = DEMO || !IS_WIN ? path.join(app.getPath('userData'), 'quarantine') : path.join(process.env.ProgramData || 'C:\\ProgramData', 'FrameForge', 'Quarantine');
-  if (!fs.existsSync(d)) {
-    fs.mkdirSync(d, { recursive: true });
-    if (IS_WIN && !DEMO) run('icacls', [d, '/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F']);
+  if (qDirCache) return qDirCache;
+  const own = path.join(app.getPath('userData'), 'quarantine');
+  const made = () => {
+    fs.mkdirSync(own, { recursive: true });
+    return (qDirCache = own);
+  };
+  if (DEMO || !IS_WIN) return made();
+  // Machine-wide quarantine, locked to SYSTEM and Administrators. Without admin rights (or when another account made
+  // it) that folder can't be used — quarantine then lives in this user's own FrameForge folder instead, so scanning,
+  // quarantining and restoring keep working either way. The check below is a real write on purpose: Node's access()
+  // doesn't read Windows ACLs, so it happily says "writable" about a folder only administrators may write to.
+  const d = path.join(process.env.ProgramData || 'C:\\ProgramData', 'FrameForge', 'Quarantine');
+  try {
+    if (!fs.existsSync(d)) {
+      fs.mkdirSync(d, { recursive: true });
+      run('icacls', [d, '/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F']);
+    }
+    const probe = path.join(d, `.ff-probe-${process.pid}`);
+    fs.writeFileSync(probe, '');
+    fs.rmSync(probe, { force: true });
+    return (qDirCache = d);
+  } catch {
+    return made();
   }
-  return d;
 }
 function xor(buf, key) {
   const out = Buffer.allocUnsafe(buf.length);
@@ -677,9 +723,20 @@ function xor(buf, key) {
   return out;
 }
 function quarantineList() {
-  const d = qDir();
+  let d;
+  try {
+    d = qDir();
+  } catch {
+    return []; // even the user folder is unavailable: an empty list, never a broken Virus scan tab
+  }
   const out = [];
-  for (const f of fs.readdirSync(d).filter((n) => n.endsWith('.json'))) {
+  let names = [];
+  try {
+    names = fs.readdirSync(d).filter((n) => n.endsWith('.json'));
+  } catch {
+    return [];
+  }
+  for (const f of names) {
     try {
       const m = JSON.parse(fs.readFileSync(path.join(d, f), 'utf8'));
       delete m.key;
@@ -695,6 +752,22 @@ async function stopProcesses(file) {
   const r = await ps(`$n=0; Get-CimInstance Win32_Process | ?{ $_.ExecutablePath -and $_.ExecutablePath -ieq ${q(file)} } | %{ Stop-Process -Id $_.ProcessId -Force; $n++ }; $n`);
   return parseInt(r.stdout, 10) || 0;
 }
+// Real-time protection blocks opening a file it knows is malicious: Windows reports a code Node doesn't map
+// (UNKNOWN) or a plain access denial. Those files can only be moved by Defender itself.
+const BLOCKED_CODES = new Set(['UNKNOWN', 'EACCES', 'EPERM', 'EBUSY', 'EIO', 'EINVAL']);
+/**
+ * Let Microsoft Defender quarantine a file FrameForge can't touch: scanning it without -DisableRemediation asks
+ * the engine to do what it does in Windows Security. Returns true once the file is gone.
+ */
+async function defenderHandle(file) {
+  await runMp(['-Scan', '-ScanType', '3', '-File', file], { timeout: 5 * 60 * 1000 });
+  for (let i = 0; i < 10; i++) {
+    if (!fs.existsSync(file)) return true;
+    await sleep(700);
+  }
+  return false;
+}
+
 /** Ask Windows to delete a locked file while it restarts. */
 async function deleteOnRestart(file) {
   if (!IS_WIN || DEMO) return false;
@@ -716,14 +789,30 @@ async function quarantineFile(file, meta = {}) {
   } catch (e) {
     await sleep(1500);
     if (!fs.existsSync(file)) return { ok: true, message: 'Microsoft Defender quarantined it as soon as FrameForge touched it.', by: 'defender' };
+    if (BLOCKED_CODES.has(e.code)) {
+      // A real threat: Windows won't let anything open it, so Defender is the one that has to quarantine it.
+      if (await defenderHandle(file)) return { ok: true, by: 'defender', message: 'Microsoft Defender quarantined it — it can’t run any more. If it was a false alarm, restore it from Defender’s quarantine in the scan results.' };
+      return { ok: false, message: 'Microsoft Defender is holding this file (Windows blocks any access to a confirmed threat), so FrameForge can’t copy it. Restart the PC and Defender finishes removing it.' };
+    }
     return { ok: false, message: `Couldn’t read the file (${e.code || e.message}).` };
   }
   const id = crypto.randomUUID();
   const key = crypto.randomBytes(32);
-  const d = qDir();
-  fs.writeFileSync(path.join(d, `${id}.bin`), xor(buf, key));
+  let d;
+  try {
+    d = qDir();
+    fs.writeFileSync(path.join(d, `${id}.bin`), xor(buf, key));
+  } catch (e) {
+    if (d) fs.rmSync(path.join(d, `${id}.bin`), { force: true });
+    return { ok: false, message: `The file couldn’t be put in quarantine (${e.code || e.message}). It wasn’t changed.` };
+  }
   const rec = { id, file, threat: meta.threat || '', verdict: meta.verdict || '', size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), at: Date.now(), key: key.toString('base64') };
-  fs.writeFileSync(path.join(d, `${id}.json`), JSON.stringify(rec));
+  try {
+    fs.writeFileSync(path.join(d, `${id}.json`), JSON.stringify(rec));
+  } catch (e) {
+    fs.rmSync(path.join(d, `${id}.bin`), { force: true });
+    return { ok: false, message: `The file couldn’t be put in quarantine (${e.code || e.message}). It wasn’t changed.` };
+  }
   try {
     fs.rmSync(file, { force: true });
   } catch {
@@ -743,6 +832,7 @@ async function deleteFile(file) {
     fs.rmSync(file, { force: true });
   } catch (e) {
     if (await deleteOnRestart(file)) return { ok: true, pendingRestart: true, message: 'It’s locked by Windows, so it’s deleted at the next restart.' };
+    if (BLOCKED_CODES.has(e.code) && (await defenderHandle(file))) return { ok: true, by: 'defender', message: 'Microsoft Defender removed it — it can’t run any more.' };
     return { ok: false, message: `Couldn’t delete it (${e.code || e.message}).` };
   }
   if (fs.existsSync(file)) return { ok: false, message: 'Windows didn’t let FrameForge delete it.' };
@@ -813,6 +903,7 @@ module.exports = {
   quickFolders,
   walk,
   planChunks,
+  planScan,
   history,
   quarantineList,
   quarantineFile,

@@ -1,3 +1,16 @@
+**Virus scan: it really scans everything, and it finishes**
+
+- **Scans finish properly now.** Windows' WinSxS folder (and folders like `node_modules`) used to be queued up as one antivirus run per little folder — WinSxS alone was 18,980 separate runs, which could take hours. They're now part of a sensible job: about 120 runs for a full scan, and every file is still covered. A full scan counts and then scans all your drives; a quick scan stays quick.
+- **Quarantining a real threat works even when Windows blocks the file.** Windows refuses to let anything open a confirmed threat, so Microsoft Defender now quarantines it — the detection shows as being in Defender's quarantine, with **Restore** available if it was a false alarm.
+- **The false-positive check really reads digital signatures now.** It silently came back empty before, so every detection looked unsigned and the check's verdicts were off.
+- **Detections Defender reported with an unclear status behave properly:** if the file is still on your disk you can **Quarantine**, **Delete** or **Keep** it; if it's already gone it shows as removed.
+- **The Virus scan tab no longer fails to load when FrameForge isn't running as administrator** — quarantine falls back to your own FrameForge folder instead of a Windows folder it can't write to.
+- "N/A: Must be an administrator" values are no longer mistaken for real Defender exclusions.
+
+**Fix mode: no surprise downloads**
+
+- With **Download performance tools** switched off in Settings, Fix mode never downloads PresentMon or LibreHardwareMonitor by itself — not in the background, and not from "Fix everything automatically". The card stays with its **Download it** button and says why it's waiting.
+
 **No lag, no delays anywhere**
 
 - The **Controller tab** no longer rebuilds its drawing 60 times a second while a controller is plugged in: buttons, sticks and triggers now update the picture that is already on screen, so movement stays smooth.

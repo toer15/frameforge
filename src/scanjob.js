@@ -231,19 +231,16 @@ async function realRun() {
     const a = await scanner.autostartFiles();
     job.runningFiles = a.running;
     for (const f of a.files) fileJobs.push({ path: f, count: 1 });
-    for (const dir of scanner.quickFolders()) {
-      const node = await scanner.walk(dir, st);
-      scanner.planChunks(node, 20000, folderJobs);
-    }
+    const nodes = [];
+    for (const dir of scanner.quickFolders()) nodes.push(await scanner.walk(dir, st));
+    folderJobs.push(...scanner.planScan(nodes, nodes.reduce((a, n) => a + n.total, 0)));
   } else if (job.type === 'custom' && fs.existsSync(job.folder) && fs.statSync(job.folder).isFile()) {
     fileJobs.push({ path: job.folder, count: 1 }); // one file picked
   } else {
     const roots = job.type === 'full' ? await fixedDrives() : [job.folder];
     let nodes = [];
     for (const r of roots) nodes.push(await scanner.walk(r, st));
-    const total = nodes.reduce((a, n) => a + n.total, 0);
-    const limit = Math.max(15000, Math.ceil(total / 120));
-    for (const n of nodes) scanner.planChunks(n, limit, folderJobs);
+    folderJobs.push(...scanner.planScan(nodes, nodes.reduce((a, n) => a + n.total, 0)));
     nodes = null;
   }
   const all = [...fileJobs, ...folderJobs];
@@ -562,8 +559,15 @@ async function apply(choices) {
     if (res.pendingRestart) reboot = true;
     if (res.ok) {
       it.done = a;
-      it.status = a === 'quarantine' ? 'ffquarantined' : a === 'delete' ? 'deleted' : a === 'allow' ? 'allowed' : a === 'restore' ? 'active' : it.status;
-      if (a === 'restore') it.actions = ['quarantine', 'delete', 'keep', 'allow'];
+      // Defender handled it itself (Windows blocked FrameForge from touching a confirmed threat): it now sits in
+      // Defender's quarantine, so the item offers Restore instead of another Quarantine.
+      if (res.by === 'defender') {
+        it.status = a === 'delete' ? 'removed' : 'quarantined';
+        it.actions = a === 'delete' ? [] : ['keepq', 'restore'];
+      } else {
+        it.status = a === 'quarantine' ? 'ffquarantined' : a === 'delete' ? 'deleted' : a === 'allow' ? 'allowed' : a === 'restore' ? 'active' : it.status;
+        if (a === 'restore') it.actions = ['quarantine', 'delete', 'keep', 'allow'];
+      }
     }
     it.doneMessage = res.message;
     results.push({ id: it.id, action: a, ok: !!res.ok, message: res.message });
