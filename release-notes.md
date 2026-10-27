@@ -1,3 +1,12 @@
+**No lag, no delays anywhere**
+
+- The **Controller tab** no longer rebuilds its drawing 60 times a second while a controller is plugged in: buttons, sticks and triggers now update the picture that is already on screen, so movement stays smooth.
+- **Sensors** stop running NVIDIA's nvidia-smi once a second in the background — it now only runs while the built-in sensor reader is quiet — and the CPU load figure is no longer fetched twice. FrameForge also stops re-scanning its tools folder every second.
+- **Home's live figures** only redraw when a value really changes, so the tab no longer re-lays-out for nothing every second.
+- **Background work starts within seconds of opening FrameForge** instead of up to a minute later: the fix pass, your animations choice, the FPS limiter, the protection check and the scheduled-scan check are all set up far sooner.
+- **The animation watcher does a third of the registry reads** it used to, and still does a full check every minute.
+- **Shorter waits throughout:** pausing and resuming a scan, noticing that RTSS started, noticing that your local AI started, and confirming a tweak really applied are now about twice as fast.
+
 **Controller tab: pick your exact controller, see it move live**
 
 - Pick your controller from a list: Xbox Series X|S, Xbox Elite Series 2, Xbox One, Xbox 360, DualSense, DualSense Edge, DualShock 4, Switch Pro Controller, and Joy-Con (L, R or both).
