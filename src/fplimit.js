@@ -88,8 +88,8 @@ async function status() {
 async function startRtss(dir) {
   if (await isRunning()) return true;
   await ps(`Start-Process -FilePath '${path.join(dir, 'RTSS.exe').replace(/'/g, "''")}' -WorkingDirectory '${dir.replace(/'/g, "''")}'`, { timeout: 20000 });
-  for (let i = 0; i < 12; i++) {
-    await sleep(500);
+  for (let i = 0; i < 16; i++) {
+    await sleep(250);
     if (await isRunning()) return true;
   }
   return false;

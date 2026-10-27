@@ -402,7 +402,7 @@ const PADX = (() => {
   }
 
   /* ---------- Rendering ---------- */
-  const UI = { model: null, timer: null, raf: null, detected: null, lastLive: '' };
+  const UI = { model: null, timer: null, raf: null, detected: null, lastLive: '', stage: null, read: null };
 
   function chosenModel() {
     const c = (S && S.controllerType) || 'auto';
@@ -439,17 +439,72 @@ const PADX = (() => {
     const M = MODELS[modelId];
     const labels = labelsFor(modelId);
     const parts = M.parts();
-    $('#padStage').innerHTML = parts
+    const stage = $('#padStage');
+    stage.innerHTML = parts
       .map((p, i) => `<div class="pad-part" data-part="${i}" data-side="${p.side || ''}"><svg viewBox="${p.view}" class="pad-svg ${p.side ? 'joycon' : ''}" role="img" aria-label="${esc(M.name)}">${drawPart(p, labels)}</svg></div>`)
       .join('');
     $('#padDiagramTitle').textContent = M.name;
     $('#padKeys').innerHTML = ACTIONS.map(([act, key]) => `<tr><td>${esc(act)}</td><td>${chip(M.family, labels[key], key)}</td></tr>`).join('');
     $('#padRecenter').classList.toggle('hidden', !M.motion);
     UI.model = modelId;
+    // Cache the nodes the live paint touches and build the readout rows once. A running controller then costs
+    // no DOM queries and no re-renders at all — only the numbers that actually changed get written.
+    UI.stage = {
+      keys: [...stage.querySelectorAll('.pad-key')],
+      fills: [...stage.querySelectorAll('.pad-fill')],
+      sticks: [...stage.querySelectorAll('.pad-stick')],
+      touches: [...stage.querySelectorAll('.pad-touch')],
+      parts: [...stage.querySelectorAll('.pad-part')],
+    };
+    buildReadout(!!M.motion);
   }
   function chip(family, label, key) {
     const f = FACE[family] && FACE[family][key];
     return f ? `<i class="pad-logo" style="color:${f[1]}">${esc(label)}</i>` : `<i class="pad-logo plain">${esc(label)}</i>`;
+  }
+
+  const setText = (el, v) => { if (el && el.textContent !== v) el.textContent = v; };
+  const setWidth = (el, v) => { if (el && el.style.width !== v) el.style.width = v; };
+  const setAttr = (el, name, v) => { const s = String(v); if (el && el.getAttribute(name) !== s) el.setAttribute(name, s); };
+
+  function buildReadout(motion) {
+    const labels = labelsFor(UI.model);
+    const host = $('#padReadout');
+    host.innerHTML = '';
+    const row = (label) => {
+      const r = document.createElement('div');
+      r.className = 'pad-row';
+      const l = document.createElement('span');
+      l.textContent = label;
+      const v = document.createElement('b');
+      r.append(l, v);
+      host.appendChild(r);
+      return { row: r, value: v };
+    };
+    const barRow = (label) => {
+      const r = document.createElement('div');
+      r.className = 'pad-row';
+      const l = document.createElement('span');
+      l.textContent = label;
+      const bar = document.createElement('span');
+      bar.className = 'pad-bar';
+      const fill = document.createElement('i');
+      bar.appendChild(fill);
+      const v = document.createElement('b');
+      r.append(l, bar, v);
+      host.appendChild(r);
+      return { row: r, fill, value: v };
+    };
+    const read = { ls: row('Left stick'), rs: row('Right stick'), lt: barRow(labels.lt), rt: barRow(labels.rt), pressed: row('Pressed') };
+    if (motion) {
+      read.motion = row('Motion');
+      read.motion.value.className = 'muted';
+      read.tilt = row('Tilt');
+      read.gyro = row('Turning speed');
+      read.tilt.row.hidden = true;
+      read.gyro.row.hidden = true;
+    }
+    UI.read = read;
   }
 
   // The state to show: the HID devices for the model (merged for a Joy-Con pair), else the Gamepad API.
@@ -486,27 +541,27 @@ const PADX = (() => {
       for (const k of ['lx', 'ly', 'rx', 'ry']) if (Math.abs(s.axes[k]) > Math.abs(merged.axes[k])) merged.axes[k] = s.axes[k];
       s.touch.forEach((t, i) => { if (t) merged.touch[i] = t; });
     }
-    $$('#padStage .pad-key').forEach((g) => g.classList.toggle('pressed', (merged.buttons[g.dataset.k] || 0) > 0.5));
-    $$('#padStage .pad-fill').forEach((r) => {
+    const stage = UI.stage || { keys: [], fills: [], sticks: [], touches: [], parts: [] };
+    for (const g of stage.keys) g.classList.toggle('pressed', (merged.buttons[g.dataset.k] || 0) > 0.5);
+    for (const r of stage.fills) {
       const full = Number(r.previousElementSibling.getAttribute('width'));
-      r.setAttribute('width', (merged.buttons[r.dataset.fill] || 0) * full);
-    });
-    $$('#padStage .pad-stick').forEach((c) => {
+      setAttr(r, 'width', (merged.buttons[r.dataset.fill] || 0) * full);
+    }
+    for (const c of stage.sticks) {
       const ax = c.dataset.stick;
-      c.setAttribute('cx', Number(c.dataset.cx) + merged.axes[ax + 'x'] * 14);
-      c.setAttribute('cy', Number(c.dataset.cy) + merged.axes[ax + 'y'] * 14);
-    });
-    $$('#padStage .pad-touch').forEach((c) => {
+      setAttr(c, 'cx', (Number(c.dataset.cx) + merged.axes[ax + 'x'] * 14).toFixed(2));
+      setAttr(c, 'cy', (Number(c.dataset.cy) + merged.axes[ax + 'y'] * 14).toFixed(2));
+    }
+    for (const c of stage.touches) {
       const t = merged.touch[Number(c.dataset.touch)];
-      c.classList.toggle('on', !!t);
       if (t) {
-        c.setAttribute('cx', Number(c.dataset.x) + t.x * Number(c.dataset.w));
-        c.setAttribute('cy', Number(c.dataset.y) + t.y * Number(c.dataset.h));
+        setAttr(c, 'cx', (Number(c.dataset.x) + t.x * Number(c.dataset.w)).toFixed(2));
+        setAttr(c, 'cy', (Number(c.dataset.y) + t.y * Number(c.dataset.h)).toFixed(2));
       }
-    });
+      c.classList.toggle('on', !!t);
+    }
     // Motion: each part follows its own device (both halves of a Joy-Con pair move on their own).
-    const parts = $$('#padStage .pad-part');
-    parts.forEach((p) => {
+    stage.parts.forEach((p) => {
       const side = p.dataset.side;
       const s = side ? states.find((x) => x.motion && x.kind === `joycon-${side}`) : states.find((x) => x.motion);
       p.style.transform = s ? cssMatrix(s) : '';
@@ -518,24 +573,36 @@ const PADX = (() => {
   const pct = (v) => `${Math.round(v * 100)}%`;
   const num = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2);
   function readout(m, states, source) {
+    const R = UI.read;
+    if (!R) return;
     const labels = labelsFor(UI.model);
     const motionSt = states.find((s) => s.motion);
     const tilt = motionSt ? tiltAngles(motionSt) : null;
     const pressed = Object.entries(m.buttons).filter(([k, v]) => v > 0.5 && labels[k] !== undefined).map(([k]) => labels[k]);
     const dirs = ['up', 'down', 'left', 'right'].filter((k) => m.buttons[k] > 0.5).map((k) => `D-pad ${k}`);
-    const bar = (v) => `<span class="pad-bar"><i style="width:${pct(v)}"></i></span>`;
-    let html = `<div class="pad-row"><span>Left stick</span><b>X ${num(m.axes.lx)} · Y ${num(m.axes.ly)}</b></div>
-      <div class="pad-row"><span>Right stick</span><b>X ${num(m.axes.rx)} · Y ${num(m.axes.ry)}</b></div>
-      <div class="pad-row"><span>${esc(labels.lt)}</span>${bar(m.buttons.lt || 0)}<b>${pct(m.buttons.lt || 0)}</b></div>
-      <div class="pad-row"><span>${esc(labels.rt)}</span>${bar(m.buttons.rt || 0)}<b>${pct(m.buttons.rt || 0)}</b></div>
-      <div class="pad-row"><span>Pressed</span><b>${esc([...pressed, ...dirs].join(', ') || '—')}</b></div>`;
-    if (MODELS[UI.model].motion) {
-      html += tilt
-        ? `<div class="pad-row"><span>Tilt</span><b>forward ${Math.round(tilt.pitch) || 0}° · side ${Math.round(tilt.roll) || 0}° · turn ${Math.round(tilt.yaw) || 0}°</b></div>
-           <div class="pad-row"><span>Turning speed</span><b>${motionSt.gyro.map((v) => Math.round(v) || 0).join(' / ')} °/s</b></div>`
-        : `<div class="pad-row"><span>Motion</span><b class="muted">${source === 'gamepad' ? 'Not available through this connection' : 'Waiting for the controller…'}</b></div>`;
+    setText(R.ls.value, `X ${num(m.axes.lx)} · Y ${num(m.axes.ly)}`);
+    setText(R.rs.value, `X ${num(m.axes.rx)} · Y ${num(m.axes.ry)}`);
+    const lt = pct(m.buttons.lt || 0);
+    const rt = pct(m.buttons.rt || 0);
+    setWidth(R.lt.fill, lt);
+    setText(R.lt.value, lt);
+    setWidth(R.rt.fill, rt);
+    setText(R.rt.value, rt);
+    setText(R.pressed.value, [...pressed, ...dirs].join(', ') || '—');
+    if (R.tilt) {
+      if (tilt) {
+        setText(R.tilt.value, `forward ${Math.round(tilt.pitch) || 0}° · side ${Math.round(tilt.roll) || 0}° · turn ${Math.round(tilt.yaw) || 0}°`);
+        setText(R.gyro.value, `${motionSt.gyro.map((v) => Math.round(v) || 0).join(' / ')} °/s`);
+        R.tilt.row.hidden = false;
+        R.gyro.row.hidden = false;
+        R.motion.row.hidden = true;
+      } else {
+        setText(R.motion.value, source === 'gamepad' ? 'Not available through this connection' : 'Waiting for the controller…');
+        R.tilt.row.hidden = true;
+        R.gyro.row.hidden = true;
+        R.motion.row.hidden = false;
+      }
     }
-    $('#padReadout').innerHTML = html;
     const live = states.length ? `Live: ${states.map((s) => s.name || MODELS[s.kind]?.name || 'Controller').join(' + ')}${source === 'hid' ? ' (read directly by FrameForge)' : ''}. Press buttons, move the sticks and triggers${MODELS[UI.model].motion && source === 'hid' ? ', and tilt the controller' : ''}.` : 'Press any button on your controller to test it here.';
     if (live !== UI.lastLive) {
       UI.lastLive = live;

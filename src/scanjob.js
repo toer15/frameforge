@@ -118,7 +118,7 @@ function addDetection(d) {
 
 /** Wait while the scan is paused (the scan jobs already running finish first). */
 async function whilePaused() {
-  while (job && job.paused && !job.cancelled) await sleep(300);
+  while (job && job.paused && !job.cancelled) await sleep(100);
 }
 
 async function runJobs(list, concurrency) {

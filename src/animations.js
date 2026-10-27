@@ -193,7 +193,7 @@ async function get() {
 async function set(on) {
   if (DEMO) {
     demoState = !!on;
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 80));
     return { ok: true, details: demoDetails(on), state: await get() };
   }
   if (!IS_WIN) return { ok: false, message: 'Windows only.' };

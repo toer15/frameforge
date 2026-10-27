@@ -48,8 +48,15 @@ function presentMonPath() {
   return fs.existsSync(p) ? p : null;
 }
 
+// The tools folder is searched for LibreHardwareMonitor again and again (the live telemetry asks once a second),
+// so the answer is cached: briefly while it isn't installed yet, longer once it is.
+let lhmFound = null;
 function lhmPath() {
-  return findFile(path.join(dir(), 'lhm'), 'LibreHardwareMonitor.exe');
+  const now = Date.now();
+  if (lhmFound && now - lhmFound.at < (lhmFound.path ? 10000 : 1500)) return lhmFound.path;
+  const p = findFile(path.join(dir(), 'lhm'), 'LibreHardwareMonitor.exe');
+  lhmFound = { path: p, at: now };
+  return p;
 }
 
 function status() {
@@ -94,7 +101,7 @@ async function install(id, onProgress = () => {}, signal) {
   if (DEMO) {
     for (let i = 1; i <= 10; i++) {
       if (signal && signal.aborted) throw new Error('Stopped');
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 60));
       onProgress(i / 10);
     }
     return { ok: true, message: `${TOOLS[id].name} installed.` };
@@ -175,7 +182,7 @@ function parseWinutilLine(l) {
 async function runWinutil(ids, onLine = () => {}, names = {}) {
   if (DEMO) {
     for (const [i, id] of ids.entries()) {
-      await new Promise((r) => setTimeout(r, 160));
+      await new Promise((r) => setTimeout(r, 60));
       onLine(`Tweak ${i + 1} of ${ids.length}: ${names[id] || id}`);
     }
     const harmless = /Telemetry/.test(ids.join()) ? ["[Tweaks] Non-terminating error : Service wermgr was not found on computer '.'."] : [];
@@ -297,7 +304,7 @@ async function wingetKnows(id) {
 /** Install a winget package silently. Not interruptible — stopping an installer halfway can break it. */
 async function wingetInstall(id) {
   if (DEMO) {
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 400));
     return { ok: true };
   }
   const r = await run(
@@ -404,7 +411,7 @@ async function amdDriverLink(gpuName) {
 async function amdDriverInstall(gpuName, onLine = () => {}, signal) {
   if (DEMO) {
     for (let i = 1; i <= 5; i++) {
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 80));
       onLine(`Downloading AMD Software from drivers.amd.com… ${i * 20}%`);
     }
     return { ok: true, started: true, message: 'AMD’s installer is open — its digital signature checked out.' };

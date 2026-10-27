@@ -105,24 +105,24 @@ async function boot() {
       showMain();
       send('goto', 'fix');
       fixEverything({ resumed: true });
-    }, 3000);
+    }, 800);
   } else {
     // Fix mode works on its own: a little after start, and after every re-check, it fixes what it safely can.
-    setTimeout(() => backgroundFix('start'), DEMO ? 8000 : 25000);
+    setTimeout(() => backgroundFix('start'), DEMO ? 3000 : 8000);
   }
   // Keep the user's animation choice, and check Windows' protection a little after start.
-  setTimeout(() => enforceAnimations('start'), 6000);
+  setTimeout(() => enforceAnimations('start'), 2000);
   // Keep the "Start with Windows" task pointing at this copy of FrameForge (the install folder can change).
   if (settings.get().startWithWindows && admin && !DEMO) setStartWithWindows(true).catch(() => {});
-  setInterval(() => animWatch(), 8000);
+  setInterval(() => animWatch(), 20000);
   // FPS limiter: put the user's cap back after a restart, or if another tool changed it or RTSS was closed.
-  setTimeout(() => limiterWatch(), DEMO ? 3000 : 15000);
+  setTimeout(() => limiterWatch(), DEMO ? 1500 : 5000);
   setInterval(() => limiterWatch(), 60 * 1000);
   if (DEMO && process.env.FRAMEFORGE_TEST_ANIM_TAMPER) setTimeout(() => animations.demoTamper(), 20000); // test: another app flips the animations
-  setTimeout(() => refreshSecurity().then(() => send('fix:changed', true)).catch(() => {}), DEMO ? 4000 : 30000);
+  setTimeout(() => refreshSecurity().then(() => send('fix:changed', true)).catch(() => {}), DEMO ? 2000 : 8000);
   setInterval(() => refreshSecurity().catch(() => {}), 30 * 60 * 1000);
   // Scheduled virus scans: checked a minute after start and every 2 minutes; a background scan steps aside for games and for you.
-  setTimeout(() => autoScanTick(), DEMO ? 12000 : 60000);
+  setTimeout(() => autoScanTick(), DEMO ? 6000 : 20000);
   setInterval(() => autoScanTick(), 2 * 60 * 1000);
   setInterval(() => {
     if (scanjob.background()) scanjob.autoPause(gameRunning() || idleMinutes() < 1);
@@ -901,7 +901,7 @@ async function applyAndVerify(id) {
   if (!r.ok || DEMO || !t) return r;
   if (await tweaksTab.stateOf(t)) return r;
   if (t.reboot) return { ...r, message: `${t.name} is set — it switches on after the next restart.` };
-  await sleep(2000);
+  await sleep(700);
   if (await tweaksTab.stateOf(t)) return r;
   const msg = `Windows doesn’t report “${t.name}” as on after FrameForge sets it, so it can’t be used on this PC.`;
   await markUnavailable(t, msg);
@@ -1612,7 +1612,7 @@ async function fixEverything({ silent = false, only = null, resumed = false } = 
       ev({ type: 'item', id: 'not_admin', title: needAdmin.title, outcome: 'working', message: 'Restarting FrameForge as administrator — it carries on fixing by itself after the restart.' });
       ev({ type: 'done', ...tally, restarting: 'admin' });
       settings.set({ resumeFixAll: true });
-      await new Promise((r) => setTimeout(r, 2500));
+      await new Promise((r) => setTimeout(r, 700));
       await runFixAction('admin');
       return { restarting: 'admin' };
     }
@@ -1810,7 +1810,7 @@ async function enforceAnimations(why) {
 }
 /**
  * Watch for anything that changes the animations after the user made their choice — another app, a tweak tool,
- * Windows Settings, a Windows update. A light registry fingerprint is compared every few seconds; any change (and a
+ * Windows Settings, a Windows update. A light registry fingerprint is compared every 20 seconds; any change (and a
  * full check every minute, for changes that never reach the registry) puts the user's choice back right away.
  * If something keeps fighting FrameForge, it backs off to once a minute instead of spinning.
  */
@@ -1829,7 +1829,7 @@ async function animWatch() {
     animFixes.length = 0;
     animFixes.push(...recent);
     const fighting = recent.length >= 5; // something undoes the choice again and again: check once a minute only
-    const due = animFp === null || (fp !== animFp && !fighting) || animTick % 8 === 0;
+    const due = animFp === null || (fp !== animFp && !fighting) || animTick % 3 === 0;
     if (due) {
       if (await enforceAnimations('watch')) animFixes.push(Date.now());
       animFp = await animations.fingerprint();

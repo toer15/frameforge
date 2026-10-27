@@ -78,8 +78,8 @@ async function start() {
   const child = o.tray ? spawn(o.tray, [], { detached: true, stdio: 'ignore' }) : spawn(o.exe, ['serve'], { detached: true, stdio: 'ignore', windowsHide: true });
   child.on('error', () => {});
   child.unref();
-  for (let i = 0; i < 30; i++) {
-    await sleep(500);
+  for (let i = 0; i < 75; i++) {
+    await sleep(200);
     if (await running()) return true;
   }
   return false;
@@ -99,7 +99,7 @@ async function status({ start: startIt = true } = {}) {
 async function installApp(progress, signal) {
   if (DEMO) {
     for (let i = 1; i <= 10; i++) {
-      await sleep(150);
+      await sleep(60);
       progress({ stage: 'app', pct: i / 10, text: `Installing Ollama… ${i * 10}%` });
     }
     demo.installed = true;
@@ -140,7 +140,7 @@ async function pull(model, progress, signal) {
   if (DEMO) {
     for (let i = 1; i <= 20; i++) {
       if (signal && signal.aborted) throw new Error('Stopped.');
-      await sleep(120);
+      await sleep(60);
       progress({ stage: 'model', pct: i / 20, text: `${(i * 0.1).toFixed(1)} of 2.0 GB · every part is checked against its fingerprint` });
     }
     demo.models.push(model.includes(':') ? model : `${model}:latest`);

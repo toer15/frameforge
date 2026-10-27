@@ -274,28 +274,41 @@ function tempClass(t) {
   return t >= 88 ? 't-hot' : t >= 78 ? 't-warm' : '';
 }
 let lastStats = null;
+// The numbers arrive every second: write only what really changed, so nothing re-lays-out for nothing.
+const txt = (sel, v) => {
+  const el = $(sel);
+  const t = v == null ? '—' : String(v);
+  if (el.textContent !== t) el.textContent = t;
+};
+const cls = (sel, v) => {
+  const el = $(sel);
+  if (el.className !== v) el.className = v;
+};
+const width = (sel, v) => {
+  const el = $(sel);
+  if (el.style.width !== v) el.style.width = v;
+};
 ff.onStats((s) => {
   lastStats = s;
-  const set = (id, v) => ($(id).textContent = v == null ? '—' : v);
   if (s.fpsEnabled && s.fps) {
-    set('#tFps', s.fps.fps);
-    $('#tFpsSub').textContent = `${s.fps.app} · 1% low ${s.fps.low1}`;
+    txt('#tFps', s.fps.fps);
+    txt('#tFpsSub', `${s.fps.app} · 1% low ${s.fps.low1}`);
   } else {
-    set('#tFps', null);
-    $('#tFpsSub').textContent = !s.fpsEnabled ? 'FPS counter is off' : !s.fpsReady ? 'Needs the FPS engine' : 'Start a game to see FPS';
+    txt('#tFps', null);
+    txt('#tFpsSub', !s.fpsEnabled ? 'FPS counter is off' : !s.fpsReady ? 'Needs the FPS engine' : 'Start a game to see FPS');
   }
   const showT = s.tempEnabled;
-  set('#tCpuT', showT ? s.cpuTemp : null);
-  set('#tGpuT', showT ? s.gpuTemp : null);
-  $('#tCpuT').className = showT && s.cpuTemp ? tempClass(s.cpuTemp) : '';
-  $('#tGpuT').className = showT && s.gpuTemp ? tempClass(s.gpuTemp) : '';
-  $('#bCpu').style.width = showT && s.cpuTemp ? Math.min(100, s.cpuTemp) + '%' : '0';
-  $('#bGpu').style.width = showT && s.gpuTemp ? Math.min(100, s.gpuTemp) + '%' : '0';
+  txt('#tCpuT', showT ? s.cpuTemp : null);
+  txt('#tGpuT', showT ? s.gpuTemp : null);
+  cls('#tCpuT', showT && s.cpuTemp ? tempClass(s.cpuTemp) : '');
+  cls('#tGpuT', showT && s.gpuTemp ? tempClass(s.gpuTemp) : '');
+  width('#bCpu', showT && s.cpuTemp ? Math.min(100, s.cpuTemp) + '%' : '0');
+  width('#bGpu', showT && s.gpuTemp ? Math.min(100, s.gpuTemp) + '%' : '0');
   const src = s.sources || {};
-  $('#sCpu').textContent = showT ? (src.cpuTemp ? `From ${src.cpuTemp}` : 'Needs a real CPU sensor reader') : '';
-  $('#sGpu').textContent = showT ? (src.gpuTemp ? `From ${src.gpuTemp}` : 'Needs a real GPU sensor reader') : '';
-  set('#tCpuL', s.cpuLoad != null ? s.cpuLoad + '%' : null);
-  set('#tGpuL', s.gpuLoad != null ? s.gpuLoad + '%' : null);
+  txt('#sCpu', showT ? (src.cpuTemp ? `From ${src.cpuTemp}` : 'Needs a real CPU sensor reader') : '');
+  txt('#sGpu', showT ? (src.gpuTemp ? `From ${src.gpuTemp}` : 'Needs a real GPU sensor reader') : '');
+  txt('#tCpuL', s.cpuLoad != null ? s.cpuLoad + '%' : null);
+  txt('#tGpuL', s.gpuLoad != null ? s.gpuLoad + '%' : null);
 
   // Point the user at the one fix that gets missing numbers showing.
   const hint = $('#teleHint');

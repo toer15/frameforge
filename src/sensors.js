@@ -112,6 +112,7 @@ class Sensors {
     this.lhmAt = 0;
     this.procs = [];
     this.nv = null;
+    this.nvAt = 0;
     this.cpuLoad = null;
     this.winGpuLoad = null;
     this.timers = [];
@@ -147,11 +148,18 @@ class Sensors {
         const j = await fetchLhmJson();
         if (j) this.setLhm(pickSensors(flattenLhmJson(j)), 'LibreHardwareMonitor');
       }
-      try {
-        const l = await si.currentLoad();
-        this.cpuLoad = Math.round(l.currentLoad);
-      } catch {}
-      if (vendor === 'nvidia') {
+      // LibreHardwareMonitor already reports CPU load: skip the extra system call that would just duplicate it.
+      const fresh = Date.now() - this.lhmAt < 5000;
+      if (!fresh || !this.lhm || this.lhm.cpuLoad == null) {
+        try {
+          const l = await si.currentLoad();
+          this.cpuLoad = Math.round(l.currentLoad);
+        } catch {}
+      }
+      // nvidia-smi is a program of its own, so it only runs when the sensor reader isn't answering, and at most
+      // every two seconds — instead of once a second for the whole session.
+      if (vendor === 'nvidia' && !fresh && Date.now() - this.nvAt >= 2000) {
+        this.nvAt = Date.now();
         const r = await run('nvidia-smi', ['--query-gpu=temperature.gpu,utilization.gpu', '--format=csv,noheader,nounits'], { timeout: 4000 });
         if (r.code === 0) {
           const [t, u] = r.stdout.trim().split(/\r?\n/)[0].split(',').map((x) => parseFloat(x));
@@ -176,7 +184,7 @@ class Sensors {
       return { cpuTemp: w(63, 6), gpuTemp: w(71, 5), cpuLoad: w(38, 14), gpuLoad: w(94, 6), sources: { cpuTemp: 'LibreHardwareMonitor', gpuTemp: 'LibreHardwareMonitor' } };
     }
     const l = Date.now() - this.lhmAt < 5000 ? this.lhm || {} : {};
-    const nv = this.nv || {};
+    const nv = Date.now() - this.nvAt < 5000 ? this.nv || {} : {};
     const val = (...pairs) => {
       for (const [v, src] of pairs) if (v != null) return [v, src];
       return [null, null];

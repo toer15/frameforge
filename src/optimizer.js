@@ -678,12 +678,12 @@ async function runOne(t, { admin, progress } = {}) {
   } else if (DEMO && process.env.FRAMEFORGE_DEMO_FAIL === t.id && !runOne.failedOnce) {
     // Test hook: reproduce a real winutil failure once.
     runOne.failedOnce = true;
-    await sleep(800);
+    await sleep(150);
     res = { ok: false, warn: true, fix: 'ctt', message: 'Most of the Standard preset ran, but winutil reported a problem: [Tweaks] WPFTweaksServices: timed out after 300 s. Open Fix mode to retry it or open the Chris Titus tool.', details: ['Error: [Tweaks] WPFTweaksServices: timed out after 300 s', 'Tweaks: 1 error(s)', 'Full winutil log: C:\\Users\\Tommy\\AppData\\Local\\winutil\\logs\\winutil_2026-10-20_19-01-40.log'], failedIds: ['WPFTweaksServices'] };
   } else if (DEMO && t.id === 'ctt_tweaks') {
     res = await t.apply({ progress });
   } else if (DEMO) {
-    await sleep(450 + Math.random() * 500);
+    await sleep(120 + Math.random() * 150);
     res = { ok: true, message: t.demoMessage || (t.id === 'temp_cleanup' ? 'Freed 1.4 GB.' : 'Done.'), details: t.demoDetails || (t.values ? regDetails(t.values) : t.what || []) };
     if (!t.oneShot) backup.put(t.id, { demo: true });
   } else {
@@ -708,7 +708,7 @@ async function disable(emit) {
   for (const t of ordered) {
     emit({ id: t.id, name: `Undo: ${t.name}`, status: 'running' });
     try {
-      if (DEMO) await sleep(250);
+      if (DEMO) await sleep(60);
       else await t.revert();
       if (t.reboot) needsReboot = true;
       emit({ id: t.id, name: `Undo: ${t.name}`, status: 'done', message: 'Restored.' });
@@ -728,7 +728,7 @@ function revertPlan() {
 
 async function revertOne(t) {
   if (DEMO) {
-    await sleep(300);
+    await sleep(60);
     backup.remove(t.id);
     return;
   }
