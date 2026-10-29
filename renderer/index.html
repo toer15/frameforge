@@ -38,6 +38,10 @@
         <svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5Zm-1.2 13.6-3.5-3.5 1.4-1.4 2.1 2.1 4.9-4.9 1.4 1.4z"/></svg>
         Virus scan<span class="nav-badge hidden" id="scanBadge">0</span>
       </button>
+      <button class="nav-item" data-view="clean">
+        <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M9 2h6l1 2h5v2H3V4h5Zm-4 6h14l-1.2 13.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9Zm4 3v8h2v-8Zm4 0v8h2v-8Z"/></svg>
+        Cleaner
+      </button>
       <button class="nav-item" data-view="chat">
         <svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm4 6.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>
         AI Chat
@@ -326,6 +330,42 @@
 
       <h2 class="fix-sub">Scan history <span class="counts" id="histCounts"></span></h2>
       <div class="h-list" id="histList"></div>
+    </section>
+
+    <!-- ================= CLEANER ================= -->
+    <section class="view hidden" id="view-clean">
+      <div class="fix-head">
+        <div>
+          <h1 class="page-title">Cleaner</h1>
+          <p class="muted">Finds the junk that piles up on a PC and slows it down — temp files, old update downloads, crash dumps, browser and app caches, leftover driver installers — plus big old files of your own. You see what each one is and how much space it takes. Nothing is deleted until you pick it and press Delete.</p>
+        </div>
+        <button class="primary heat" id="clScanBtn">Scan for junk</button>
+      </div>
+
+      <div class="cl-disk" id="clDisk"></div>
+
+      <div class="scan-run hidden" id="clRun" aria-live="polite">
+        <div class="sr-head">
+          <span class="spin"></span>
+          <div><b id="clRunTitle">Looking for junk…</b><span id="clRunPhase">Getting ready…</span></div>
+          <button class="ghost small stop" id="clStop">Stop</button>
+        </div>
+        <div class="bar big"><i id="clFill"></i></div>
+        <div class="sr-current" id="clCurrent"></div>
+      </div>
+
+      <div class="cl-done hidden" id="clDone" aria-live="polite"></div>
+
+      <div class="cl-bar hidden" id="clBar">
+        <div class="cl-total"><b id="clSelSize">0 B</b><span id="clSelText">selected</span></div>
+        <button class="ghost small" id="clPickSafe" title="Select everything marked “Safe to delete” and nothing else">Select safe items</button>
+        <button class="ghost small" id="clPickNone">Select nothing</button>
+        <span class="spacer"></span>
+        <button class="primary heat" id="clDelete" disabled>Delete selected</button>
+      </div>
+
+      <div id="clGroups"><div class="cl-empty"><p>Press <b>Scan for junk</b> to see what’s taking up space. Scanning only looks — it doesn’t change anything.</p></div></div>
+      <p class="muted cl-foot">Looking for viruses or other harmful files? Use <button class="link-btn" data-clgoto="scan">Virus scan</button>. Want Windows itself faster? See <button class="link-btn" data-clgoto="tweaks">Tweaks</button>.</p>
     </section>
 
     <!-- ================= AI CHAT ================= -->
@@ -790,6 +830,20 @@
         <button class="ghost" id="resExport" title="Save everything on this screen as a text file">Save report</button>
         <button class="ghost" id="resLater">Decide later</button>
         <button class="primary heat" id="resApply">Do it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cleaner: confirm before deleting -->
+  <div class="modal hidden" id="clModal" role="dialog" aria-modal="true" aria-labelledby="clmTitle">
+    <div class="modal-card">
+      <h2 id="clmTitle">Delete the selected files?</h2>
+      <p class="muted" id="clmText"></p>
+      <ul class="cl-confirm" id="clmList"></ul>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="ghost" id="clmNo">Cancel</button>
+        <button class="primary heat" id="clmYes">Delete</button>
       </div>
     </div>
   </div>

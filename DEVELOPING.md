@@ -38,6 +38,31 @@ rights because power plans, GPU scheduling and restore points need them.
 
 Backups are stored in `%APPDATA%\FrameForge\backup.json`.
 
+## Cleaner tab
+
+`src/cleaner.js` (IPC `clean:state|scan|run|cancel|show`, events `clean:progress`). The first visit to the tab scans
+by itself (scanning only reads). `DEFS` lists every category: `roots(b)` (folders that exist), filters (`minAge` by
+the newest of creation/last-write time, `match`, `minSize`, `maxDepth`, `skipDir`), `level` safe (pre-ticked) or
+review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for the user's own files (Recycle Bin via
+`shell.trashItem`), `pre` (Delivery Optimization's cmdlet).
+
+- Scan: walks each root without following junctions/symlinks; a folder belongs to one category only. Big-file search
+  stops after 25 s (`partial`). Your-files candidates get one attribute read: OneDrive online-only files are left out,
+  synced ones get a OneDrive tag.
+- Clean: only files from the last scan, by id — the renderer never sends paths. Each file is re-checked (still a
+  regular file inside the category's roots, same size and write time) before deleting; read-only files are retried
+  after chmod; locked or changed files count as in use and stay listed. Emptied folders are removed up to (not
+  including) the category roots. The Recycle Bin is emptied before the user's files are moved into it.
+- After a clean: a non-undoable entry in changes.json, `cleanStats` in settings, and Fix mode's disk check is refreshed.
+- Demo mode: everything lives in a sandbox — `FRAMEFORGE_CLEAN_SANDBOX`, or `<userData>/cleaner-demo` seeded with
+  harmless files. `FRAMEFORGE_DEMO_RUNNING=msedge.exe,…` fakes open apps, `FRAMEFORGE_CLEAN_BIG` sets the big-file size;
+  "Recycle Bin" moves stay inside the sandbox.
+- Prefetch is deliberately not cleaned (Windows uses it to start apps faster). Malware is the Virus scan's job.
+- Tests: `node --test tests/cleaner.test.js tests/cleaner-ui.test.js` (sandbox files: locked file, junction out of
+  Temp, file changed after the scan, open app, browser data next to its cache, confirm dialog, Recycle Bin move).
+  A read-only scan of this PC worked (9.2 GB found in 1.5 s, unelevated); deleting on a real PC has only been run
+  against the sandbox.
+
 ## Controller tab
 
 - Sidebar > **Controller**. A dropdown (`controllerType`: auto, xbox-series, xbox-elite2, xbox-one, xbox-360, dualsense,
@@ -321,6 +346,7 @@ Set `FRAMEFORGE_DEMO=1` on Windows to try the UI without touching the system.
   winget installs, verified big downloads (SHA-256 / Authenticode), AMD Software installer
 - `src/localai.js` – installs and starts Ollama and downloads local AI models for the chat
 - `src/scanner.js`, `src/scanjob.js` – virus scan (Defender engine), false-positive check, quarantine, protection checks
+- `src/cleaner.js` – Cleaner tab: finds junk and big old files, deletes only what the user ticked
 - `src/animations.js` – the Windows animations switch
 - `src/guides.js` – step-by-step instructions for what no app can do (BIOS, cables, dust)
 - `src/updater.js` – update checks, download, fingerprint check, popup events

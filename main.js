@@ -24,6 +24,7 @@ const scanjob = require('./src/scanjob');
 const animations = require('./src/animations');
 const fplimit = require('./src/fplimit');
 const controllers = require('./src/controllers');
+const cleaner = require('./src/cleaner');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -1053,7 +1054,7 @@ function fixList() {
     add({ id: 'display', level: 'big', title: `Your display runs at ${d.cur} Hz, but it can do ${d.max} Hz`, body: `Windows is only using ${Math.round((d.cur / d.max) * 100)}% of what your monitor can show at ${d.res}.`, actions: [A('tweak:max_refresh', `Switch to ${d.max} Hz`)], strategies: [A('tweak:max_refresh', `Switch the display to ${d.max} Hz`)], manual: guides.displayCable(d), bg: 'quiet' });
   }
   if (extra.disk && (extra.disk.usePct >= 92 || extra.disk.freeGB < 15)) {
-    add({ id: 'disk', level: 'medium', title: `Drive C: is almost full (${extra.disk.freeGB} GB free)`, body: 'A nearly full system drive makes Windows and game updates slow, and can cause stutter.', actions: [A('free_space', 'Free up space')], strategies: [A('free_space', 'Clear temp files and old Windows update leftovers')], manual: guides.diskFull(extra.disk), bg: 'idle' });
+    add({ id: 'disk', level: 'medium', title: `Drive C: is almost full (${extra.disk.freeGB} GB free)`, body: 'A nearly full system drive makes Windows and game updates slow, and can cause stutter.', actions: [A('free_space', 'Free up space'), A('goto:clean', 'Open Cleaner')], strategies: [A('free_space', 'Clear temp files and old Windows update leftovers')], manual: guides.diskFull(extra.disk), bg: 'idle' });
   }
   // "Download performance tools" (Settings): with it off FrameForge never fetches a tool by itself — not even from
   // Fix mode in the background. The item stays, with the button, and says why it's waiting.
@@ -1793,6 +1794,33 @@ ipcMain.handle('scan:showFile', (_e, f) => {
 });
 ipcMain.handle('scan:virusTotal', (_e, sha) => {
   if (/^[a-f0-9]{64}$/i.test(sha || '')) shell.openExternal(`https://www.virustotal.com/gui/file/${sha}`);
+});
+
+// ---------- Cleaner: junk files that fill the drive and slow the PC down ----------
+const cleanFolders = () => ({ downloads: app.getPath('downloads'), desktop: app.getPath('desktop'), documents: app.getPath('documents'), videos: app.getPath('videos') });
+ipcMain.handle('clean:state', async () => ({ ...cleaner.state(), disk: await cleaner.disk(), admin: admin || DEMO, stats: settings.get().cleanStats || null }));
+ipcMain.handle('clean:scan', async () => {
+  const r = await cleaner.scan({ folders: cleanFolders(), userData: app.getPath('userData') }, (p) => send('clean:progress', p));
+  if (r.ok && !r.cancelled) settings.set({ cleanStats: { ...(settings.get().cleanStats || {}), lastScanAt: Date.now(), lastFound: r.result.found } });
+  return { ...r, disk: await cleaner.disk() };
+});
+ipcMain.handle('clean:cancel', () => cleaner.cancel());
+ipcMain.handle('clean:run', async (_e, sel) => {
+  const r = await cleaner.clean(sel || {}, { trash: (f) => shell.trashItem(f) }, (p) => send('clean:progress', p));
+  if (r.ok && (r.deleted || r.trashed)) {
+    const st = settings.get().cleanStats || {};
+    settings.set({ cleanStats: { ...st, lastCleanAt: Date.now(), lastFreed: r.freed, totalFreed: (st.totalFreed || 0) + r.freed } });
+    const details = r.result.cats.filter((c) => c.last && (c.last.deleted || c.last.trashed)).map((c) => `${c.name}: ${c.last.message}`);
+    changes.put(`clean_${Date.now()}`, { name: 'Cleaned junk files', summary: `Cleaner deleted ${r.deleted.toLocaleString('en-US')} file${r.deleted === 1 ? '' : 's'} and freed ${cleaner.fmt(r.freed)}${r.trashed ? `; ${r.trashed === 1 ? 'one of your own files' : `${r.trashed} of your own files`} went to the Recycle Bin` : ''}.`, details, at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+    send('changes', changeList());
+    extra.at = 0; // Fix mode re-reads the free space on drive C:
+    send('fix:changed', true);
+  }
+  return { ...r, disk: await cleaner.disk() };
+});
+ipcMain.handle('clean:show', (_e, id) => {
+  const f = cleaner.filePath(id);
+  if (f && fs.existsSync(f)) shell.showItemInFolder(f);
 });
 
 // ---------- Windows animations: one switch, kept the way the user set it ----------

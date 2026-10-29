@@ -37,6 +37,7 @@ $$('.nav-item').forEach((b) =>
     if (b.dataset.view === 'fix' && typeof refreshFix === 'function') refreshFix();
     if (b.dataset.view === 'tweaks') refreshTweaks();
     if (b.dataset.view === 'scan') refreshScan(true);
+    if (b.dataset.view === 'clean') refreshClean(true);
   })
 );
 $('#wMin').onclick = () => ff.win.min();
@@ -629,6 +630,7 @@ function showView(name) {
   $$('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === name));
   $$('.view').forEach((v) => v.classList.toggle('hidden', v.id !== `view-${name}`));
   if (name === 'scan') refreshScan(true);
+  if (name === 'clean') refreshClean(true);
 }
 
 // Problems that were in the list and then disappeared = fixed (by Fix everything, a button, Auto Mode or the AI).
@@ -2009,6 +2011,292 @@ $('#animSwitch').addEventListener('change', async (e) => {
   }
 });
 ff.anim.onChanged(() => refreshAnim());
+
+/* ---------- Cleaner ---------- */
+let CL = null; // last scan: { cats, groups, found, at }
+let clBusy = null; // 'scan' | 'clean' | null
+let clDiskInfo = null;
+let clAutoScanned = false; // the first visit scans by itself — scanning only reads
+let clLast = null; // result of the last delete
+const clPick = new Map(); // category id -> picked (whole categories)
+const clFiles = new Map(); // category id -> Set of file ids (the user's own files, picked one by one)
+
+const clSize = (n) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(n >= 10 * 1024 ** 3 ? 0 : 1)} GB` : n >= 1024 ** 2 ? `${Math.round(n / 1024 ** 2)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n || 0} B`);
+const clAge = (t) => {
+  const d = Math.floor((Date.now() - t) / 86400000);
+  return d < 1 ? 'today' : d < 60 ? `${d} days old` : d < 730 ? `${Math.round(d / 30)} months old` : `${Math.round(d / 365)} years old`;
+};
+const clCat = (id) => (CL ? CL.cats.find((c) => c.id === id) : null);
+
+function setCleanResult(res, fresh) {
+  CL = res;
+  for (const c of res.cats) {
+    if (c.perFile) {
+      const keep = fresh ? new Set() : clFiles.get(c.id) || new Set();
+      clFiles.set(c.id, new Set([...keep].filter((id) => c.items.some((f) => f.id === id))));
+    } else if (fresh || !clPick.has(c.id)) clPick.set(c.id, c.selected);
+    if (!c.selectable && !c.perFile) clPick.set(c.id, false);
+  }
+}
+
+/** What's ticked right now: { sel for the main process, bytes, places, list for the confirm dialog }. */
+function cleanSelection() {
+  const sel = { cats: [], files: {} };
+  const list = [];
+  let bytes = 0;
+  for (const c of CL ? CL.cats : []) {
+    if (!c.selectable) continue;
+    if (c.perFile) {
+      const ids = [...(clFiles.get(c.id) || [])];
+      if (!ids.length) continue;
+      const size = c.items.filter((f) => ids.includes(f.id)).reduce((n, f) => n + f.size, 0);
+      sel.files[c.id] = ids;
+      list.push({ c, size, what: `${ids.length} file${ids.length === 1 ? '' : 's'}` });
+      bytes += size;
+    } else if (clPick.get(c.id)) {
+      sel.cats.push(c.id);
+      list.push({ c, size: c.size, what: `${c.count.toLocaleString()} file${c.count === 1 ? '' : 's'}` });
+      bytes += c.size;
+    }
+  }
+  return { sel, bytes, list };
+}
+
+function renderCleanDisk() {
+  const d = clDiskInfo;
+  if (!d || !d.total) return ($('#clDisk').innerHTML = '');
+  const lvl = d.usePct >= 90 || d.free < 15 * 1024 ** 3 ? 'bad' : d.usePct >= 75 ? 'warn' : 'ok';
+  const verdict = { bad: 'Almost full — that makes Windows, updates and games slow. Cleaning helps.', warn: 'Getting full. Keep at least 15–20% free so Windows stays quick.', ok: 'Plenty of room.' }[lvl];
+  $('#clDisk').innerHTML = `<div class="cl-disk-in ${lvl}">
+    <div class="cl-disk-top"><b>Drive ${esc(d.drive)}</b><span>${clSize(d.free)} free of ${clSize(d.total)}</span><span class="cl-verdict">${verdict}${CL && CL.junk ? ` FrameForge found ${clSize(CL.junk)} of junk.` : ''}</span></div>
+    <div class="bar"><i style="width:${Math.min(100, Math.max(0, d.usePct))}%"></i></div>
+  </div>`;
+}
+
+function renderCleanRun(p) {
+  $('#clRun').classList.toggle('hidden', !clBusy);
+  $('#clScanBtn').disabled = !!clBusy;
+  $('#clScanBtn').textContent = CL ? 'Scan again' : 'Scan for junk';
+  if (!clBusy || !p) return;
+  if (p.phase === 'clean') {
+    $('#clRunTitle').textContent = 'Deleting…';
+    $('#clRunPhase').textContent = `${p.name} — ${(p.done || 0).toLocaleString()} of ${(p.total || 0).toLocaleString()} files · ${clSize(p.freed || 0)} freed`;
+    $('#clFill').style.width = `${p.total ? Math.round((p.done / p.total) * 100) : 0}%`;
+  } else {
+    $('#clRunTitle').textContent = 'Looking for junk…';
+    $('#clRunPhase').textContent = `${p.name}${p.total ? ` (${Math.min(p.index + 1, p.total)} of ${p.total})` : ''} · ${(p.files || 0).toLocaleString()} files, ${clSize(p.bytes || 0)} so far`;
+    $('#clFill').style.width = `${p.total ? Math.round((p.index / p.total) * 100) : 0}%`;
+  }
+  $('#clCurrent').textContent = p.current || '';
+}
+
+function renderCleanBar() {
+  $('#clBar').classList.toggle('hidden', !CL);
+  if (!CL) return;
+  const { bytes, list } = cleanSelection();
+  $('#clSelSize').textContent = clSize(bytes);
+  $('#clSelText').textContent = list.length ? `selected in ${list.length} place${list.length === 1 ? '' : 's'}` : 'selected — tick what you want gone';
+  $('#clDelete').disabled = !!clBusy || !list.length;
+  $('#clDelete').textContent = list.length ? `Delete selected (${clSize(bytes)})` : 'Delete selected';
+  $('#clPickSafe').disabled = $('#clPickNone').disabled = !!clBusy;
+  for (const c of CL.cats) {
+    const box = $(`#clGroups [data-clpick="${CSS.escape(c.id)}"]`);
+    if (!box || !c.perFile) continue;
+    const n = (clFiles.get(c.id) || new Set()).size;
+    box.checked = n > 0 && n === c.items.length;
+    box.indeterminate = n > 0 && n < c.items.length;
+  }
+}
+
+function cleanRow(c) {
+  const dis = !c.selectable || clBusy ? 'disabled' : '';
+  const picked = c.perFile ? false : clPick.get(c.id);
+  const tags = [
+    c.level === 'safe' ? '<span class="tag safe">Safe to delete</span>' : '<span class="tag review">Check first</span>',
+    c.method === 'trash' ? '<span class="tag">Goes to Recycle Bin</span>' : '',
+    c.status === 'running' ? '<span class="tag admin">App is open</span>' : '',
+    c.status === 'admin' ? '<span class="tag admin">Needs admin</span>' : '',
+  ].join('');
+  const last = c.last ? `<p class="cl-res ${c.last.failed || c.last.skipped || c.last.inUse ? 'warn' : 'ok'}">${esc(c.last.message)}</p>` : '';
+  const files = c.perFile && c.items.length
+    ? `<div class="cl-files">${c.items.map((f) => `<div class="cl-file">
+        <label><input type="checkbox" data-clfile="${esc(c.id)}|${esc(f.id)}" ${(clFiles.get(c.id) || new Set()).has(f.id) ? 'checked' : ''} ${dis} />
+        <span class="cl-fn"><b>${esc(f.name)}</b><small>${esc(f.dir)}</small></span></label>
+        ${f.cloud ? '<span class="tag" title="Also stored in OneDrive — deleting it removes it there too">OneDrive</span>' : ''}
+        <span class="cl-fs"><b>${clSize(f.size)}</b><small>${clAge(f.at)}</small></span>
+        <button class="ghost small" data-clshow="${esc(f.id)}">Show</button>
+      </div>`).join('')}</div>`
+    : '';
+  const where = !c.perFile && c.roots.length
+    ? `<details><summary>Where (${c.roots.length + c.moreRoots} place${c.roots.length + c.moreRoots === 1 ? '' : 's'})</summary><ul class="ch-exact">${c.roots.map((r) => `<li><code>${esc(r)}</code></li>`).join('')}${c.moreRoots ? `<li>…and ${c.moreRoots} more</li>` : ''}</ul></details>`
+    : '';
+  return `<div class="cl-item ${c.level} ${c.status}" data-clcat="${esc(c.id)}">
+    <label class="cl-check"><input type="checkbox" data-clpick="${esc(c.id)}" ${picked ? 'checked' : ''} ${dis} aria-label="${esc(c.name)}" /></label>
+    <div class="cl-main">
+      <h3>${esc(c.name)}${tags}</h3>
+      <p>${esc(c.desc)}</p>
+      ${c.note ? `<p class="cl-note">${esc(c.note)}</p>` : ''}
+      ${last}${files}${where}
+    </div>
+    <div class="cl-size"><b>${clSize(c.size)}</b><small>${c.count.toLocaleString()} file${c.count === 1 ? '' : 's'}</small></div>
+  </div>`;
+}
+
+function renderClean() {
+  renderCleanRun();
+  renderCleanDisk();
+  if (!CL) return renderCleanBar();
+  $('#clGroups').innerHTML = CL.groups
+    .map((g) => {
+      const cats = CL.cats.filter((c) => c.group === g.id && c.status !== 'missing');
+      if (!cats.length) return '';
+      const shown = cats.filter((c) => c.status !== 'empty' || c.last);
+      const clean = cats.filter((c) => c.status === 'empty' && !c.last);
+      const size = cats.reduce((n, c) => n + c.size, 0);
+      return `<h2 class="fix-sub">${esc(g.name)} <span class="counts">${size ? `<span class="cnt warn"><b>${clSize(size)}</b>found</span>` : '<span class="cnt on">all clean</span>'}</span></h2>
+        <div class="cl-list">${shown.map(cleanRow).join('')}</div>
+        ${clean.length ? `<p class="cl-clean">Already clean: ${clean.map((c) => esc(c.name)).join(', ')}</p>` : ''}`;
+    })
+    .join('');
+  renderCleanBar();
+}
+
+function renderCleanDone(r) {
+  const el = $('#clDone');
+  if (!r) return el.classList.add('hidden');
+  const bits = [];
+  if (r.inUse) bits.push(`${r.inUse.toLocaleString()} file${r.inUse === 1 ? ' was' : 's were'} in use and left alone — close your apps and scan again to get ${r.inUse === 1 ? 'it' : 'them'} too.`);
+  if (r.trashed) bits.push(`${r.trashed === 1 ? 'One of your own files' : `${r.trashed} of your own files`} went to the Recycle Bin (${clSize(r.trashedBytes || 0)}) — empty it to free that space too.`);
+  if (r.skippedCats && r.skippedCats.length) bits.push(`Skipped because the app is open: ${r.skippedCats.join(', ')}.`);
+  if (r.failed) bits.push(`${r.failed.toLocaleString()} file${r.failed === 1 ? '' : 's'} couldn’t be deleted.`);
+  if (r.cancelled) bits.push('Stopped before the end.');
+  el.className = `cl-done ${r.failed || r.cancelled ? 'warn' : ''}`;
+  el.innerHTML = `<div class="cl-done-ico">${r.failed || r.cancelled ? ICONS.warn : ICONS.done}</div>
+    <div><b>${r.deleted || r.trashed ? `Freed ${clSize(r.freed || 0)}` : 'Nothing was deleted'}</b>${r.deleted ? ` — ${r.deleted.toLocaleString()} file${r.deleted === 1 ? '' : 's'} deleted.` : '.'}
+    ${bits.length ? `<ul>${bits.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+    ${clDiskInfo ? `<small>Drive ${esc(clDiskInfo.drive)} now has ${clSize(clDiskInfo.free)} free.</small>` : ''}</div>`;
+}
+
+async function refreshClean(autoScan) {
+  const st = await ff.clean.state();
+  clDiskInfo = st.disk;
+  clBusy = st.busy;
+  if (st.result) setCleanResult(st.result, !CL || st.result.at !== CL.at);
+  renderClean();
+  if (st.busy && st.progress) renderCleanRun(st.progress);
+  if (autoScan && !clAutoScanned && !st.result && !st.busy) {
+    clAutoScanned = true;
+    startCleanScan();
+  }
+}
+
+async function startCleanScan() {
+  if (clBusy) return;
+  clAutoScanned = true;
+  clBusy = 'scan';
+  clLast = null;
+  renderCleanDone(null);
+  renderClean();
+  renderCleanRun({ phase: 'scan', name: 'Getting ready', index: 0, total: 0 });
+  try {
+    const r = await ff.clean.scan();
+    if (!r.ok) toast(r.message || 'Couldn’t scan.');
+    else setCleanResult(r.result, true);
+    if (r.disk) clDiskInfo = r.disk;
+  } catch (err) {
+    toast(`Scan failed: ${err.message || err}`, 5000);
+  } finally {
+    clBusy = null;
+    renderClean();
+  }
+}
+
+async function runClean() {
+  if (clBusy) return;
+  const { sel, list } = cleanSelection();
+  if (!list.length) return;
+  $('#clModal').classList.add('hidden');
+  clBusy = 'clean';
+  renderClean();
+  renderCleanRun({ phase: 'clean', name: 'Starting', done: 0, total: 0, freed: 0 });
+  try {
+    const r = await ff.clean.run(sel);
+    if (!r.ok) toast(r.message || 'Couldn’t delete.', 5000);
+    else {
+      setCleanResult(r.result, false);
+      clLast = r;
+    }
+    if (r.disk) clDiskInfo = r.disk;
+  } catch (err) {
+    toast(`Deleting failed: ${err.message || err}`, 5000);
+  } finally {
+    clBusy = null;
+    renderClean();
+    renderCleanDone(clLast);
+    refreshChanges().catch(() => {});
+  }
+}
+
+function askClean() {
+  const { list, bytes } = cleanSelection();
+  if (!list.length || clBusy) return;
+  const trash = list.some((x) => x.c.method === 'trash');
+  const bin = list.some((x) => x.c.id === 'recycle');
+  $('#clmTitle').textContent = `Delete ${clSize(bytes)}?`;
+  $('#clmText').textContent = [
+    'Junk files and caches are deleted for good — apps make new ones when they need them.',
+    trash ? 'Your own files go to the Recycle Bin, so you can still get them back.' : '',
+    bin ? 'Emptying the Recycle Bin can’t be undone.' : '',
+    'Files that are in use are skipped.',
+  ].filter(Boolean).join(' ');
+  $('#clmList').innerHTML = list.map((x) => `<li><span>${esc(x.c.name)}<small>${esc(x.what)}${x.c.method === 'trash' ? ' → Recycle Bin' : ''}</small></span><b>${clSize(x.size)}</b></li>`).join('');
+  $('#clModal').classList.remove('hidden');
+  $('#clmYes').focus();
+}
+
+$('#clScanBtn').onclick = () => startCleanScan();
+$('#clStop').onclick = () => ff.clean.cancel();
+$('#clDelete').onclick = () => askClean();
+$('#clmNo').onclick = () => $('#clModal').classList.add('hidden');
+$('#clmYes').onclick = () => runClean();
+$('#clPickSafe').onclick = () => {
+  for (const c of CL ? CL.cats : []) {
+    if (c.perFile) clFiles.set(c.id, new Set());
+    else clPick.set(c.id, c.selectable && c.level === 'safe');
+  }
+  renderClean();
+};
+$('#clPickNone').onclick = () => {
+  for (const c of CL ? CL.cats : []) c.perFile ? clFiles.set(c.id, new Set()) : clPick.set(c.id, false);
+  renderClean();
+};
+$('#clGroups').addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.dataset.clpick) {
+    const c = clCat(t.dataset.clpick);
+    if (!c) return;
+    if (c.perFile) {
+      clFiles.set(c.id, new Set(t.checked ? c.items.map((f) => f.id) : []));
+      $$(`#clGroups [data-clfile^="${CSS.escape(c.id)}|"]`).forEach((b) => (b.checked = t.checked));
+    } else clPick.set(c.id, t.checked);
+  } else if (t.dataset.clfile) {
+    const [cid, fid] = t.dataset.clfile.split('|');
+    const s = clFiles.get(cid) || new Set();
+    if (t.checked) s.add(fid);
+    else s.delete(fid);
+    clFiles.set(cid, s);
+  }
+  renderCleanBar();
+});
+$('#view-clean').addEventListener('click', (e) => {
+  const show = e.target.closest('[data-clshow]');
+  if (show) return ff.clean.show(show.dataset.clshow);
+  const go = e.target.closest('[data-clgoto]');
+  if (go) $(`.nav-item[data-view="${go.dataset.clgoto}"]`).click();
+});
+ff.clean.onProgress((p) => {
+  if (clBusy) renderCleanRun(p);
+});
 
 /* ---------- Boot ---------- */
 (async () => {

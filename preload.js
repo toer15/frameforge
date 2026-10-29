@@ -83,6 +83,14 @@ contextBridge.exposeInMainWorld('ff', {
     onApplying: on('scan:applying'),
     onShowResults: on('scan:showResults'),
   },
+  clean: {
+    state: () => ipcRenderer.invoke('clean:state'),
+    scan: () => ipcRenderer.invoke('clean:scan'),
+    cancel: () => ipcRenderer.invoke('clean:cancel'),
+    run: (sel) => ipcRenderer.invoke('clean:run', sel),
+    show: (id) => ipcRenderer.invoke('clean:show', id),
+    onProgress: on('clean:progress'),
+  },
   anim: {
     get: () => ipcRenderer.invoke('anim:get'),
     set: (on) => ipcRenderer.invoke('anim:set', on),

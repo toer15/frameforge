@@ -1,3 +1,11 @@
+**New: Cleaner tab — find the junk that slows your PC down and delete it**
+
+- Open **Cleaner** in the sidebar and FrameForge looks through your PC for files you don't need: temp files, old Windows Update downloads, the Delivery Optimization cache, crash dumps (some are several GB), old Windows logs, the thumbnail cache, the driver installers AMD and NVIDIA leave in C:\AMD and C:\NVIDIA, the Recycle Bin, browser caches (Chrome, Edge, Firefox, Brave, Opera, Opera GX, Vivaldi), app caches (Discord, Steam, Epic Games Launcher, Spotify) and graphics shader caches.
+- It also lists **your own files** you might not need any more: installers and archives in Downloads older than a month, and the biggest files in Downloads, Desktop, Documents and Videos. You tick them one by one, and they go to the **Recycle Bin**, so you can still get them back.
+- Every item shows how much space it takes, what it is, and whether it's **Safe to delete** (ticked for you) or something to **Check first**. See how full drive C: is at the top — a nearly full drive is one of the most common reasons a PC gets slow.
+- Nothing is deleted until you press **Delete selected** and confirm. Files from the last 24 hours, files an app is using, and caches of apps that are open are left alone. Browser logins, history, bookmarks and passwords are never touched.
+- Fix mode's "Drive C: is almost full" card now has an **Open Cleaner** button.
+
 **Virus scan: it really scans everything, and it finishes**
 
 - **Scans finish properly now.** Windows' WinSxS folder (and folders like `node_modules`) used to be queued up as one antivirus run per little folder — WinSxS alone was 18,980 separate runs, which could take hours. They're now part of a sensible job: about 120 runs for a full scan, and every file is still covered. A full scan counts and then scans all your drives; a quick scan stays quick.
