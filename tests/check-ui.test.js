@@ -14,7 +14,8 @@ test('Quick check runs junk, programs and virus steps; startup switch and Close 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   await new Promise((resolve) => server.close(resolve));
-  const env = { ...process.env, FRAMEFORGE_DEMO: '1' }; // the Cleaner seeds harmless sample files under userData
+  // The Cleaner seeds harmless sample files under userData; Discord "switches itself back on" every 5 s (test hook).
+  const env = { ...process.env, FRAMEFORGE_DEMO: '1', FRAMEFORGE_TEST_STARTUP_WATCH: '1', FRAMEFORGE_TEST_STARTUP_TAMPER: 'Discord' };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.FRAMEFORGE_CLEAN_SANDBOX;
   const args = ['.', `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`];
@@ -107,6 +108,28 @@ test('Quick check runs junk, programs and virus steps; startup switch and Close 
       return { on: PG.startup.find(s => s.name === 'Discord').on, checked: row.checked, logged: changes.includes('Discord no longer starts with Windows') };
     })()`);
     assert.deepEqual(sw, { on: false, checked: false, logged: true });
+    // It's still open: "Close it now" stops it right away.
+    const now = await evaluate(`(async () => {
+      const b = document.querySelector('[data-pgclose]');
+      if (!b) return { button: false };
+      b.click();
+      const text = document.querySelector('#hvText').textContent;
+      document.querySelector('#hvYes').click();
+      for (let i = 0; i < 50 && PG.startup.find(s => s.name === 'Discord').running; i++) await new Promise(r => setTimeout(r, 100));
+      return { button: true, text, running: PG.startup.find(s => s.name === 'Discord').running, left: !!document.querySelector('[data-pgclose]') };
+    })()`);
+    assert.equal(now.button, true);
+    assert.match(now.text, /won.t start with Windows/);
+    assert.equal(now.running, false);
+    assert.equal(now.left, false);
+    // Discord switches itself back on (test hook); FrameForge switches it off again and says so.
+    const kept = await evaluate(`(async () => {
+      let changes = '';
+      for (let i = 0; i < 150 && !changes.includes('switched itself back on'); i++) { await new Promise(r => setTimeout(r, 100)); changes = JSON.stringify(await ff.changes()); }
+      return { logged: changes.includes('switched itself back on'), on: PG.startup.find(s => s.name === 'Discord').on, toast: document.querySelector('#toast').textContent };
+    })()`);
+    assert.equal(kept.logged, true);
+    assert.equal(kept.on, false);
     const closed = await evaluate(`(async () => {
       const before = PG.heavy.length;
       document.querySelector('[data-hvclose]').click();

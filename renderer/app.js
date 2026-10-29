@@ -2084,7 +2084,7 @@ function renderCleanRun(p) {
     $('#clFill').style.width = `${p.total ? Math.round((p.done / p.total) * 100) : 0}%`;
   } else {
     $('#clRunTitle').textContent = 'Looking for junk…';
-    $('#clRunPhase').textContent = `${p.name}${p.total ? ` (${Math.min(p.index + 1, p.total)} of ${p.total})` : ''} · ${(p.files || 0).toLocaleString()} files, ${clSize(p.bytes || 0)} so far`;
+    $('#clRunPhase').textContent = `${p.name}${p.total ? ` (${Math.min(p.index + 1, p.total)} of ${p.total})` : ''} · ${(p.looked || 0).toLocaleString()} files looked at · ${(p.files || 0).toLocaleString()} found, ${clSize(p.bytes || 0)}`;
     $('#clFill').style.width = `${p.total ? Math.round((p.index / p.total) * 100) : 0}%`;
   }
   $('#clCurrent').textContent = p.current || '';
@@ -2185,6 +2185,7 @@ async function refreshClean(autoScan) {
   if (st.result) setCleanResult(st.result, !CL || st.result.at !== CL.at);
   if (st.programs) PG = st.programs;
   if (st.estimates) CK_EST = st.estimates;
+  if (st.drives) DRV = st.drives;
   if (st.virus) {
     VIRUS.running = st.virus.running;
     VIRUS.last = st.virus.last;
@@ -2269,7 +2270,42 @@ function askClean() {
 let CK = { mode: null, step: null, steps: {} }; // step: 'junk' | 'programs' | 'virus' | null (finished)
 let CK_EST = null; // virus scan time estimates
 let PG = null; // { startup, heavy, at }
+let DRV = null; // every drive: SSDs, hard drives, external drives, USB sticks
 const VIRUS = { running: null, last: null, done: null };
+
+/** Drives in this PC, with what the last full check covered on each. */
+function renderDrives() {
+  const el = $('#ckDrives');
+  const list = DRV || [];
+  $('#ckDrvLine').textContent = list.length ? `Checks: ${list.map((d) => `${d.letter} ${d.kind}`).join(' · ')}` : '';
+  if (!list.length) return (el.innerHTML = '');
+  const big = CL && CL.mode === 'full' ? (CL.cats.find((c) => c.id === 'big_files') || {}).coverage || [] : [];
+  const v = VIRUS.done || VIRUS.last;
+  const vDrives = v && v.type === 'full' && !v.cancelled && v.drives ? v.drives.map((x) => x.toUpperCase()) : [];
+  const rows = list.map((d) => {
+    const used = d.size ? Math.round(((d.size - d.free) / d.size) * 100) : 0;
+    const bad = /warning|unhealthy/i.test(d.health);
+    const cov = big.find((c) => String(c.label).toUpperCase() === d.root);
+    const bits = [];
+    if (!d.readable) bits.push('<span class="dv-chk warn">Can’t be read (locked with BitLocker, or no disk in it) — not checked</span>');
+    else {
+      if (d.bigFiles) bits.push(cov ? `<span class="dv-chk ${cov.denied && !cov.files ? 'warn' : cov.partial ? 'warn' : 'ok'}" title="Windows, installed programs and games are skipped — their files aren’t yours to delete">Big files: ${cov.denied && !cov.files ? 'couldn’t open it' : `${cov.files.toLocaleString()} file${cov.files === 1 ? '' : 's'} looked at${cov.partial ? ' (stopped part-way)' : ''}`}</span>` : `<span class="dv-chk">Big files: ${CL && CL.mode === 'full' ? 'not looked at' : 'run a full check'}</span>`);
+      else bits.push('<span class="dv-chk">Big files: not on USB sticks or memory cards (they have no Recycle Bin)</span>');
+      bits.push(vDrives.includes(d.root) ? '<span class="dv-chk ok">Virus scan: every file</span>' : '<span class="dv-chk">Virus scan: run a full check</span>');
+    }
+    return `<div class="dv-item ${bad ? 'bad' : used >= 90 ? 'warn' : ''}" data-drive="${esc(d.letter)}">
+      <b class="dv-letter">${esc(d.letter)}</b>
+      <div class="dv-main">
+        <h3>${esc(d.label || d.kind)}<span class="tag">${esc(d.kind)}</span>${d.system ? '<span class="tag">Windows</span>' : ''}${d.health ? `<span class="tag ${bad ? 'no' : 'safe'}">${esc(d.health)}</span>` : ''}</h3>
+        <small>${esc([d.model, d.size ? `${clSize(d.free)} free of ${clSize(d.size)}` : '', d.fs, d.wear != null ? `${d.wear}% worn` : '', d.temp ? `${d.temp} °C` : ''].filter(Boolean).join(' · '))}</small>
+        ${d.size ? `<div class="bar"><i style="width:${used}%"></i></div>` : ''}
+        ${bad ? '<p class="cl-note">Windows reports this drive as failing. Back up your files now — a failing drive makes the whole PC slow and can lose your data.</p>' : used >= 90 ? '<p class="cl-note">Almost full — that slows the drive down. Delete what you don’t need below.</p>' : ''}
+        <div class="dv-chks">${bits.join('')}</div>
+      </div>
+    </div>`;
+  });
+  el.innerHTML = `<h2 class="fix-sub">Drives in this PC <span class="counts">${cnt(list.length, list.length === 1 ? 'drive' : 'drives', 'on')}</span><button class="ghost small ck-again" id="dvAgain" title="Plugged in a drive? Look again">Look again</button></h2><div class="dv-list">${rows.join('')}</div>`;
+}
 const CK_NAME = { quick: 'Quick check', full: 'Full check' };
 
 async function startCheck(mode) {
@@ -2277,6 +2313,10 @@ async function startCheck(mode) {
   CK = { mode, step: 'junk', steps: { junk: 'running', programs: 'pending', virus: 'pending' }, startedAt: Date.now(), note: '' };
   VIRUS.done = null;
   renderCheck();
+  if (mode === 'full') {
+    DRV = await ff.clean.drives(true).catch(() => DRV); // a drive plugged in just now is included
+    renderDrives();
+  }
   await startCleanScan(mode);
   CK.steps.junk = CL ? (CK.cancelled ? 'stopped' : 'done') : 'failed';
   if (CK.cancelled) return finishCheck();
@@ -2350,7 +2390,9 @@ function renderCheck() {
     const startN = PG && PG.startup ? PG.startup.filter((s) => s.on).length : 0;
     const v = VIRUS.running;
     const d = VIRUS.done;
-    const junkDetail = CK.steps.junk === 'running' ? 'Looking through your folders…' : CL ? `${clSize(CL.junk || 0)} of junk${CL.cats.filter((c) => c.perFile).reduce((n, c) => n + c.count, 0) ? ` · ${CL.cats.filter((c) => c.perFile).reduce((n, c) => n + c.count, 0)} big or old files of yours to check` : ''}` : CK.steps.junk === 'pending' ? 'Waiting' : 'Didn’t finish';
+    const cov = CL && CL.mode === 'full' ? ((CL.cats.find((c) => c.id === 'big_files') || {}).coverage || []).filter((c) => c.files || c.denied) : [];
+    const covText = cov.length ? ` · ${cov.reduce((n, c) => n + c.files, 0).toLocaleString()} files on ${cov.filter((c) => /^[A-Z]:\\$/i.test(c.label)).length} drive(s) looked at` : '';
+    const junkDetail = CK.steps.junk === 'running' ? (CK.mode === 'full' ? 'Looking through every folder of every drive…' : 'Looking through your folders…') : CL ? `${clSize(CL.junk || 0)} of junk${covText}${CL.cats.filter((c) => c.perFile).reduce((n, c) => n + c.count, 0) ? ` · ${CL.cats.filter((c) => c.perFile).reduce((n, c) => n + c.count, 0)} big or old files of yours to check` : ''}` : CK.steps.junk === 'pending' ? 'Waiting' : 'Didn’t finish';
     const pgDetail = CK.steps.programs === 'running' ? 'Reading startup programs and measuring what runs…' : CK.steps.programs === 'done' ? `${startN} start${startN === 1 ? 's' : ''} with Windows · ${PG.heavy.length} using a lot right now` : CK.steps.programs === 'failed' ? (PG && PG.message) || 'Couldn’t read them' : 'Waiting';
     const vDetail = CK.steps.virus === 'running'
       ? v ? `${v.phaseText || 'Scanning…'}${v.filesTotal ? ` · ${(v.filesDone || 0).toLocaleString()} of ${v.filesTotal.toLocaleString()} files` : ''}${v.etaSec != null && v.filesTotal ? ` · about ${mins(v.etaSec)} left` : ''}${v.found ? ` · ${v.found} found so far` : ''}` : 'Starting…'
@@ -2365,6 +2407,7 @@ function renderCheck() {
     $('#ckNote').textContent = CK.note || '';
   }
   renderVirus();
+  if (!VIRUS.running || !$('#ckDrives').innerHTML) renderDrives(); // not on every scan progress tick
 }
 
 function renderVirus() {
@@ -2399,7 +2442,8 @@ function renderPrograms() {
       <div class="cl-main">
         <h3>${esc(s.name)}${s.on ? tag(s) : '<span class="tag">Turned off</span>'}${s.running ? '<span class="tag">Running now</span>' : ''}</h3>
         <p>${esc([s.desc && s.desc !== s.name ? s.desc : '', s.company].filter(Boolean).join(' · ') || s.exe)} · ${esc(s.srcLabel)}</p>
-        <p class="${s.advice === 'keep' ? 'cl-res ok' : 'cl-note'}">${esc(s.adviceText)}</p>
+        ${s.on ? `<p class="${s.advice === 'keep' ? 'cl-res ok' : 'cl-note'}">${esc(s.adviceText)}</p>` : `<p class="cl-res ok">Off — Windows won’t start it. FrameForge keeps it off, even if the app tries to switch itself back on.</p>`}
+        ${!s.on && s.running ? `<p class="cl-note">It’s still open right now. <button class="ghost small" data-pgclose="${esc(s.id)}">Close it now</button></p>` : ''}
         <details><summary>What it runs</summary><ul class="ch-exact"><li><code>${esc(s.cmd)}</code></li></ul></details>
       </div>
       <div class="cl-size"><b>${s.running ? clSize(s.mem) : '—'}</b><small>${s.running ? `memory${s.cpu >= 1 ? ` · ${s.cpu}% CPU` : ''}` : 'not running'}</small></div>
@@ -2422,6 +2466,14 @@ function renderPrograms() {
 
 $$('#ckCards [data-check]').forEach((b) => b.addEventListener('click', () => startCheck(b.dataset.check)));
 $('#ckStop').onclick = () => stopCheck();
+$('#ckDrives').addEventListener('click', async (e) => {
+  const b = e.target.closest('#dvAgain');
+  if (!b) return;
+  b.disabled = true;
+  b.textContent = 'Looking…';
+  DRV = await ff.clean.drives(true).catch(() => DRV);
+  renderDrives();
+});
 $('#ckVirus').addEventListener('click', (e) => {
   if (e.target.closest('#ckReview')) openResults();
 });
@@ -2435,8 +2487,10 @@ $('#ckPrograms').addEventListener('change', async (e) => {
     const r = await ff.clean.startupSet(id, on);
     toast(r.message, 5000);
     const it = PG.startup.find((s) => s.id === id);
-    if (r.ok && it) it.on = r.on;
-    else box.checked = !on;
+    if (r.ok && it) {
+      it.on = r.on;
+      if (typeof r.running === 'boolean') it.running = r.running;
+    } else box.checked = !on;
   } catch (err) {
     box.checked = !on;
     toast(`Couldn’t change it: ${err.message || err}`, 5000);
@@ -2451,11 +2505,21 @@ $('#ckPrograms').addEventListener('click', (e) => {
     e.target.closest('#pgAgain').textContent = 'Checking…';
     return refreshPrograms();
   }
+  const sc = e.target.closest('[data-pgclose]');
+  if (sc) {
+    const s = PG.startup.find((x) => x.id === sc.dataset.pgclose);
+    if (!s) return;
+    hvPending = { kind: 'startup', id: s.id };
+    $('#hvTitle').textContent = `Close ${s.name} now?`;
+    $('#hvText').textContent = `Everything of ${s.name} that’s running is closed. Anything unsaved in it is lost. It won’t start with Windows any more; you can still open it yourself.`;
+    $('#hvModal').classList.remove('hidden');
+    return $('#hvYes').focus();
+  }
   const b = e.target.closest('[data-hvclose]');
   if (!b) return;
   const h = PG.heavy.find((x) => x.key === b.dataset.hvclose);
   if (!h) return;
-  hvPending = h.key;
+  hvPending = { kind: 'heavy', key: h.key };
   $('#hvTitle').textContent = `Close ${h.name}?`;
   $('#hvText').textContent = `All ${h.count > 1 ? `${h.count} of its processes` : 'of it'} will be closed. Anything unsaved in it is lost. It opens again the next time you start it${PG.startup.some((s) => s.on && s.exe.toLowerCase() === h.key) ? ' or turn on the PC' : ''}.`;
   $('#hvModal').classList.remove('hidden');
@@ -2463,15 +2527,29 @@ $('#ckPrograms').addEventListener('click', (e) => {
 });
 $('#hvNo').onclick = () => $('#hvModal').classList.add('hidden');
 $('#hvYes').onclick = async () => {
-  const key = hvPending;
+  const p = hvPending;
   hvPending = null;
   $('#hvModal').classList.add('hidden');
-  if (!key) return;
-  const r = await ff.clean.closeApp(key);
+  if (!p) return;
+  const r = p.kind === 'startup' ? await ff.clean.closeStartup(p.id) : await ff.clean.closeApp(p.key);
   toast(r.message, 5000);
-  if (r.ok) PG.heavy = PG.heavy.filter((x) => x.key !== key);
+  if (r.ok && p.kind === 'heavy') PG.heavy = PG.heavy.filter((x) => x.key !== p.key);
+  if (r.ok && p.kind === 'startup') {
+    const s = PG.startup.find((x) => x.id === p.id);
+    if (s) Object.assign(s, { running: false, mem: 0, cpu: 0 });
+    PG.heavy = PG.heavy.filter((h) => !s || !(h.path.toLowerCase() === s.exe.toLowerCase()));
+  }
   renderPrograms();
 };
+ff.clean.onStartupFixed((list) => {
+  for (const f of list || []) {
+    const s = PG && PG.startup.find((x) => x.id === f.id);
+    if (s) s.on = false;
+  }
+  renderPrograms();
+  toast(`${(list || []).map((f) => f.name).join(', ')} switched ${list && list.length === 1 ? 'itself' : 'themselves'} back on to start with Windows — FrameForge switched ${list && list.length === 1 ? 'it' : 'them'} off again.`, 6000);
+  refreshChanges().catch(() => {});
+});
 ff.scan.onProgress((p) => {
   if (!p) return;
   VIRUS.running = p;

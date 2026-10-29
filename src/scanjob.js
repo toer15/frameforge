@@ -151,14 +151,10 @@ async function runJobs(list, concurrency) {
   await Promise.all(Array.from({ length: Math.min(concurrency, list.length) }, worker));
 }
 
-async function fixedDrives() {
+/** Every readable drive: internal SSDs and hard drives, external drives, USB sticks and memory cards. */
+async function allDrives() {
   if (!IS_WIN) return [];
-  const r = await ps("@(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | %{ $_.DeviceID }) -join ','");
-  return r.stdout
-    .trim()
-    .split(',')
-    .filter((d) => /^[A-Z]:$/i.test(d))
-    .map((d) => d + '\\');
+  return (await require('./drives').list(true)).filter((d) => d.virus).map((d) => d.root);
 }
 
 // ---------------------------------------------------------------- Demo (Mac/Linux, or FRAMEFORGE_DEMO=1)
@@ -177,6 +173,7 @@ async function demoRun() {
   await sleep(1200);
   setPhase('count', quick ? 'Finding running programs, startup items and risky folders…' : 'Counting every file on your drives…');
   const total = quick ? 48213 : job.type === 'custom' ? 9120 : 1284551;
+  if (job.type === 'full') job.drives = (await require('./drives').list()).filter((d) => d.virus).map((d) => d.root);
   for (let i = 1; i <= 10 && !job.cancelled; i++) {
     job.counted = Math.round((total * i) / 10);
     send('scan:progress', snapshot());
@@ -237,7 +234,8 @@ async function realRun() {
   } else if (job.type === 'custom' && fs.existsSync(job.folder) && fs.statSync(job.folder).isFile()) {
     fileJobs.push({ path: job.folder, count: 1 }); // one file picked
   } else {
-    const roots = job.type === 'full' ? await fixedDrives() : [job.folder];
+    const roots = job.type === 'full' ? await allDrives() : [job.folder];
+    if (job.type === 'full') job.drives = roots;
     let nodes = [];
     for (const r of roots) nodes.push(await scanner.walk(r, st));
     folderJobs.push(...scanner.planScan(nodes, nodes.reduce((a, n) => a + n.total, 0)));
@@ -422,6 +420,7 @@ async function start(type, { folder = null, background = false } = {}) {
         historyCounts: countsOf(histItems),
         notes: job.notes,
         background,
+        drives: job.drives || null, // full scan: every drive it went through
       };
       writeJson('scan-last.json', result);
       addHistory(result);
@@ -475,7 +474,7 @@ async function cancel() {
 }
 function summary(r) {
   const open = r.items.filter((i) => i.status === 'active' && ['real', 'unsure', 'pua', 'test'].includes(i.verdict) && !i.done).length;
-  return { type: r.type, cancelled: r.cancelled, durationSec: r.durationSec, filesChecked: r.filesChecked, counts: r.counts, historyCounts: r.historyCounts, found: r.items.length, open, endedAt: r.endedAt, background: r.background };
+  return { type: r.type, cancelled: r.cancelled, durationSec: r.durationSec, filesChecked: r.filesChecked, counts: r.counts, historyCounts: r.historyCounts, found: r.items.length, open, endedAt: r.endedAt, background: r.background, drives: r.drives || null };
 }
 function last() {
   return readJson('scan-last.json', null);

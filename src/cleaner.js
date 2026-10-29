@@ -179,8 +179,9 @@ const DEFS = [
     desc: 'The biggest files in Downloads, Desktop, Documents and Videos — old game clips, videos, disk images. Only tick what you don’t need any more. They go to the Recycle Bin.',
     roots: (b, mode) => existing(mode === 'full' ? [b.home, ...b.drives] : [b.downloads, b.desktop, b.documents, b.videos]),
     full: {
-      budget: 240000,
-      skipDir: (name, dir, root, b) => USER_SKIP_DIRS.test(name) || (dir === root && b.drives.includes(root) && DRIVE_SKIP_DIRS.test(name)),
+      budget: Infinity, // every folder of every drive, however long it takes (Stop still works)
+      // (a drive mounted inside another drive's folder is walked as its own drive, not twice)
+      skipDir: (name, dir, root, b) => USER_SKIP_DIRS.test(name) || (dir === root && b.drives.includes(root) && DRIVE_SKIP_DIRS.test(name)) || b.drives.includes(path.join(dir, name)),
       desc: 'Every file over this size on all your drives — outside Windows, installed programs and game libraries: old videos, clips, disk images, backups. Only tick what you don’t need any more. They go to the Recycle Bin.',
     },
   },
@@ -194,7 +195,10 @@ function demoBases(root) {
   const local = path.join(home, 'AppData', 'Local');
   return {
     home, local, temp: path.join(local, 'Temp'), roaming: path.join(home, 'AppData', 'Roaming'), localLow: path.join(home, 'AppData', 'LocalLow'),
-    windir: path.join(root, 'Windows'), programData: path.join(root, 'ProgramData'), drive: root, drives: [root],
+    windir: path.join(root, 'Windows'), programData: path.join(root, 'ProgramData'), drive: root,
+    // Demo drives: the sandbox is C:, and two folders in it stand in for a second SSD/HDD and an external drive.
+    drives: [root, path.join(root, 'drives', 'D'), path.join(root, 'drives', 'E')],
+    driveLabels: { [root]: 'C:\\', [path.join(root, 'drives', 'D')]: 'D:\\', [path.join(root, 'drives', 'E')]: 'E:\\' },
     recycle: [path.join(root, '$Recycle.Bin', 'S-1-5-21-0-0-0-1001')],
     downloads: path.join(home, 'Downloads'), desktop: path.join(home, 'Desktop'), documents: path.join(home, 'Documents'), videos: path.join(home, 'Videos'),
   };
@@ -209,7 +213,7 @@ async function driveDirs() {
   return { drives: roots, recycle: sid ? roots.map((d) => path.join(d, '$Recycle.Bin', sid)) : [] };
 }
 
-async function bases(folders = {}) {
+async function bases(folders = {}, driveRoots = null) {
   if (DEMO) return demoBases(sandbox);
   const env = process.env;
   const home = env.USERPROFILE || os.homedir();
@@ -218,7 +222,7 @@ async function bases(folders = {}) {
   return {
     home, local, temp: env.TEMP || os.tmpdir(), roaming: env.APPDATA || path.join(home, 'AppData', 'Roaming'), localLow: path.join(home, 'AppData', 'LocalLow'),
     windir: env.WINDIR || env.SystemRoot || 'C:\\Windows', programData: env.ProgramData || 'C:\\ProgramData', drive: `${env.SystemDrive || 'C:'}\\`,
-    drives: dd.drives, recycle: dd.recycle,
+    drives: driveRoots && driveRoots.length ? driveRoots : dd.drives, recycle: dd.recycle,
     downloads: folders.downloads || path.join(home, 'Downloads'), desktop: folders.desktop || path.join(home, 'Desktop'),
     documents: folders.documents || path.join(home, 'Documents'), videos: folders.videos || path.join(home, 'Videos'),
   };
@@ -262,6 +266,10 @@ async function seedDemo(root) {
     [path.join(b.downloads, 'SteamSetup.exe'), 2 * MB, 120], [path.join(b.downloads, 'mod-pack.zip'), 3 * MB, 75],
     [path.join(b.downloads, 'new-driver.exe'), 1 * MB, 2], [path.join(b.videos, 'Captures', 'Clip 2026-05-01.mp4'), 9 * MB, 180],
     [path.join(b.documents, 'notes.txt'), 1024, 100],
+    [path.join(root, 'drives', 'D', 'Recordings', 'Gameplay 2025-12-24.mkv'), 12 * MB, 300],
+    [path.join(root, 'drives', 'D', 'Games', 'Hollow Drift', 'HollowDrift.exe'), 1 * MB, 90],
+    [path.join(root, 'drives', 'D', 'Games', 'Hollow Drift', 'data.pak'), 10 * MB, 90],
+    [path.join(root, 'drives', 'E', 'Backups', 'old-pc-image.vhdx'), 14 * MB, 400],
   ];
   for (const [p, size] of files) {
     fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -307,6 +315,7 @@ async function walk(root, def, cat, ctx) {
   while (stack.length) {
     if (cancelled || Date.now() > ctx.deadline || cat.entries.length > 500000) {
       cat.partial = true;
+      (cat.rootStats[root] || (cat.rootStats[root] = { files: 0, folders: 0, denied: false })).partial = true;
       return;
     }
     const { dir, depth } = stack.pop();
@@ -314,12 +323,21 @@ async function walk(root, def, cat, ctx) {
     try {
       list = await fsp.readdir(dir, { withFileTypes: true });
     } catch (e) {
-      if (dir === root && busyCode(e)) cat.denied++;
+      if (dir === root && busyCode(e)) {
+        cat.denied++;
+        cat.rootStats[root] = { files: 0, folders: 0, partial: false, denied: true };
+      }
       continue;
     }
     if (def.skipPrograms && looksInstalled(list, dir, dir === root)) continue;
+    const rs = cat.rootStats[root] || (cat.rootStats[root] = { files: 0, folders: 0, partial: false, denied: false });
+    rs.folders++;
     const files = [];
     for (const d of list) {
+      if (d.isFile()) {
+        rs.files++;
+        ctx.looked++;
+      }
       if (d.isSymbolicLink()) continue; // junctions and links point somewhere else: never follow or delete them
       const p = path.join(dir, d.name);
       if (d.isDirectory()) {
@@ -341,8 +359,8 @@ async function walk(root, def, cat, ctx) {
         ctx.files++;
         ctx.bytes += s.size;
       }
-      ctx.tick({ phase: 'scan', index: ctx.index, total: DEFS.length, name: def.name, files: ctx.files, bytes: ctx.bytes, current: dir });
     }
+    ctx.tick({ phase: 'scan', index: ctx.index, total: DEFS.length, name: def.name, files: ctx.files, looked: ctx.looked, bytes: ctx.bytes, current: dir });
   }
 }
 
@@ -369,7 +387,7 @@ async function cloudCheck(cat) {
 
 async function scanCat(base, b, running, ctx) {
   const def = ctx.mode === 'full' && base.full ? { ...base, ...base.full } : base; // a full check looks further
-  const cat = { def, roots: [], entries: [], denied: 0, kept: 0, partial: false, last: null };
+  const cat = { def, roots: [], entries: [], denied: 0, kept: 0, partial: false, last: null, rootStats: {} };
   try {
     cat.roots = await def.roots(b, ctx.mode);
   } catch {}
@@ -398,6 +416,24 @@ async function scanCat(base, b, running, ctx) {
   return cat;
 }
 
+/** Files and folders looked at, per drive (your own folder counts toward the drive it is on). */
+function driveCoverage(rootStats, b) {
+  const drives = (b.drives || []).map((d) => ({ d, k: path.resolve(d).toLowerCase() }));
+  const by = new Map();
+  for (const [root, s] of Object.entries(rootStats || {})) {
+    const r = path.resolve(root).toLowerCase();
+    const hit = drives.filter(({ k }) => r === k || r.startsWith(k.endsWith(path.sep) ? k : k + path.sep)).sort((x, y) => y.k.length - x.k.length)[0];
+    const label = hit ? (b.driveLabels || {})[hit.d] || hit.d : root;
+    const a = by.get(label) || { label, files: 0, folders: 0, partial: false, denied: false };
+    a.files += s.files;
+    a.folders += s.folders;
+    a.partial = a.partial || !!s.partial;
+    a.denied = a.denied || !!s.denied;
+    by.set(label, a);
+  }
+  return [...by.values()];
+}
+
 function catView(c) {
   const d = c.def;
   const size = c.entries.reduce((n, e) => n + e.s, 0);
@@ -418,6 +454,8 @@ function catView(c) {
     size, count: c.entries.length, status, note, selectable: status === 'ok' && c.entries.length > 0,
     selected: d.level === 'safe' && status === 'ok' && c.entries.length > 0,
     roots: c.roots.slice(0, 12), moreRoots: Math.max(0, c.roots.length - 12),
+    // Full check: how much of each drive (and your own folder) was looked through.
+    coverage: c.coverage || [],
     items: d.perFile ? c.entries.map((e) => ({ id: e.id, name: path.basename(e.p), dir: path.dirname(e.p), size: e.s, at: e.t, cloud: !!e.cloud, dup: !!e.dup })) : undefined,
     last: c.last,
   };
@@ -443,8 +481,8 @@ async function scan(opts = {}, onProgress = () => {}) {
     const tick = makeTicker(onProgress);
     tick({ phase: 'scan', index: 0, total: DEFS.length, name: 'Getting ready', files: 0, bytes: 0 }, true);
     const mode = opts.mode === 'full' ? 'full' : 'quick';
-    const [b, running] = await Promise.all([bases(opts.folders), runningProcs().catch(() => new Set())]);
-    const ctx = { seen: new Set(), files: 0, bytes: 0, tick, index: 0, deadline: 0, mode, b };
+    const [b, running] = await Promise.all([bases(opts.folders, opts.drives), runningProcs().catch(() => new Set())]);
+    const ctx = { seen: new Set(), files: 0, looked: 0, bytes: 0, tick, index: 0, deadline: 0, mode, b };
     const cats = [];
     for (const [i, def] of DEFS.entries()) {
       if (cancelled) break;
@@ -467,6 +505,7 @@ async function scan(opts = {}, onProgress = () => {}) {
       twice.set(k, (twice.get(k) || 0) + 1);
     }
     for (const e of yours) e.dup = twice.get(`${path.basename(e.p).toLowerCase()}|${e.s}`) > 1;
+    for (const c of cats) c.coverage = driveCoverage(c.rootStats, b);
     result = { at: Date.now(), partial: cancelled, mode, cats };
     progress = null;
     return { ok: true, cancelled, result: view() };

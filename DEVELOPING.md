@@ -73,10 +73,26 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
   stops only the PIDs from the last sample that still run the same file. Heavy = ≥ 8 % CPU or ≥ 1 GB, excluding
   Windows, FrameForge and game libraries. Advice (`keep`/`maybe`/`off`) only from names: security, sound/input
   helpers, peripherals/RGB, cloud sync. Startup changes are listed in changes.json while off.
-- Tests: `tests/cleaner.test.js` (also full mode and startup in demo) and `tests/check-ui.test.js` (quick check in the
-  Electron demo: three steps, results window, startup switch, Close it). Read-only runs on this PC: full file check of
-  C: and D: in 25 s (game folders correctly skipped after the `looksInstalled` fix), startup list of 15 programs.
-  Switching a real startup program and closing a real program have only run in demo mode.
+- 1.11.0 — startup switches: 1.10.0 passed `-Value [byte[]](…)` to New-ItemProperty in argument mode, so every real
+  write failed and the switch flipped back (demo mode hid it). `WRITE_PS` now builds the bytes in a variable, `set()`
+  reads the first byte back. Choices to keep off are saved in `settings.startupOff`; `startupWatch()` (main.js, at
+  start and every minute) calls `startup.enforce()`, which switches re-enabled entries off again (changes.json entry +
+  `clean:startupFixed` event) and drops entries whose Run value / startup file is gone. `belongs()`/`appDir()` match a
+  program's processes by its file or its own folder (Discord's Update.exe → app-x\Discord.exe), never a shared folder;
+  `closeStartup()` stops them. `FRAMEFORGE_STARTUP_TEST_ROOT` points the real code at a scratch HKCU key
+  (`tests/startup-registry.test.js` copies PING.EXE as a harmless "startup app"); `FRAMEFORGE_TEST_STARTUP_WATCH` /
+  `FRAMEFORGE_TEST_STARTUP_TAMPER` drive the keep-off path in the demo UI.
+- 1.11.0 — drives: `src/drives.js` lists every lettered drive (Win32_LogicalDisk types 2 and 3) and maps it to its
+  physical disk through WMI associations (Get-Partition missed one of two identical NVMe disks unelevated), then
+  Get-PhysicalDisk for SSD/HDD (SpindleSpeed as fallback), bus and HealthStatus; wear/temperature need admin.
+  `bigFiles` = fixed drives (they have a Recycle Bin), `virus` = every readable drive. The virus full scan
+  (`scanjob.allDrives`) now includes USB sticks/memory cards and records `drives` in the result. The full big-file walk
+  has no time limit; `rootStats` → `driveCoverage()` gives files/folders looked at per drive (your own folder counts
+  toward its drive). Demo: drives C:–F:, with sandbox folders `drives\D` and `drives\E` as extra drives.
+- Tests: `tests/cleaner.test.js` (also full mode, coverage and startup in demo), `tests/startup-registry.test.js`
+  (real registry, scratch key), `tests/check-ui.test.js` (quick check, startup switch, Close it now, keep-off) and
+  `tests/full-check-ui.test.js` (four drive types). Read-only on this PC: C: and D: (two Kingston NVMe SSDs) both
+  listed and looked through completely. Not yet run against real startup entries or a real failing/USB drive.
 - Tests: `node --test tests/cleaner.test.js tests/cleaner-ui.test.js` (sandbox files: locked file, junction out of
   Temp, file changed after the scan, open app, browser data next to its cache, confirm dialog, Recycle Bin move).
   A read-only scan of this PC worked (9.2 GB found in 1.5 s, unelevated); deleting on a real PC has only been run
@@ -366,7 +382,8 @@ Set `FRAMEFORGE_DEMO=1` on Windows to try the UI without touching the system.
 - `src/localai.js` – installs and starts Ollama and downloads local AI models for the chat
 - `src/scanner.js`, `src/scanjob.js` – virus scan (Defender engine), false-positive check, quarantine, protection checks
 - `src/cleaner.js` – Cleaner tab: finds junk and big old files, deletes only what the user ticked
-- `src/startup.js` – Cleaner checks: programs that start with Windows (on/off) and programs using a lot right now
+- `src/startup.js` – Cleaner checks: programs that start with Windows (on/off, kept off) and programs using a lot right now
+- `src/drives.js` – every drive (SSD, HDD, external, USB) with type and health, for the Full check and the virus full scan
 - `src/animations.js` – the Windows animations switch
 - `src/guides.js` – step-by-step instructions for what no app can do (BIOS, cables, dust)
 - `src/updater.js` – update checks, download, fingerprint check, popup events

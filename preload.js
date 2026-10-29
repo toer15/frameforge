@@ -92,6 +92,9 @@ contextBridge.exposeInMainWorld('ff', {
     programs: () => ipcRenderer.invoke('clean:programs'),
     startupSet: (id, on) => ipcRenderer.invoke('clean:startupSet', id, on),
     closeApp: (key) => ipcRenderer.invoke('clean:closeApp', key),
+    closeStartup: (id) => ipcRenderer.invoke('clean:closeStartup', id),
+    drives: (refresh) => ipcRenderer.invoke('clean:drives', !!refresh),
+    onStartupFixed: on('clean:startupFixed'),
     onProgress: on('clean:progress'),
   },
   anim: {

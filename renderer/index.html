@@ -308,7 +308,7 @@
         </div>
         <div class="scan-card">
           <div class="sc-top"><h2>Full scan</h2><span class="sc-time" id="estFull">about 40 min</span></div>
-          <p>Every single file on every internal drive, including games and archives — plus the memory and boot check. Counts the files first so the time left is accurate.</p>
+          <p>Every single file on every drive — internal SSDs and hard drives, external drives and USB sticks — including games and archives, plus the memory and boot check. Counts the files first so the time left is accurate.</p>
           <button class="primary" data-start="full">Start full scan</button>
         </div>
         <div class="scan-card">
@@ -352,7 +352,8 @@
         </div>
         <div class="scan-card">
           <div class="sc-top"><h2>Full check</h2><span class="sc-time" id="ckEstFull">longer</span></div>
-          <p>Everything in the quick check, plus every file on every drive: a full virus scan of all of them, and big files anywhere outside Windows, installed programs and games.</p>
+          <p>Everything in the quick check, plus every file on every drive — each SSD and hard drive, external drives and USB sticks: a full virus scan of all of them, and big files anywhere outside Windows, installed programs and games.</p>
+          <p class="ck-drv" id="ckDrvLine"></p>
           <button class="primary" data-check="full">Start full check</button>
         </div>
       </div>
@@ -363,6 +364,7 @@
         <div class="bar big hidden" id="ckBar"><i></i></div>
         <p class="ck-note hidden" id="ckNote"></p>
       </div>
+      <div id="ckDrives"></div>
       <div id="ckVirus"></div>
       <div id="ckPrograms"></div>
 

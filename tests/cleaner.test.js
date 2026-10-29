@@ -143,6 +143,8 @@ test('Full check finds big files on the whole drive but never inside games, prog
   const big = full.result.cats.find((c) => c.id === 'big_files').items;
   assert.deepEqual(big.map((i) => path.join(i.dir, i.name)), [F.backup], 'only the backup outside Downloads — no game, program, Windows, other user or system file');
   assert.equal(big[0].dup, true, 'the same file is also in Downloads');
+  const cov = full.result.cats.find((c) => c.id === 'big_files').coverage.find((c) => c.label === 'C:\\');
+  assert.ok(cov && cov.files >= 4 && !cov.partial && !cov.denied, 'the whole drive, your own folder included, was looked through');
   assert.equal(full.result.cats.find((c) => c.id === 'old_downloads').items.find((i) => i.name === 'old-backup.iso').dup, true);
 });
 

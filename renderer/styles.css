@@ -920,3 +920,22 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .hv-cpu.bad b { color: var(--bad); }
 .ck-step.found { border-color: rgba(255, 77, 109, 0.5); }
 .ck-step.found .ck-ico { color: var(--bad); }
+
+/* ---------- Cleaner: drives in this PC ---------- */
+.ck-drv { flex: 0 !important; color: var(--coolant) !important; font-weight: 700; font-size: 14px !important; }
+.dv-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.dv-item { display: flex; gap: 14px; padding: 14px 16px; background: var(--panel-2); border-left: 3px solid var(--coolant); }
+.dv-item.warn { border-left-color: var(--warn); }
+.dv-item.bad { border-left-color: var(--bad); background: rgba(255, 77, 109, 0.07); }
+.dv-letter { font: 900 24px var(--display); color: var(--coolant); min-width: 40px; }
+.dv-item.bad .dv-letter { color: var(--bad); }
+.dv-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dv-main h3 { font-size: 16px; font-weight: 700; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dv-main small { color: var(--muted); font-weight: 600; }
+.dv-main .bar { margin: 4px 0 2px; height: 6px; }
+.dv-main .bar i { background: linear-gradient(90deg, var(--coolant), var(--heat-hot) 75%, var(--bad)); background-size: 100% 100%; }
+.dv-main .cl-note { margin: 2px 0 0; }
+.dv-chks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.dv-chk { font-size: 12.5px; font-weight: 700; padding: 1px 8px; border: 1px solid var(--line-2); color: var(--muted); }
+.dv-chk.ok { color: #7ff0b6; border-color: rgba(53, 224, 143, 0.45); }
+.dv-chk.warn { color: #ffd9a8; border-color: rgba(255, 179, 71, 0.5); }

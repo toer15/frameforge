@@ -1,3 +1,10 @@
+**Cleaner: the startup switches really work now, and the Full check covers every drive**
+
+- **Fixed: switching a program off (or on) in "Programs that start with Windows" didn't change anything in Windows** — the switch flipped back. It now writes exactly what Task Manager writes, reads it back to make sure Windows took it, and Task Manager shows the program as Disabled.
+- **FrameForge keeps your choice.** Apps like Spotify or Teams switch themselves back on to start with Windows. FrameForge checks every minute and switches them off again, and tells you when it did.
+- **Close it now:** switching off a program that's open right now shows a **Close it now** button, so it stops straight away instead of only after a restart.
+- **Full check: every drive, every folder.** It now goes through each SSD and hard drive — internal and external — with no time limit, and the virus scan also covers USB sticks and memory cards. The new **Drives in this PC** list shows each drive's type (NVMe SSD, SSD, hard drive, external, USB stick), model, free space and health from Windows, and after a full check how many files were looked at on each drive and whether the virus scan covered it. A drive Windows reports as failing is marked in red, because a failing drive makes the whole PC slow.
+
 **Cleaner: Quick check and Full check — everything that makes your PC slow or lag in games, viruses included**
 
 - The Cleaner tab now has two buttons: **Quick check** (a few minutes) and **Full check** (every file on every drive). Each one runs three steps and shows them live:

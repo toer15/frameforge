@@ -26,6 +26,7 @@ const fplimit = require('./src/fplimit');
 const controllers = require('./src/controllers');
 const cleaner = require('./src/cleaner');
 const startupApps = require('./src/startup');
+const drives = require('./src/drives');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -120,6 +121,10 @@ async function boot() {
   // FPS limiter: put the user's cap back after a restart, or if another tool changed it or RTSS was closed.
   setTimeout(() => limiterWatch(), DEMO ? 1500 : 5000);
   setInterval(() => limiterWatch(), 60 * 1000);
+  // Startup programs switched off in Cleaner: keep them off.
+  setTimeout(() => startupWatch(), DEMO ? 2500 : 6000);
+  setInterval(() => startupWatch(), DEMO && process.env.FRAMEFORGE_TEST_STARTUP_WATCH ? 3000 : 60 * 1000);
+  if (DEMO && process.env.FRAMEFORGE_TEST_STARTUP_TAMPER) setInterval(() => startupApps.demoTamper(process.env.FRAMEFORGE_TEST_STARTUP_TAMPER), 5000); // test: an app switches itself back on
   if (DEMO && process.env.FRAMEFORGE_TEST_ANIM_TAMPER) setTimeout(() => animations.demoTamper(), 20000); // test: another app flips the animations
   setTimeout(() => refreshSecurity().then(() => send('fix:changed', true)).catch(() => {}), DEMO ? 2000 : 8000);
   setInterval(() => refreshSecurity().catch(() => {}), 30 * 60 * 1000);
@@ -1801,10 +1806,13 @@ ipcMain.handle('scan:virusTotal', (_e, sha) => {
 const cleanFolders = () => ({ downloads: app.getPath('downloads'), desktop: app.getPath('desktop'), documents: app.getPath('documents'), videos: app.getPath('videos') });
 ipcMain.handle('clean:state', async () => {
   const lastScan = scanjob.last();
-  return { ...cleaner.state(), disk: await cleaner.disk(), admin: admin || DEMO, stats: settings.get().cleanStats || null, programs: startupApps.view(), estimates: await scanjob.estimates().catch(() => null), virus: { running: scanjob.snapshot(), last: lastScan ? scanjob.summary(lastScan) : null } };
+  return { ...cleaner.state(), disk: await cleaner.disk(), admin: admin || DEMO, stats: settings.get().cleanStats || null, programs: startupApps.view(), estimates: await scanjob.estimates().catch(() => null), virus: { running: scanjob.snapshot(), last: lastScan ? scanjob.summary(lastScan) : null }, drives: await drives.list().catch(() => []) };
 });
+ipcMain.handle('clean:drives', (_e, refresh) => drives.list(!!refresh).catch(() => []));
 ipcMain.handle('clean:scan', async (_e, mode) => {
-  const r = await cleaner.scan({ mode, folders: cleanFolders(), userData: app.getPath('userData') }, (p) => send('clean:progress', p));
+  // Full check: every fixed drive — internal SSDs and hard drives and external drives (USB sticks get the virus scan).
+  const roots = mode === 'full' && !DEMO ? (await drives.list(true).catch(() => [])).filter((d) => d.bigFiles).map((d) => d.root) : null;
+  const r = await cleaner.scan({ mode, drives: roots, folders: cleanFolders(), userData: app.getPath('userData') }, (p) => send('clean:progress', p));
   if (r.ok && !r.cancelled) settings.set({ cleanStats: { ...(settings.get().cleanStats || {}), lastScanAt: Date.now(), lastFound: r.result.found } });
   return { ...r, disk: await cleaner.disk() };
 });
@@ -1832,13 +1840,48 @@ ipcMain.handle('clean:startupSet', async (_e, id, on) => {
   const r = await startupApps.set(id, !!on);
   const it = r.ok && (startupApps.view() || { startup: [] }).startup.find((s) => s.id === id);
   if (it) {
-    if (on) changes.remove(`startup_${id}`);
-    else changes.put(`startup_${id}`, { name: `${it.name} no longer starts with Windows`, summary: `Turned off in Cleaner, the same switch as Task Manager’s Startup apps. Nothing was uninstalled — switch it back on in Cleaner any time.`, details: [`${it.srcLabel}: ${it.rawName}`, it.cmd], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+    // Programs switched off here stay off: startupWatch() switches them off again if they turn themselves back on.
+    const choices = { ...(settings.get().startupOff || {}) };
+    if (on) {
+      delete choices[id];
+      changes.remove(`startup_${id}`);
+    } else {
+      choices[id] = { src: it.src, rawName: it.rawName, name: it.name, at: Date.now() };
+      changes.put(`startup_${id}`, { name: `${it.name} no longer starts with Windows`, summary: `Turned off in Cleaner, the same switch as Task Manager’s Startup apps, and FrameForge keeps it off. Nothing was uninstalled — switch it back on in Cleaner any time.`, details: [`${it.srcLabel}: ${it.rawName}`, it.cmd], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+    }
+    settings.set({ startupOff: choices });
     send('changes', changeList());
   }
   return r;
 });
 ipcMain.handle('clean:closeApp', (_e, key) => startupApps.close(key));
+ipcMain.handle('clean:closeStartup', (_e, id) => startupApps.closeStartup(id));
+
+/** Apps like Spotify or Teams switch their own startup back on. Put the user's choice back (every minute). */
+let startupWatching = false;
+async function startupWatch() {
+  const choices = settings.get().startupOff || {};
+  if (startupWatching || !Object.keys(choices).length) return;
+  startupWatching = true;
+  try {
+    const r = await startupApps.enforce(choices);
+    if (r.gone.length) {
+      const left = { ...choices };
+      for (const id of r.gone) delete left[id]; // uninstalled, or it removed its own startup entry: nothing to keep off
+      settings.set({ startupOff: left });
+    }
+    for (const id of r.fixed) {
+      const c = choices[id];
+      changes.put(`startup_${id}`, { name: `${c.name} no longer starts with Windows`, summary: `${c.name} switched itself back on to start with Windows, so FrameForge switched it off again — your choice in Cleaner wins. Switch it back on there if you want it.`, details: [`Kept off since ${new Date(c.at).toLocaleString()}`, `Turned off again ${new Date().toLocaleString()}`], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+    }
+    if (r.fixed.length) {
+      send('changes', changeList());
+      send('clean:startupFixed', r.fixed.map((id) => ({ id, name: choices[id].name })));
+    }
+  } catch {} finally {
+    startupWatching = false;
+  }
+}
 
 // ---------- Windows animations: one switch, kept the way the user set it ----------
 /** Animations on wins over the older "Performance visual effects" boost: switch that off so the two don't fight. */
