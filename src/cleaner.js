@@ -14,7 +14,20 @@ const GB = 1024 ** 3;
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`; // PowerShell single-quoted string
 // Big-file threshold. Demo mode uses a small one so the generated sample files show up.
 const BIG = DEMO ? Number(process.env.FRAMEFORGE_CLEAN_BIG) || 8 * 1024 * 1024 : GB;
-const USER_SKIP_DIRS = /^(node_modules|\.git|AppData|\$Recycle\.Bin|System Volume Information|steamapps|SteamLibrary|Epic Games|XboxGames|WindowsApps)$/i;
+const USER_SKIP_DIRS = /^(node_modules|\.git|AppData|\$Recycle\.Bin|System Volume Information|steamapps|SteamLibrary|Epic Games|XboxGames|WindowsApps|Riot Games|GOG Games|Paks|romfs|exefs)$/i;
+// Big files inside an installed game or program are part of it: deleting one breaks it. Such folders are skipped.
+const PROGRAM_MARKERS = /^(\.egstore|steam_appid\.txt|UnityPlayer\.dll|GameAssembly\.dll|\.itch|goggame-\d+\.info|installscript\.vdf)$/i;
+const USER_FOLDER_NAMES = /^(downloads?|desktop|documents|videos|pictures|music)$/i;
+function looksInstalled(list, dir, isRoot) {
+  if (list.some((d) => PROGRAM_MARKERS.test(d.name))) return true;
+  if (list.some((d) => d.isDirectory() && /^Engine$/i.test(d.name)) && list.some((d) => d.isDirectory() && /Game$/i.test(d.name))) return true; // Unreal Engine
+  // A folder with its own .exe/.dll files is a program's folder (Downloads and the like hold installers, so not those).
+  return !isRoot && !USER_FOLDER_NAMES.test(path.basename(dir)) && list.some((d) => d.isFile() && /\.(exe|dll)$/i.test(d.name));
+}
+// Full check, top level of each drive: Windows, installed programs, other categories' folders and Users (your own
+// folder is walked separately, so other people's files on this PC are never listed).
+const DRIVE_SKIP_DIRS = /^(Windows|Windows\.old|Program Files|Program Files \(x86\)|ProgramData|Users|Recovery|PerfLogs|MSOCache|Config\.Msi|OneDriveTemp|AMD|NVIDIA|Intel|\$WinREAgent|\$Windows\.~BT|\$Windows\.~WS|\$SysReset|\$GetCurrent)$/i;
+const SYSTEM_FILES = /^(pagefile|hiberfil|swapfile)\.sys$|^DumpStack\.log/i;
 
 const GROUPS = [
   { id: 'windows', name: 'Windows junk' },
@@ -159,11 +172,17 @@ const DEFS = [
     match: /\.(exe|msi|msix|msixbundle|appx|appxbundle|zip|7z|rar|iso|img|tar|gz|tgz)$/i,
     desc: 'Setup files and archives you downloaded more than a month ago — usually the program is installed already. They go to the Recycle Bin, so you can still get them back.',
     roots: (b) => existing([b.downloads]),
+    full: { maxDepth: null },
   },
   {
-    id: 'big_files', group: 'yours', name: `Big files (over ${BIG >= GB ? `${Math.round(BIG / GB)} GB` : `${Math.round(BIG / 1024 / 1024)} MB`})`, level: 'review', perFile: true, method: 'trash', minSize: BIG, skipDir: USER_SKIP_DIRS, budget: 25000,
+    id: 'big_files', group: 'yours', name: `Big files (over ${BIG >= GB ? `${Math.round(BIG / GB)} GB` : `${Math.round(BIG / 1024 / 1024)} MB`})`, level: 'review', perFile: true, method: 'trash', minSize: BIG, skipDir: USER_SKIP_DIRS, skipName: SYSTEM_FILES, skipPrograms: true, budget: 25000,
     desc: 'The biggest files in Downloads, Desktop, Documents and Videos — old game clips, videos, disk images. Only tick what you don’t need any more. They go to the Recycle Bin.',
-    roots: (b) => existing([b.downloads, b.desktop, b.documents, b.videos]),
+    roots: (b, mode) => existing(mode === 'full' ? [b.home, ...b.drives] : [b.downloads, b.desktop, b.documents, b.videos]),
+    full: {
+      budget: 240000,
+      skipDir: (name, dir, root, b) => USER_SKIP_DIRS.test(name) || (dir === root && b.drives.includes(root) && DRIVE_SKIP_DIRS.test(name)),
+      desc: 'Every file over this size on all your drives — outside Windows, installed programs and game libraries: old videos, clips, disk images, backups. Only tick what you don’t need any more. They go to the Recycle Bin.',
+    },
   },
 ];
 
@@ -175,19 +194,19 @@ function demoBases(root) {
   const local = path.join(home, 'AppData', 'Local');
   return {
     home, local, temp: path.join(local, 'Temp'), roaming: path.join(home, 'AppData', 'Roaming'), localLow: path.join(home, 'AppData', 'LocalLow'),
-    windir: path.join(root, 'Windows'), programData: path.join(root, 'ProgramData'), drive: root,
+    windir: path.join(root, 'Windows'), programData: path.join(root, 'ProgramData'), drive: root, drives: [root],
     recycle: [path.join(root, '$Recycle.Bin', 'S-1-5-21-0-0-0-1001')],
     downloads: path.join(home, 'Downloads'), desktop: path.join(home, 'Desktop'), documents: path.join(home, 'Documents'), videos: path.join(home, 'Videos'),
   };
 }
 
-/** The current user's recycle bin folder on every fixed drive (C:\$Recycle.Bin\<SID>). */
-async function recycleDirs() {
+/** Fixed drives (C:\, D:\, …) and the current user's recycle bin folder on each (X:\$Recycle.Bin\<SID>). */
+async function driveDirs() {
   const [who, drives] = await Promise.all([run('whoami', ['/user', '/fo', 'csv', '/nh']), ps('(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3").DeviceID', { timeout: 20000 })]);
   const sid = (who.stdout.match(/"(S-1-[\d-]+)"/) || [])[1];
-  if (!sid) return [];
-  const letters = drives.stdout.split(/\r?\n/).map((s) => s.trim()).filter((s) => /^[A-Z]:$/i.test(s));
-  return (letters.length ? letters : [process.env.SystemDrive || 'C:']).map((d) => path.join(`${d}\\`, '$Recycle.Bin', sid));
+  const letters = drives.stdout.split(/\r?\n/).map((s) => s.trim().toUpperCase()).filter((s) => /^[A-Z]:$/.test(s));
+  const roots = (letters.length ? letters : [process.env.SystemDrive || 'C:']).map((d) => `${d}\\`);
+  return { drives: roots, recycle: sid ? roots.map((d) => path.join(d, '$Recycle.Bin', sid)) : [] };
 }
 
 async function bases(folders = {}) {
@@ -195,10 +214,11 @@ async function bases(folders = {}) {
   const env = process.env;
   const home = env.USERPROFILE || os.homedir();
   const local = env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+  const dd = await driveDirs().catch(() => ({ drives: [`${env.SystemDrive || 'C:'}\\`], recycle: [] }));
   return {
     home, local, temp: env.TEMP || os.tmpdir(), roaming: env.APPDATA || path.join(home, 'AppData', 'Roaming'), localLow: path.join(home, 'AppData', 'LocalLow'),
     windir: env.WINDIR || env.SystemRoot || 'C:\\Windows', programData: env.ProgramData || 'C:\\ProgramData', drive: `${env.SystemDrive || 'C:'}\\`,
-    recycle: await recycleDirs().catch(() => []),
+    drives: dd.drives, recycle: dd.recycle,
     downloads: folders.downloads || path.join(home, 'Downloads'), desktop: folders.desktop || path.join(home, 'Desktop'),
     documents: folders.documents || path.join(home, 'Documents'), videos: folders.videos || path.join(home, 'Videos'),
   };
@@ -297,12 +317,13 @@ async function walk(root, def, cat, ctx) {
       if (dir === root && busyCode(e)) cat.denied++;
       continue;
     }
+    if (def.skipPrograms && looksInstalled(list, dir, dir === root)) continue;
     const files = [];
     for (const d of list) {
       if (d.isSymbolicLink()) continue; // junctions and links point somewhere else: never follow or delete them
       const p = path.join(dir, d.name);
       if (d.isDirectory()) {
-        if (def.skipDir && def.skipDir.test(d.name)) continue;
+        if (typeof def.skipDir === 'function' ? def.skipDir(d.name, dir, root, ctx.b) : def.skipDir && def.skipDir.test(d.name)) continue;
         if (def.maxDepth == null || depth < def.maxDepth) stack.push({ dir: p, depth: depth + 1 });
       } else if (d.isFile() && (!def.match || def.match.test(d.name)) && !(def.skipName && def.skipName.test(d.name))) files.push(p);
     }
@@ -346,10 +367,11 @@ async function cloudCheck(cat) {
   }
 }
 
-async function scanCat(def, b, running, ctx) {
+async function scanCat(base, b, running, ctx) {
+  const def = ctx.mode === 'full' && base.full ? { ...base, ...base.full } : base; // a full check looks further
   const cat = { def, roots: [], entries: [], denied: 0, kept: 0, partial: false, last: null };
   try {
-    cat.roots = await def.roots(b);
+    cat.roots = await def.roots(b, ctx.mode);
   } catch {}
   // A folder can belong to only one category (e.g. TEMP pointing at C:\Windows\Temp).
   cat.roots = cat.roots.filter((r) => {
@@ -396,7 +418,7 @@ function catView(c) {
     size, count: c.entries.length, status, note, selectable: status === 'ok' && c.entries.length > 0,
     selected: d.level === 'safe' && status === 'ok' && c.entries.length > 0,
     roots: c.roots.slice(0, 12), moreRoots: Math.max(0, c.roots.length - 12),
-    items: d.perFile ? c.entries.map((e) => ({ id: e.id, name: path.basename(e.p), dir: path.dirname(e.p), size: e.s, at: e.t, cloud: !!e.cloud })) : undefined,
+    items: d.perFile ? c.entries.map((e) => ({ id: e.id, name: path.basename(e.p), dir: path.dirname(e.p), size: e.s, at: e.t, cloud: !!e.cloud, dup: !!e.dup })) : undefined,
     last: c.last,
   };
 }
@@ -406,7 +428,7 @@ function view() {
   const cats = result.cats.map(catView);
   const sum = (list) => list.filter((c) => c.status !== 'missing').reduce((n, c) => n + c.size, 0);
   // found = everything listed; junk = without the user's own files (those are only suggestions)
-  return { at: result.at, partial: result.partial, cats, groups: GROUPS, found: sum(cats), junk: sum(cats.filter((c) => c.group !== 'yours')) };
+  return { at: result.at, partial: result.partial, mode: result.mode, cats, groups: GROUPS, found: sum(cats), junk: sum(cats.filter((c) => c.group !== 'yours')) };
 }
 
 async function scan(opts = {}, onProgress = () => {}) {
@@ -420,8 +442,9 @@ async function scan(opts = {}, onProgress = () => {}) {
     }
     const tick = makeTicker(onProgress);
     tick({ phase: 'scan', index: 0, total: DEFS.length, name: 'Getting ready', files: 0, bytes: 0 }, true);
+    const mode = opts.mode === 'full' ? 'full' : 'quick';
     const [b, running] = await Promise.all([bases(opts.folders), runningProcs().catch(() => new Set())]);
-    const ctx = { seen: new Set(), files: 0, bytes: 0, tick, index: 0, deadline: 0 };
+    const ctx = { seen: new Set(), files: 0, bytes: 0, tick, index: 0, deadline: 0, mode, b };
     const cats = [];
     for (const [i, def] of DEFS.entries()) {
       if (cancelled) break;
@@ -436,7 +459,15 @@ async function scan(opts = {}, onProgress = () => {}) {
       const ids = new Set(old.entries.map((e) => e.p.toLowerCase()));
       big.entries = big.entries.filter((e) => !ids.has(e.p.toLowerCase()));
     }
-    result = { at: Date.now(), partial: cancelled, cats };
+    // The same file (name and size) in two places: one copy is usually enough.
+    const yours = cats.filter((c) => c.def.perFile).flatMap((c) => c.entries);
+    const twice = new Map();
+    for (const e of yours) {
+      const k = `${path.basename(e.p).toLowerCase()}|${e.s}`;
+      twice.set(k, (twice.get(k) || 0) + 1);
+    }
+    for (const e of yours) e.dup = twice.get(`${path.basename(e.p).toLowerCase()}|${e.s}`) > 1;
+    result = { at: Date.now(), partial: cancelled, mode, cats };
     progress = null;
     return { ok: true, cancelled, result: view() };
   } finally {

@@ -25,6 +25,7 @@ const animations = require('./src/animations');
 const fplimit = require('./src/fplimit');
 const controllers = require('./src/controllers');
 const cleaner = require('./src/cleaner');
+const startupApps = require('./src/startup');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -1798,9 +1799,12 @@ ipcMain.handle('scan:virusTotal', (_e, sha) => {
 
 // ---------- Cleaner: junk files that fill the drive and slow the PC down ----------
 const cleanFolders = () => ({ downloads: app.getPath('downloads'), desktop: app.getPath('desktop'), documents: app.getPath('documents'), videos: app.getPath('videos') });
-ipcMain.handle('clean:state', async () => ({ ...cleaner.state(), disk: await cleaner.disk(), admin: admin || DEMO, stats: settings.get().cleanStats || null }));
-ipcMain.handle('clean:scan', async () => {
-  const r = await cleaner.scan({ folders: cleanFolders(), userData: app.getPath('userData') }, (p) => send('clean:progress', p));
+ipcMain.handle('clean:state', async () => {
+  const lastScan = scanjob.last();
+  return { ...cleaner.state(), disk: await cleaner.disk(), admin: admin || DEMO, stats: settings.get().cleanStats || null, programs: startupApps.view(), estimates: await scanjob.estimates().catch(() => null), virus: { running: scanjob.snapshot(), last: lastScan ? scanjob.summary(lastScan) : null } };
+});
+ipcMain.handle('clean:scan', async (_e, mode) => {
+  const r = await cleaner.scan({ mode, folders: cleanFolders(), userData: app.getPath('userData') }, (p) => send('clean:progress', p));
   if (r.ok && !r.cancelled) settings.set({ cleanStats: { ...(settings.get().cleanStats || {}), lastScanAt: Date.now(), lastFound: r.result.found } });
   return { ...r, disk: await cleaner.disk() };
 });
@@ -1822,6 +1826,19 @@ ipcMain.handle('clean:show', (_e, id) => {
   const f = cleaner.filePath(id);
   if (f && fs.existsSync(f)) shell.showItemInFolder(f);
 });
+// Programs that slow the PC: what starts with Windows, and what uses a lot right now.
+ipcMain.handle('clean:programs', () => startupApps.check());
+ipcMain.handle('clean:startupSet', async (_e, id, on) => {
+  const r = await startupApps.set(id, !!on);
+  const it = r.ok && (startupApps.view() || { startup: [] }).startup.find((s) => s.id === id);
+  if (it) {
+    if (on) changes.remove(`startup_${id}`);
+    else changes.put(`startup_${id}`, { name: `${it.name} no longer starts with Windows`, summary: `Turned off in Cleaner, the same switch as Task Manager’s Startup apps. Nothing was uninstalled — switch it back on in Cleaner any time.`, details: [`${it.srcLabel}: ${it.rawName}`, it.cmd], at: Date.now(), preset: settings.get().preset, undoable: false, reboot: false });
+    send('changes', changeList());
+  }
+  return r;
+});
+ipcMain.handle('clean:closeApp', (_e, key) => startupApps.close(key));
 
 // ---------- Windows animations: one switch, kept the way the user set it ----------
 /** Animations on wins over the older "Performance visual effects" boost: switch that off so the two don't fight. */

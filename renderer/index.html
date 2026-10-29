@@ -337,12 +337,34 @@
       <div class="fix-head">
         <div>
           <h1 class="page-title">Cleaner</h1>
-          <p class="muted">Finds the junk that piles up on a PC and slows it down — temp files, old update downloads, crash dumps, browser and app caches, leftover driver installers — plus big old files of your own. You see what each one is and how much space it takes. Nothing is deleted until you pick it and press Delete.</p>
+          <p class="muted">Checks your PC for what makes it slow or lag in games: junk files, programs that start with Windows, apps eating your CPU or memory, big files you forgot about — and viruses, with Microsoft Defender’s engine. Nothing is deleted or switched off until you choose.</p>
         </div>
-        <button class="primary heat" id="clScanBtn">Scan for junk</button>
+        <button class="ghost small" id="clScanBtn" title="Only look for junk files and big files (takes seconds)">Junk files only</button>
       </div>
 
       <div class="cl-disk" id="clDisk"></div>
+
+      <div class="scan-cards ck-cards" id="ckCards">
+        <div class="scan-card">
+          <div class="sc-top"><h2>Quick check</h2><span class="sc-time" id="ckEstQuick">a few minutes</span></div>
+          <p>Junk files, programs that start with Windows, apps using a lot right now, big files in Downloads, Desktop, Documents and Videos — plus a quick virus scan of everything malware uses to run.</p>
+          <button class="primary heat" data-check="quick">Start quick check</button>
+        </div>
+        <div class="scan-card">
+          <div class="sc-top"><h2>Full check</h2><span class="sc-time" id="ckEstFull">longer</span></div>
+          <p>Everything in the quick check, plus every file on every drive: a full virus scan of all of them, and big files anywhere outside Windows, installed programs and games.</p>
+          <button class="primary" data-check="full">Start full check</button>
+        </div>
+      </div>
+
+      <div class="ck-steps hidden" id="ckSteps" aria-live="polite">
+        <div class="ck-head"><b id="ckTitle"></b><button class="ghost small stop" id="ckStop">Stop check</button></div>
+        <ol class="ck-list" id="ckList"></ol>
+        <div class="bar big hidden" id="ckBar"><i></i></div>
+        <p class="ck-note hidden" id="ckNote"></p>
+      </div>
+      <div id="ckVirus"></div>
+      <div id="ckPrograms"></div>
 
       <div class="scan-run hidden" id="clRun" aria-live="polite">
         <div class="sr-head">
@@ -364,8 +386,8 @@
         <button class="primary heat" id="clDelete" disabled>Delete selected</button>
       </div>
 
-      <div id="clGroups"><div class="cl-empty"><p>Press <b>Scan for junk</b> to see what’s taking up space. Scanning only looks — it doesn’t change anything.</p></div></div>
-      <p class="muted cl-foot">Looking for viruses or other harmful files? Use <button class="link-btn" data-clgoto="scan">Virus scan</button>. Want Windows itself faster? See <button class="link-btn" data-clgoto="tweaks">Tweaks</button>.</p>
+      <div id="clGroups"><div class="cl-empty"><p>Start a <b>quick check</b> or a <b>full check</b> above. Checking only looks — it doesn’t change anything.</p></div></div>
+      <p class="muted cl-foot">More virus options (one folder, a USB stick, scan history) are in <button class="link-btn" data-clgoto="scan">Virus scan</button>. Want Windows itself faster? See <button class="link-btn" data-clgoto="tweaks">Tweaks</button>.</p>
     </section>
 
     <!-- ================= AI CHAT ================= -->
@@ -844,6 +866,19 @@
         <span class="spacer"></span>
         <button class="ghost" id="clmNo">Cancel</button>
         <button class="primary heat" id="clmYes">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cleaner: confirm before closing a program -->
+  <div class="modal hidden" id="hvModal" role="dialog" aria-modal="true" aria-labelledby="hvTitle">
+    <div class="modal-card">
+      <h2 id="hvTitle">Close this program?</h2>
+      <p class="muted" id="hvText"></p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="ghost" id="hvNo">Cancel</button>
+        <button class="primary heat" id="hvYes">Close it</button>
       </div>
     </div>
   </div>

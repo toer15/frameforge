@@ -1,3 +1,11 @@
+**Cleaner: Quick check and Full check — everything that makes your PC slow or lag in games, viruses included**
+
+- The Cleaner tab now has two buttons: **Quick check** (a few minutes) and **Full check** (every file on every drive). Each one runs three steps and shows them live:
+  1. **Junk and big files** — like before. The full check also looks through every folder of Downloads and finds files over 1 GB anywhere on your drives. Files that belong to installed games and programs are never listed, and a file you have twice is marked **Also somewhere else**.
+  2. **Startup and background programs** — every program that starts with Windows, with how much memory it uses, and whether it's fine to switch off (security software and sound/touchpad helpers are marked **Keep on**). Switch one off with its switch: it's the same setting as Task Manager's Startup apps, nothing gets uninstalled, and you can switch it back on any time. Programs using a lot of processor or memory right now are listed with a **Close it** button.
+  3. **Viruses and harmful files** — a quick or full scan with Microsoft Defender's engine: viruses, trojans, crypto-miners (they make games lag), spyware and unwanted programs. When it's done, **Review and remove** opens the results, where you quarantine or delete each one.
+- **Junk files only** still checks just the junk, in seconds.
+
 **New: Cleaner tab — find the junk that slows your PC down and delete it**
 
 - Open **Cleaner** in the sidebar and FrameForge looks through your PC for files you don't need: temp files, old Windows Update downloads, the Delivery Optimization cache, crash dumps (some are several GB), old Windows logs, the thumbnail cache, the driver installers AMD and NVIDIA leave in C:\AMD and C:\NVIDIA, the Recycle Bin, browser caches (Chrome, Edge, Firefox, Brave, Opera, Opera GX, Vivaldi), app caches (Discord, Steam, Epic Games Launcher, Spotify) and graphics shader caches.

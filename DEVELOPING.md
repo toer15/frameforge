@@ -58,6 +58,25 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
   harmless files. `FRAMEFORGE_DEMO_RUNNING=msedge.exe,…` fakes open apps, `FRAMEFORGE_CLEAN_BIG` sets the big-file size;
   "Recycle Bin" moves stay inside the sandbox.
 - Prefetch is deliberately not cleaned (Windows uses it to start apps faster). Malware is the Virus scan's job.
+- **Quick / Full check** (1.10.0, renderer `startCheck` in app.js): `cleaner.scan({ mode })` → `clean:programs`
+  (`src/startup.js`) → `ff.scan.start(mode)` (the Virus scan's own job, so its progress, results window and history
+  are shared; a scan that is already running is reused). `CK.steps` tracks junk/programs/virus; Stop cancels the
+  step that runs. Mode `full` merges each DEF's `full` overrides: Downloads at any depth, and big files on every fixed
+  drive (`b.drives`) plus your own profile — drive tops skip Windows, Program Files, ProgramData, Users (other people's
+  files are never listed) and other categories' folders; `pagefile/hiberfil/swapfile` are skipped. `skipPrograms`
+  (`looksInstalled`) skips folders of installed games/programs: `.egstore`, `steam_appid.txt`, Unity/UE markers,
+  `Paks`/`romfs`, and any non-user folder holding .exe/.dll files. Same name + size twice → `dup`.
+- `src/startup.js`: one PowerShell pass reads Run / Run32 keys (HKCU, HKLM, WOW6432Node) and both Startup folders
+  (.lnk targets resolved), their `StartupApproved` state (first byte even = on, odd = off), file company/description,
+  then samples processes in the user's session for 2 s (CPU from TotalProcessorTime, working set). `set()` writes
+  StartupApproved like Task Manager (02… on, 03 + FILETIME off) and reads it back; HKLM entries need admin. `close()`
+  stops only the PIDs from the last sample that still run the same file. Heavy = ≥ 8 % CPU or ≥ 1 GB, excluding
+  Windows, FrameForge and game libraries. Advice (`keep`/`maybe`/`off`) only from names: security, sound/input
+  helpers, peripherals/RGB, cloud sync. Startup changes are listed in changes.json while off.
+- Tests: `tests/cleaner.test.js` (also full mode and startup in demo) and `tests/check-ui.test.js` (quick check in the
+  Electron demo: three steps, results window, startup switch, Close it). Read-only runs on this PC: full file check of
+  C: and D: in 25 s (game folders correctly skipped after the `looksInstalled` fix), startup list of 15 programs.
+  Switching a real startup program and closing a real program have only run in demo mode.
 - Tests: `node --test tests/cleaner.test.js tests/cleaner-ui.test.js` (sandbox files: locked file, junction out of
   Temp, file changed after the scan, open app, browser data next to its cache, confirm dialog, Recycle Bin move).
   A read-only scan of this PC worked (9.2 GB found in 1.5 s, unelevated); deleting on a real PC has only been run
@@ -347,6 +366,7 @@ Set `FRAMEFORGE_DEMO=1` on Windows to try the UI without touching the system.
 - `src/localai.js` – installs and starts Ollama and downloads local AI models for the chat
 - `src/scanner.js`, `src/scanjob.js` – virus scan (Defender engine), false-positive check, quarantine, protection checks
 - `src/cleaner.js` – Cleaner tab: finds junk and big old files, deletes only what the user ticked
+- `src/startup.js` – Cleaner checks: programs that start with Windows (on/off) and programs using a lot right now
 - `src/animations.js` – the Windows animations switch
 - `src/guides.js` – step-by-step instructions for what no app can do (BIOS, cables, dust)
 - `src/updater.js` – update checks, download, fingerprint check, popup events

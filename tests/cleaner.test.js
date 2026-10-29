@@ -105,3 +105,68 @@ test('Cleaner finds junk, deletes only safe picks and never follows links or tou
     holder.kill();
   }
 });
+
+test('Full check finds big files on the whole drive but never inside games, programs or Windows', { skip: process.platform !== 'win32', timeout: 120000 }, async () => {
+  const root = fs.mkdtempSync(path.join(process.env.FRAMEFORGE_TEST_ARTIFACTS || os.tmpdir(), 'frameforge-cleaner-full-'));
+  process.env.FRAMEFORGE_CLEAN_SANDBOX = root;
+  const h = path.join(root, 'Users', 'Gamer');
+  const F = {
+    backup: path.join(root, 'Backups', 'old-backup.iso'),
+    backupCopy: path.join(h, 'Downloads', 'old-backup.iso'),
+    deepZip: path.join(h, 'Downloads', 'mods', 'pack', 'old-pack.zip'),
+    epicGame: path.join(root, 'Fortnite', 'FortniteGame', 'Content', 'Paks', 'pakchunk1.ucas'),
+    unrealGame: path.join(root, 'MyUE', 'MyGame', 'Content', 'big.pak'),
+    portable: path.join(root, 'PortableApp', 'data.bin'),
+    windows: path.join(root, 'Windows', 'big.bin'),
+    programs: path.join(root, 'Program Files', 'App', 'big.bin'),
+    otherUser: path.join(root, 'Users', 'Someone', 'Videos', 'their.mp4'),
+    pagefile: path.join(root, 'pagefile.sys'),
+  };
+  for (const [k, p] of Object.entries(F)) {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, Buffer.alloc(k === 'deepZip' ? 2048 : 2 * 1024 * 1024, 2));
+  }
+  fs.mkdirSync(path.join(root, 'Fortnite', '.egstore'));
+  fs.mkdirSync(path.join(root, 'MyUE', 'Engine'));
+  fs.writeFileSync(path.join(root, 'PortableApp', 'app.exe'), 'not a real program');
+  await cleaner.ageFiles(Object.values(F).map((p) => ({ p, days: 90 })));
+
+  const names = (r, id) => r.result.cats.find((c) => c.id === id).items.map((i) => i.name).sort();
+  const quick = await cleaner.scan({ mode: 'quick' }, () => {});
+  assert.equal(quick.result.mode, 'quick');
+  assert.deepEqual(names(quick, 'old_downloads'), ['old-backup.iso'], 'quick: only the top of Downloads');
+  assert.deepEqual(names(quick, 'big_files'), [], 'quick: only your main folders');
+
+  const full = await cleaner.scan({ mode: 'full' }, () => {});
+  assert.equal(full.result.mode, 'full');
+  assert.deepEqual(names(full, 'old_downloads'), ['old-backup.iso', 'old-pack.zip'], 'full: every Downloads subfolder');
+  const big = full.result.cats.find((c) => c.id === 'big_files').items;
+  assert.deepEqual(big.map((i) => path.join(i.dir, i.name)), [F.backup], 'only the backup outside Downloads — no game, program, Windows, other user or system file');
+  assert.equal(big[0].dup, true, 'the same file is also in Downloads');
+  assert.equal(full.result.cats.find((c) => c.id === 'old_downloads').items.find((i) => i.name === 'old-backup.iso').dup, true);
+});
+
+test('Startup programs can be switched off and on, heavy programs closed (demo)', async () => {
+  const startup = require('../src/startup');
+  const r = await startup.check();
+  assert.equal(r.ok, true);
+  const by = (n) => r.startup.find((s) => s.name === n);
+  assert.equal(by('Discord').advice, 'off');
+  assert.equal(by('SecurityHealth').advice, 'keep');
+  assert.equal(by('RtkAudUService').advice, 'keep');
+  assert.equal(by('Razer Synapse').advice, 'maybe');
+  assert.equal(by('OneDrive').advice, 'maybe');
+  assert.equal(by('Spotify').on, false, 'already off in Windows');
+  assert.equal(by('Discord').running, true);
+  assert.ok(by('Discord').mem > 0);
+  assert.ok(r.heavy.some((h) => /chrome/i.test(h.path)), 'Chrome uses a lot');
+  assert.equal(r.heavy.some((h) => /wallpaper/i.test(h.path)), false, 'programs in game libraries (the game you play) are not listed');
+  const off = await startup.set(by('Discord').id, false);
+  assert.equal(off.ok, true);
+  assert.equal((await startup.check()).startup.find((s) => s.name === 'Discord').on, false, 'stays off');
+  assert.equal((await startup.set(by('Discord').id, true)).on, true);
+  const chrome = r.heavy.find((h) => /chrome/i.test(h.path));
+  assert.equal((await startup.close(chrome.key)).ok, true);
+  assert.equal((await startup.check()).heavy.some((h) => h.key === chrome.key), false);
+  assert.equal((await startup.set('nope', false)).ok, false);
+});

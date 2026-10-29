@@ -2076,7 +2076,7 @@ function renderCleanDisk() {
 function renderCleanRun(p) {
   $('#clRun').classList.toggle('hidden', !clBusy);
   $('#clScanBtn').disabled = !!clBusy;
-  $('#clScanBtn').textContent = CL ? 'Scan again' : 'Scan for junk';
+  $('#clScanBtn').textContent = clBusy === 'scan' ? 'Checking…' : 'Junk files only';
   if (!clBusy || !p) return;
   if (p.phase === 'clean') {
     $('#clRunTitle').textContent = 'Deleting…';
@@ -2123,6 +2123,7 @@ function cleanRow(c) {
         <label><input type="checkbox" data-clfile="${esc(c.id)}|${esc(f.id)}" ${(clFiles.get(c.id) || new Set()).has(f.id) ? 'checked' : ''} ${dis} />
         <span class="cl-fn"><b>${esc(f.name)}</b><small>${esc(f.dir)}</small></span></label>
         ${f.cloud ? '<span class="tag" title="Also stored in OneDrive — deleting it removes it there too">OneDrive</span>' : ''}
+        ${f.dup ? '<span class="tag review" title="A file with the same name and size is in another folder too — one copy is usually enough">Also somewhere else</span>' : ''}
         <span class="cl-fs"><b>${clSize(f.size)}</b><small>${clAge(f.at)}</small></span>
         <button class="ghost small" data-clshow="${esc(f.id)}">Show</button>
       </div>`).join('')}</div>`
@@ -2182,24 +2183,33 @@ async function refreshClean(autoScan) {
   clDiskInfo = st.disk;
   clBusy = st.busy;
   if (st.result) setCleanResult(st.result, !CL || st.result.at !== CL.at);
+  if (st.programs) PG = st.programs;
+  if (st.estimates) CK_EST = st.estimates;
+  if (st.virus) {
+    VIRUS.running = st.virus.running;
+    VIRUS.last = st.virus.last;
+  }
   renderClean();
+  renderCheck();
+  renderPrograms();
   if (st.busy && st.progress) renderCleanRun(st.progress);
-  if (autoScan && !clAutoScanned && !st.result && !st.busy) {
+  if (autoScan && !clAutoScanned && !st.result && !st.busy && !CK.step) {
     clAutoScanned = true;
-    startCleanScan();
+    startCleanScan('quick');
   }
 }
 
-async function startCleanScan() {
+async function startCleanScan(mode = 'quick') {
   if (clBusy) return;
   clAutoScanned = true;
   clBusy = 'scan';
   clLast = null;
   renderCleanDone(null);
   renderClean();
+  renderCheck();
   renderCleanRun({ phase: 'scan', name: 'Getting ready', index: 0, total: 0 });
   try {
-    const r = await ff.clean.scan();
+    const r = await ff.clean.scan(mode);
     if (!r.ok) toast(r.message || 'Couldn’t scan.');
     else setCleanResult(r.result, true);
     if (r.disk) clDiskInfo = r.disk;
@@ -2208,6 +2218,7 @@ async function startCleanScan() {
   } finally {
     clBusy = null;
     renderClean();
+    renderCheck();
   }
 }
 
@@ -2254,7 +2265,229 @@ function askClean() {
   $('#clmYes').focus();
 }
 
-$('#clScanBtn').onclick = () => startCleanScan();
+/* Quick / full check: junk and big files → startup and background programs → viruses (Defender's quick/full scan) */
+let CK = { mode: null, step: null, steps: {} }; // step: 'junk' | 'programs' | 'virus' | null (finished)
+let CK_EST = null; // virus scan time estimates
+let PG = null; // { startup, heavy, at }
+const VIRUS = { running: null, last: null, done: null };
+const CK_NAME = { quick: 'Quick check', full: 'Full check' };
+
+async function startCheck(mode) {
+  if (CK.step || clBusy) return;
+  CK = { mode, step: 'junk', steps: { junk: 'running', programs: 'pending', virus: 'pending' }, startedAt: Date.now(), note: '' };
+  VIRUS.done = null;
+  renderCheck();
+  await startCleanScan(mode);
+  CK.steps.junk = CL ? (CK.cancelled ? 'stopped' : 'done') : 'failed';
+  if (CK.cancelled) return finishCheck();
+  CK.step = 'programs';
+  CK.steps.programs = 'running';
+  renderCheck();
+  await refreshPrograms();
+  CK.steps.programs = PG && PG.ok !== false ? 'done' : 'failed';
+  if (CK.cancelled) return finishCheck();
+  CK.step = 'virus';
+  CK.steps.virus = 'running';
+  renderCheck();
+  let r;
+  try {
+    r = await ff.scan.start(mode);
+  } catch (err) {
+    r = { ok: false, message: err.message || String(err) };
+  }
+  if (r && r.busy) CK.note = 'A virus scan was already running, so the check uses that one.';
+  else if (r && r.ok === false) {
+    CK.steps.virus = 'failed';
+    CK.note = r.message || 'The virus scan couldn’t start.';
+    return finishCheck();
+  }
+  renderCheck(); // the rest arrives through ff.scan.onProgress / onDone
+}
+
+function finishCheck() {
+  CK.step = null;
+  CK.endedAt = Date.now();
+  renderCheck();
+  if (CK.steps.virus !== 'done' && CK.steps.virus !== 'found') return;
+  const open = VIRUS.done && VIRUS.done.open;
+  toast(`${CK_NAME[CK.mode]} finished${open ? ` — ${open} threat${open === 1 ? '' : 's'} to remove` : ''}.`, 5000);
+}
+
+async function stopCheck() {
+  if (!CK.step) return;
+  CK.cancelled = true;
+  if (CK.step === 'junk') await ff.clean.cancel();
+  if (CK.step === 'virus') await ff.scan.cancel();
+  renderCheck();
+}
+
+async function refreshPrograms() {
+  try {
+    PG = await ff.clean.programs();
+  } catch (err) {
+    PG = { ok: false, message: err.message || String(err), startup: [], heavy: [] };
+  }
+  renderPrograms();
+}
+
+function stepLine(id, title, detail) {
+  const s = CK.steps[id] || 'pending';
+  const ico = s === 'done' ? ICONS.done : s === 'running' ? ICONS.running : s === 'failed' || s === 'stopped' || s === 'found' ? ICONS.warn : '<span class="ck-dot"></span>';
+  return `<li class="ck-step ${s}" data-step="${id}"><span class="ck-ico">${ico}</span><div><b>${title}</b><small>${esc(detail)}</small></div></li>`;
+}
+
+function renderCheck() {
+  const busyNow = !!(CK.step || clBusy);
+  $$('#ckCards [data-check]').forEach((b) => (b.disabled = busyNow || !!VIRUS.running));
+  $('#ckCards').classList.toggle('busy', busyNow);
+  if (CK_EST) {
+    $('#ckEstQuick').textContent = `about ${mins(Math.round(CK_EST.quick.sec + 20))}`;
+    $('#ckEstFull').textContent = `about ${mins(Math.round(CK_EST.full.sec + 60))}`;
+  }
+  const box = $('#ckSteps');
+  box.classList.toggle('hidden', !CK.mode);
+  if (CK.mode) {
+    const startN = PG && PG.startup ? PG.startup.filter((s) => s.on).length : 0;
+    const v = VIRUS.running;
+    const d = VIRUS.done;
+    const junkDetail = CK.steps.junk === 'running' ? 'Looking through your folders…' : CL ? `${clSize(CL.junk || 0)} of junk${CL.cats.filter((c) => c.perFile).reduce((n, c) => n + c.count, 0) ? ` · ${CL.cats.filter((c) => c.perFile).reduce((n, c) => n + c.count, 0)} big or old files of yours to check` : ''}` : CK.steps.junk === 'pending' ? 'Waiting' : 'Didn’t finish';
+    const pgDetail = CK.steps.programs === 'running' ? 'Reading startup programs and measuring what runs…' : CK.steps.programs === 'done' ? `${startN} start${startN === 1 ? 's' : ''} with Windows · ${PG.heavy.length} using a lot right now` : CK.steps.programs === 'failed' ? (PG && PG.message) || 'Couldn’t read them' : 'Waiting';
+    const vDetail = CK.steps.virus === 'running'
+      ? v ? `${v.phaseText || 'Scanning…'}${v.filesTotal ? ` · ${(v.filesDone || 0).toLocaleString()} of ${v.filesTotal.toLocaleString()} files` : ''}${v.etaSec != null && v.filesTotal ? ` · about ${mins(v.etaSec)} left` : ''}${v.found ? ` · ${v.found} found so far` : ''}` : 'Starting…'
+      : (CK.steps.virus === 'done' || CK.steps.virus === 'found') && d ? (d.open ? `${d.open} threat${d.open === 1 ? '' : 's'} to remove` : 'No viruses found') + ` · ${(d.filesChecked || 0).toLocaleString()} files checked`
+      : CK.steps.virus === 'failed' ? CK.note || 'The virus scan couldn’t run' : CK.steps.virus === 'stopped' ? 'Stopped' : 'Waiting';
+    $('#ckTitle').textContent = `${CK_NAME[CK.mode]}${CK.step ? ' — checking…' : CK.cancelled ? ' — stopped' : ' — finished'}`;
+    $('#ckStop').classList.toggle('hidden', !CK.step);
+    $('#ckList').innerHTML = stepLine('junk', 'Junk and big files', junkDetail) + stepLine('programs', 'Startup and background programs', pgDetail) + stepLine('virus', 'Viruses and harmful files', vDetail);
+    $('#ckBar').classList.toggle('hidden', !(CK.step === 'virus' && v));
+    if (v) $('#ckBar i').style.width = `${Math.round((v.pct || 0) * 100)}%`;
+    $('#ckNote').classList.toggle('hidden', !CK.note);
+    $('#ckNote').textContent = CK.note || '';
+  }
+  renderVirus();
+}
+
+function renderVirus() {
+  const el = $('#ckVirus');
+  const v = VIRUS.running;
+  const d = VIRUS.done || VIRUS.last;
+  if (!v && !d) return (el.innerHTML = '');
+  let body;
+  if (v) {
+    body = `<div class="ck-vrow"><span class="spin"></span><div><b>${esc(SCANNAME[v.type] || 'Virus scan')} running${v.paused ? ' — paused' : ''}</b><small>${esc(v.phaseText || '')}</small></div>
+      <span class="ck-vnum ${v.found ? 'bad' : ''}"><b>${v.found || 0}</b>found so far</span></div>`;
+  } else {
+    const open = d.open || 0;
+    body = `<div class="ck-vrow ${open ? 'bad' : 'ok'}"><span class="ck-ico">${open ? ICONS.warn : ICONS.done}</span>
+      <div><b>${open ? `${open} virus${open === 1 ? '' : 'es'} or harmful file${open === 1 ? '' : 's'} to remove` : 'No viruses or harmful files found'}</b>
+      <small>${esc(SCANNAME[d.type] || 'Scan')} · ${(d.filesChecked || 0).toLocaleString()} files checked${d.endedAt ? ` · ${esc(ago(d.endedAt))}` : ''}${d.cancelled ? ' · stopped early' : ''}</small></div>
+      <button class="${open ? 'primary heat' : 'ghost'} small" id="ckReview">${open ? 'Review and remove' : 'See results'}</button></div>`;
+  }
+  el.innerHTML = `<h2 class="fix-sub">Viruses and harmful files</h2>${body}
+    <p class="muted ck-lead">Microsoft Defender’s engine looks for viruses, trojans, crypto-miners (they make games lag), spyware and unwanted programs. Each find is checked for false alarms; then you pick Quarantine, Delete or Keep.</p>`;
+}
+
+function renderPrograms() {
+  const el = $('#ckPrograms');
+  if (!PG) return (el.innerHTML = '');
+  if (PG.ok === false && !(PG.startup || []).length) return (el.innerHTML = `<h2 class="fix-sub">Programs that slow your PC</h2><p class="cl-note">${esc(PG.message || 'Couldn’t read them.')}</p>`);
+  const tag = (s) => (s.advice === 'keep' ? '<span class="tag safe">Keep on</span>' : s.advice === 'maybe' ? '<span class="tag review">Your choice</span>' : '<span class="tag rec">Can be turned off</span>');
+  const onCount = PG.startup.filter((s) => s.on).length;
+  const canOff = PG.startup.filter((s) => s.on && s.advice === 'off').length;
+  const rows = PG.startup.map((s) => `<div class="cl-item pg ${s.advice} ${s.on ? '' : 'is-off'}" data-pg="${esc(s.id)}">
+      <label class="switch" title="${s.on ? 'Starts with Windows' : 'Doesn’t start with Windows'}"><input type="checkbox" data-pgstart="${esc(s.id)}" ${s.on ? 'checked' : ''} aria-label="${esc(s.name)} starts with Windows" /><span></span></label>
+      <div class="cl-main">
+        <h3>${esc(s.name)}${s.on ? tag(s) : '<span class="tag">Turned off</span>'}${s.running ? '<span class="tag">Running now</span>' : ''}</h3>
+        <p>${esc([s.desc && s.desc !== s.name ? s.desc : '', s.company].filter(Boolean).join(' · ') || s.exe)} · ${esc(s.srcLabel)}</p>
+        <p class="${s.advice === 'keep' ? 'cl-res ok' : 'cl-note'}">${esc(s.adviceText)}</p>
+        <details><summary>What it runs</summary><ul class="ch-exact"><li><code>${esc(s.cmd)}</code></li></ul></details>
+      </div>
+      <div class="cl-size"><b>${s.running ? clSize(s.mem) : '—'}</b><small>${s.running ? `memory${s.cpu >= 1 ? ` · ${s.cpu}% CPU` : ''}` : 'not running'}</small></div>
+    </div>`).join('');
+  const heavy = PG.heavy.map((h) => `<div class="cl-item hv" data-hv="${esc(h.key)}">
+      <span class="hv-cpu ${h.cpu >= 15 ? 'bad' : ''}"><b>${Math.round(h.cpu)}%</b>CPU</span>
+      <div class="cl-main">
+        <h3>${esc(h.name)}${h.count > 1 ? `<span class="tag">${h.count} processes</span>` : ''}</h3>
+        <p>Uses ${Math.round(h.cpu)}% of your processor and ${clSize(h.mem)} of memory right now — that’s taken away from your games. Close it before you play.</p>
+        <details><summary>File</summary><ul class="ch-exact"><li><code>${esc(h.path)}</code></li></ul></details>
+      </div>
+      <div class="cl-size"><button class="ghost small stop" data-hvclose="${esc(h.key)}">Close it</button></div>
+    </div>`).join('');
+  el.innerHTML = `<h2 class="fix-sub">Programs that start with Windows <span class="counts">${cnt(onCount, 'on', 'warn')}${cnt(canOff, 'can be turned off', 'on')}</span><button class="ghost small ck-again" id="pgAgain">Check again</button></h2>
+    <p class="muted ck-lead">Each one starts when you turn on the PC, makes start-up slower and keeps running in the background while you play. Switching one off doesn’t uninstall it — it waits until you open it.</p>
+    <div class="cl-list">${rows || '<div class="fix-ok">Nothing starts with Windows.</div>'}</div>
+    <h2 class="fix-sub">Using a lot right now <span class="counts">${cnt(PG.heavy.length, 'program' + (PG.heavy.length === 1 ? '' : 's'), 'warn')}</span></h2>
+    <div class="cl-list">${heavy || '<div class="fix-ok">Nothing is using a lot of processor or memory right now.</div>'}</div>`;
+}
+
+$$('#ckCards [data-check]').forEach((b) => b.addEventListener('click', () => startCheck(b.dataset.check)));
+$('#ckStop').onclick = () => stopCheck();
+$('#ckVirus').addEventListener('click', (e) => {
+  if (e.target.closest('#ckReview')) openResults();
+});
+$('#ckPrograms').addEventListener('change', async (e) => {
+  const box = e.target.closest('[data-pgstart]');
+  if (!box) return;
+  const id = box.dataset.pgstart;
+  const on = box.checked;
+  box.disabled = true;
+  try {
+    const r = await ff.clean.startupSet(id, on);
+    toast(r.message, 5000);
+    const it = PG.startup.find((s) => s.id === id);
+    if (r.ok && it) it.on = r.on;
+    else box.checked = !on;
+  } catch (err) {
+    box.checked = !on;
+    toast(`Couldn’t change it: ${err.message || err}`, 5000);
+  }
+  renderPrograms();
+  refreshChanges().catch(() => {});
+});
+let hvPending = null;
+$('#ckPrograms').addEventListener('click', (e) => {
+  if (e.target.closest('#pgAgain')) {
+    e.target.closest('#pgAgain').disabled = true;
+    e.target.closest('#pgAgain').textContent = 'Checking…';
+    return refreshPrograms();
+  }
+  const b = e.target.closest('[data-hvclose]');
+  if (!b) return;
+  const h = PG.heavy.find((x) => x.key === b.dataset.hvclose);
+  if (!h) return;
+  hvPending = h.key;
+  $('#hvTitle').textContent = `Close ${h.name}?`;
+  $('#hvText').textContent = `All ${h.count > 1 ? `${h.count} of its processes` : 'of it'} will be closed. Anything unsaved in it is lost. It opens again the next time you start it${PG.startup.some((s) => s.on && s.exe.toLowerCase() === h.key) ? ' or turn on the PC' : ''}.`;
+  $('#hvModal').classList.remove('hidden');
+  $('#hvYes').focus();
+});
+$('#hvNo').onclick = () => $('#hvModal').classList.add('hidden');
+$('#hvYes').onclick = async () => {
+  const key = hvPending;
+  hvPending = null;
+  $('#hvModal').classList.add('hidden');
+  if (!key) return;
+  const r = await ff.clean.closeApp(key);
+  toast(r.message, 5000);
+  if (r.ok) PG.heavy = PG.heavy.filter((x) => x.key !== key);
+  renderPrograms();
+};
+ff.scan.onProgress((p) => {
+  if (!p) return;
+  VIRUS.running = p;
+  renderCheck();
+});
+ff.scan.onDone((d) => {
+  VIRUS.running = null;
+  if (d && d.ok) VIRUS.done = d;
+  if (CK.step === 'virus') {
+    CK.steps.virus = d && d.ok ? (d.cancelled || CK.cancelled ? 'stopped' : d.open ? 'found' : 'done') : 'failed';
+    if (d && !d.ok) CK.note = d.message || 'The virus scan couldn’t run.';
+    finishCheck();
+  } else renderCheck();
+});
+
+$('#clScanBtn').onclick = () => startCleanScan('quick');
 $('#clStop').onclick = () => ff.clean.cancel();
 $('#clDelete').onclick = () => askClean();
 $('#clmNo').onclick = () => $('#clModal').classList.add('hidden');
