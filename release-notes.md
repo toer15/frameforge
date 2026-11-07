@@ -1,4 +1,5 @@
-**Extreme Performance mode — every boost on, zero lag in any game**
+**Extreme Performance mode — every boost on, zero lag in any game** *(1.12.1)*
+
 
 - **New: Extreme Performance preset** — the most aggressive mode FrameForge has. Everything from Competitive, all turned on, plus:
   - **Windows Search indexing off** — disk and CPU stay free for your game instead of indexing files in the background
