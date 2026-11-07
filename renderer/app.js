@@ -202,6 +202,7 @@ ff.onDone(async (d) => {
   $('#restartBtn').classList.toggle('hidden', !d.needsReboot);
   if (d.kept) toast('Auto Mode is off. Your changes are still active — they’re listed under “What FrameForge changed”.');
   else if (d.stopped) toast(d.active ? `Stopped. ${d.active} boost${d.active === 1 ? '' : 's'} kept — turn Auto Mode off to undo.` : 'Stopped. Nothing was changed.');
+  else if (d.unresolved > 0) toast(`${d.unresolved} step${d.unresolved === 1 ? ' still needs' : 's still need'} attention. Open Fix mode for details.`, 6000);
   else if (!d.quiet) toast(d.on ? `Auto Mode is on. Your PC is tuned for ${presetName()}.` : 'Everything FrameForge changed is back to how it was.');
   if (INFO) INFO.active = d.active;
   refreshChanges();
@@ -634,7 +635,7 @@ function showView(name) {
 }
 
 // Problems that were in the list and then disappeared = fixed (by Fix everything, a button, Auto Mode or the AI).
-const FIXED_NOW = new Map(); // id -> { title, at }
+const FIXED_NOW = new Map(); // id -> { title, at, verified? }
 const FIRST_SEEN = new Map(); // id -> fixedTitle from when the problem first showed up (keeps e.g. "19 settings")
 let lastFixIds = null;
 function renderFixedNow() {
@@ -673,7 +674,7 @@ async function refreshFixOnce() {
   if (prev && lastFixIds) {
     for (const [id, it] of prev) {
       if (ids.has(id) || id === 'restart') continue;
-      FIXED_NOW.set(id, { title: FIRST_SEEN.get(id) || it.fixedTitle || it.title, at: Date.now() });
+      if (!FIXED_NOW.has(id)) FIXED_NOW.set(id, { title: FIRST_SEEN.get(id) || it.fixedTitle || it.title, at: Date.now() });
       FIRST_SEEN.delete(id);
       const card = $(`#fixList [data-fix="${CSS.escape(id)}"]`);
       if (card) card.classList.add('leaving');
@@ -681,7 +682,9 @@ async function refreshFixOnce() {
     if ($$('#fixList .leaving').length) await new Promise((r) => setTimeout(r, 420));
   }
   for (const it of items) {
-    FIXED_NOW.delete(it.id); // it came back: not fixed after all
+    const fixed = FIXED_NOW.get(it.id);
+    // An older failure snapshot can arrive while a verified retry is being recorded.
+    if (!fixed?.verified || !it.at || it.at > fixed.at) FIXED_NOW.delete(it.id);
     if (!FIRST_SEEN.has(it.id)) FIRST_SEEN.set(it.id, it.fixedTitle);
   }
   lastFixIds = ids;
@@ -867,7 +870,13 @@ ff.fix.onAll((e) => {
   }
 });
 ff.fix.onAuto((a) => {
-  if (a && a.fixed && a.fixed.length) toast(`Fixed by itself: ${a.fixed.join(' · ')}`, 6000);
+  if (!a?.fixed?.length) return;
+  if (a.why === 'tweak-recovery' && a.stepId) {
+    FIXED_NOW.set(`step_${a.stepId}`, { title: a.fixed[0], at: Date.now(), verified: true });
+    renderFixedNow();
+    refreshFix();
+  }
+  toast(`Fixed by itself: ${a.fixed.join(' · ')}`, 6000);
 });
 
 /* Restart countdown — FrameForge restarts the PC itself when a fix needs it (you can cancel). */

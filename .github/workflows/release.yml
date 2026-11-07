@@ -43,9 +43,9 @@ jobs:
       - run: npm ci
         if: steps.check.outputs.skip != 'true'
 
-      - name: Check sensor performance mode
+      - name: Check Fix Mode recovery and sensor performance
         if: steps.check.outputs.skip != 'true'
-        run: node --test tests/sensors-performance.test.js
+        run: node --test tests/fix-recovery.test.js tests/sensors-performance.test.js
 
       - name: Build installer and publish release
         if: steps.check.outputs.skip != 'true'

@@ -554,11 +554,11 @@ const NEW = [
     desc: 'Windows Search constantly scans your files in the background. With it off, your disk and CPU stay free for games. You can still search — it just won’t index ahead of time. Needs a restart.',
     admin: true,
     reboot: true,
-    ...registryTweak([{ key: `${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\WSearch`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 }]),
+    ...registryTweak([{ key: `${HKLM}\\SYSTEM\\CurrentControlSet\\Services\\WSearch`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 }]),
     async after(on) {
       if (on) await run('sc', ['stop', 'WSearch']);
       else {
-        const st = await reg.get(`${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\WSearch`, 'Start');
+        const st = await reg.get(`${HKLM}\\SYSTEM\\CurrentControlSet\\Services\\WSearch`, 'Start');
         if (st.exists && toNum(st.data) === 2) await run('sc', ['start', 'WSearch']);
       }
     },
@@ -570,8 +570,8 @@ const NEW = [
     desc: 'Delivery Optimization lets your PC upload Windows updates to other PCs over the internet. Turning it off saves bandwidth and stops background network use while you play online games.',
     admin: true,
     ...registryTweak([
-      { key: `${HKLM}\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\DeliveryOptimization`, name: 'DownloadMode', type: 'REG_DWORD', data: 0, def: 3 },
-      { key: `${HKLM}\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\DeliveryOptimization\\\\Settings`, name: 'DownloadMode', type: 'REG_DWORD', data: 0, def: 3 },
+      { key: `${HKLM}\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization`, name: 'DownloadMode', type: 'REG_DWORD', data: 0, def: 3 },
+      { key: `${HKLM}\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization\\Settings`, name: 'DownloadMode', type: 'REG_DWORD', data: 0, def: 3 },
     ]),
   },
   {
@@ -581,18 +581,18 @@ const NEW = [
     desc: 'Stops Windows from sending diagnostic data and telemetry in the background. Frees a little CPU and disk, and reduces background network traffic while gaming.',
     admin: true,
     ...registryTweak([
-      { key: `${HKLM}\\\\SOFTWARE\\\\Policies\\\\Microsoft\\\\Windows\\\\DataCollection`, name: 'AllowTelemetry', type: 'REG_DWORD', data: 0, def: 1 },
-      { key: `${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\DiagTrack`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 },
-      { key: `${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\dmwappushservice`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 },
+      { key: `${HKLM}\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection`, name: 'AllowTelemetry', type: 'REG_DWORD', data: 0, def: 1 },
+      { key: `${HKLM}\\SYSTEM\\CurrentControlSet\\Services\\DiagTrack`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 },
+      { key: `${HKLM}\\SYSTEM\\CurrentControlSet\\Services\\dmwappushservice`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 },
     ]),
     async after(on) {
       if (on) {
         await run('sc', ['stop', 'DiagTrack']);
         await run('sc', ['stop', 'dmwappushservice']);
       } else {
-        const d = await reg.get(`${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\DiagTrack`, 'Start');
+        const d = await reg.get(`${HKLM}\\SYSTEM\\CurrentControlSet\\Services\\DiagTrack`, 'Start');
         if (d.exists && toNum(d.data) === 2) await run('sc', ['start', 'DiagTrack']);
-        const w = await reg.get(`${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\dmwappushservice`, 'Start');
+        const w = await reg.get(`${HKLM}\\SYSTEM\\CurrentControlSet\\Services\\dmwappushservice`, 'Start');
         if (w.exists && toNum(w.data) === 2) await run('sc', ['start', 'dmwappushservice']);
       }
     },

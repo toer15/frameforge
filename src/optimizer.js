@@ -24,8 +24,9 @@ function regDetails(values, entries = []) {
 const toNum = (d) => (typeof d === 'number' ? d >>> 0 : /^0x/i.test(String(d)) ? parseInt(d, 16) >>> 0 : parseInt(d, 10) >>> 0);
 /** Does the registry value read back equal what the tweak writes? DWORDs compare as numbers. */
 function sameValue(v, cur) {
-  if (!cur || !cur.exists) return false;
+  if (!cur || !cur.exists || cur.type !== v.type) return false;
   if (v.type === 'REG_DWORD') return toNum(cur.data) === toNum(v.data);
+  if (v.type === 'REG_BINARY') return String(cur.data).toLowerCase() === String(v.data).toLowerCase();
   return String(cur.data) === String(v.data);
 }
 const showData = (v) => (v.type === 'REG_DWORD' && toNum(v.data) === 0xffffffff ? '0xffffffff' : String(v.data));
@@ -671,7 +672,7 @@ function planned({ quiet = false, rig }) {
 }
 
 /** Apply one tweak. Returns { status, message }. */
-async function runOne(t, { admin, progress } = {}) {
+async function runOne(t, { admin, progress, verify = false } = {}) {
   let res;
   if (t.admin && !admin) {
     res = { ok: false, warn: true, message: 'Skipped — needs FrameForge to run as administrator.' };
@@ -679,7 +680,9 @@ async function runOne(t, { admin, progress } = {}) {
     // Test hook: reproduce a real winutil failure once.
     runOne.failedOnce = true;
     await sleep(150);
-    res = { ok: false, warn: true, fix: 'ctt', message: 'Most of the Standard preset ran, but winutil reported a problem: [Tweaks] WPFTweaksServices: timed out after 300 s. Open Fix mode to retry it or open the Chris Titus tool.', details: ['Error: [Tweaks] WPFTweaksServices: timed out after 300 s', 'Tweaks: 1 error(s)', 'Full winutil log: C:\\Users\\Tommy\\AppData\\Local\\winutil\\logs\\winutil_2026-10-20_19-01-40.log'], failedIds: ['WPFTweaksServices'] };
+    res = t.id === 'ctt_tweaks'
+      ? { ok: false, warn: true, fix: 'ctt', message: 'Most of the Standard preset ran, but winutil reported a problem: [Tweaks] WPFTweaksServices: timed out after 300 s. Open Fix mode to retry it or open the Chris Titus tool.', details: ['Error: [Tweaks] WPFTweaksServices: timed out after 300 s', 'Tweaks: 1 error(s)', 'Full winutil log: C:\\Users\\Tommy\\AppData\\Local\\winutil\\logs\\winutil_2026-10-20_19-01-40.log'], failedIds: ['WPFTweaksServices'] }
+      : { ok: false, message: 'The first attempt failed in demo mode.' };
   } else if (DEMO && t.id === 'ctt_tweaks') {
     res = await t.apply({ progress });
   } else if (DEMO) {
@@ -695,9 +698,18 @@ async function runOne(t, { admin, progress } = {}) {
       res = { ok: false, warn: locked, locked, message: String(e.message || e).slice(0, 300) };
     }
   }
+  let verified = false;
+  if (res.ok && verify) {
+    try {
+      verified = DEMO ? !!backup.get(t.id) : (await t.isOn()) === true;
+    } catch {
+      // A saved undo backup does not prove that Windows accepted the change.
+    }
+    if (!verified) res = { ...res, ok: false, message: `Windows did not confirm the saved settings for ${t.name}.` };
+  }
   let message = res.message || '';
   if (res.ok && (!message || message === 'Done.')) message = t.desc.split(/(?<=\.)\s/)[0]; // first sentence of what it does
-  return { status: res.ok ? 'done' : res.warn ? 'warn' : 'error', message, reboot: res.ok && (!!t.reboot || !!res.rebootNow), details: res.details || [], fix: res.fix || null, adminSkipped: t.admin && !admin, locked: !!res.locked, failedIds: res.failedIds || [] };
+  return { status: res.ok ? 'done' : res.warn ? 'warn' : 'error', message, verified, reboot: res.ok && (!!t.reboot || !!res.rebootNow), details: res.details || [], fix: res.fix || null, adminSkipped: t.admin && !admin, locked: !!res.locked, failedIds: res.failedIds || [] };
 }
 
 /** Turn Auto Mode off: undo everything in reverse order. */

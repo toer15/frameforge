@@ -80,7 +80,10 @@ test('Quick check runs junk, programs and virus steps; startup switch and Close 
     await delay(3000);
     await shot('check-running.png');
     const done = await evaluate(`(async () => {
-      for (let i = 0; i < 600 && CK.step; i++) await new Promise(r => setTimeout(r, 100));
+      const modal = document.querySelector('#scanModal');
+      for (let i = 0; i < 600 && (CK.step || (VIRUS.done?.open && modal.classList.contains('hidden'))); i++) {
+        await new Promise(r => setTimeout(r, 100));
+      }
       return { step: CK.step, steps: { ...CK.steps }, title: document.querySelector('#ckTitle').textContent, virus: document.querySelector('#ckVirus').textContent,
         results: !document.querySelector('#scanModal').classList.contains('hidden'), open: VIRUS.done && VIRUS.done.open,
         startup: [...document.querySelectorAll('[data-pgstart]')].map(b => b.closest('.cl-item').querySelector('h3').textContent),

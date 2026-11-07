@@ -551,7 +551,7 @@ function checkStop() {
   if (stopRequested) throw new Stopped();
 }
 
-function tweakPhase(t) {
+function tweakPhase(t, { recover = false, cancellable = false } = {}) {
   return async () => {
     const isCtt = t.id === 'ctt_tweaks';
     step({ id: t.id, name: t.name, status: 'running', message: isCtt ? `Downloading the latest Chris Titus tool and running his ${settings.get().cttPreset} preset — takes a few minutes, and finishes even if you press Stop.` : '' });
@@ -562,7 +562,23 @@ function tweakPhase(t) {
       lastLive = Date.now();
       step({ id: t.id, name: t.name, status: 'running', message: line });
     };
-    const r = await optimizer.runOne(t, { admin, progress });
+    // Registry tweaks save their original values before writing and can check every value afterwards.
+    const verify = Array.isArray(t.values) && t.values.length > 0 && typeof t.isOn === 'function' && !t.oneShot && !t.overclock && !t.fixOnly;
+    const apply = () => optimizer.runOne(t, { admin, progress, verify });
+    let r = await apply();
+    let recovered = false;
+    if (recover && verify && r.status !== 'done' && !r.adminSkipped && !r.locked && settings.get().autoFix && (!cancellable || !stopRequested)) {
+      const firstFailure = r.message;
+      step({ id: t.id, name: t.name, status: 'running', message: 'Fix Mode is retrying this tweak and checking the saved settings.' });
+      r = await apply();
+      recovered = r.status === 'done' && r.verified === true;
+      if (recovered) r.message = `Fixed automatically and verified. ${r.message}`;
+      else if (r.status !== 'done') {
+        r.details = [`First attempt: ${firstFailure}`, ...(r.details || [])];
+        r.message = `Automatic retry did not finish. ${r.message}`;
+        bgTried.set(`step_${t.id}`, Date.now());
+      }
+    }
     step({ id: t.id, name: t.name, status: r.status, message: r.message });
     if (isCtt && r.status !== 'error' && settings.get().cttOpenAfter && !runQuiet) {
       try {
@@ -573,7 +589,16 @@ function tweakPhase(t) {
       }
     }
     if (r.status === 'done') problems.remove(t.id);
-    else if (!r.locked) problems.put(t.id, { id: t.id, name: t.name, status: r.status, message: r.message, details: r.details, fix: r.fix, adminSkipped: r.adminSkipped, failedIds: r.failedIds || [], at: Date.now() });
+    else {
+      const previous = problems.all()[t.id];
+      if (!r.locked || previous) {
+        problems.put(t.id, {
+          id: t.id, name: t.name, status: r.status, message: r.message, details: r.details,
+          fix: r.fix, adminSkipped: r.adminSkipped, locked: r.locked, failedIds: r.failedIds || [], at: Date.now(),
+          fromAutoMode: cancellable || (!recover && !!previous?.fromAutoMode),
+        });
+      }
+    }
     // Remember settings this PC locks, so the Tweaks tab can say so instead of offering a switch that can't work.
     const locked = { ...(settings.get().lockedTweaks || {}) };
     if (r.locked) locked[t.id] = r.message;
@@ -588,11 +613,12 @@ function tweakPhase(t) {
         at: Date.now(),
         preset: settings.get().preset,
         undoable: !t.oneShot,
-        reboot: !!t.reboot,
+        reboot: !!r.reboot,
       });
       send('changes', changeList());
     }
-    return { reboot: r.reboot, status: r.status, message: r.message, locked: r.locked };
+    if (recovered) send('fix:auto', { fixed: [t.name], stepId: t.id, why: 'tweak-recovery' });
+    return { reboot: r.reboot, status: r.status, message: r.message, locked: r.locked, verified: verify ? r.verified : undefined, recovered };
   };
 }
 
@@ -602,12 +628,15 @@ function revertPhase(t, why = '') {
     try {
       await optimizer.revertOne(t);
       changes.remove(t.id);
+      problems.remove(t.id);
       send('changes', changeList());
       step({ id: `undo_${t.id}`, name: `Undo: ${t.name}`, status: 'done', message: why ? `${why} — put back how it was.` : 'Put back how it was.' });
+      return { reboot: !!t.reboot, status: 'done' };
     } catch (e) {
-      step({ id: `undo_${t.id}`, name: `Undo: ${t.name}`, status: 'error', message: String(e.message || e).slice(0, 200) });
+      const message = String(e.message || e).slice(0, 200);
+      step({ id: `undo_${t.id}`, name: `Undo: ${t.name}`, status: 'error', message });
+      return { status: 'error', message };
     }
-    return { reboot: !!t.reboot };
   };
 }
 
@@ -706,7 +735,7 @@ function onPhases(quiet, queue) {
     const planIds = new Set(optimizer.planned({ quiet: false, rig }).map((t) => t.id));
     optimizer.revertPlan().filter((t) => !planIds.has(t.id)).forEach((t) => queue.push(revertPhase(t, `Not part of ${presetName}`)));
     // …then apply this preset's boosts.
-    plan.forEach((t) => queue.push(tweakPhase(t)));
+    plan.forEach((t) => queue.push(tweakPhase(t, { recover: true, cancellable: true })));
     if (!quiet && s.autoDownloadTools) {
       const st = tools.status();
       if (s.fpsCounter && !st.presentmon) queue.push(downloadPhase('presentmon'));
@@ -727,7 +756,7 @@ function offPhases(queue) {
 }
 
 async function runAuto(on, { quiet = false } = {}) {
-  if (busy) return { busy: true };
+  if (busy || fixBusy || fixAllRunning) return { busy: true };
   busy = true;
   stopRequested = false;
   send('auto:busy', { on, quiet });
@@ -741,17 +770,25 @@ async function runAuto(on, { quiet = false } = {}) {
   rebuildTrayMenu();
   let needsReboot = false;
   let stopped = false;
+  let unresolved = 0;
   try {
     for (let i = 0; i < queue.length; i++) {
       checkStop();
       const r = await queue[i]();
       if (r && r.reboot) needsReboot = true;
+      if (r && r.status && r.status !== 'done' && !r.locked) unresolved++;
       runState.done = i + 1;
       runState.total = queue.length;
       sendProgress();
     }
+    checkStop();
+    if (!on) {
+      for (const p of Object.values(problems.all())) if (p.fromAutoMode) problems.remove(p.id);
+    }
     settings.set(on ? { autoMode: true, lastBoot: bootTime(), restartedNotice: false } : { autoMode: false, restartedNotice: false });
-    if (on && !quiet) step({ id: 'finish', name: 'All done', status: 'done', message: `Your PC is tuned. ${optimizer.activeCount()} boosts are active.` });
+    if (on && !quiet) step(unresolved
+      ? { id: 'finish', name: 'Auto Mode finished', status: 'warn', message: `${unresolved} step${unresolved === 1 ? ' needs' : 's need'} attention in Fix Mode.` }
+      : { id: 'finish', name: 'All done', status: 'done', message: `Your PC is tuned. ${optimizer.activeCount()} boosts are active.` });
   } catch (e) {
     if (e instanceof Stopped || stopRequested) {
       stopped = true;
@@ -777,7 +814,7 @@ async function runAuto(on, { quiet = false } = {}) {
     detectExtra().then(() => send('fix:changed', true)).catch(() => {}); // re-check: Auto Mode may have fixed things
     enforceAnimations('auto');
     rebuildTrayMenu();
-    send('auto:done', { on: settings.get().autoMode, needsReboot, active: optimizer.activeCount(), quiet, stopped });
+    send('auto:done', { on: settings.get().autoMode, needsReboot, active: optimizer.activeCount(), quiet, stopped, unresolved });
   }
   return { ok: true };
 }
@@ -819,29 +856,31 @@ async function tweakCatalog() {
   };
 }
 
-async function setTweak(id, on, { byUser = false } = {}) {
+async function setTweak(id, on, { byUser = false, recover = false } = {}) {
   const t = tweaksTab.tabTweaks().find((x) => x.id === id);
   if (!t) return { ok: false, message: 'Unknown tweak.' };
-  if (byUser) {
-    const userOff = { ...(settings.get().userOff || {}) };
-    if (on) delete userOff[id];
-    else userOff[id] = true;
-    settings.set({ userOff });
-  }
-  if (busy) return { ok: false, message: 'FrameForge is busy with another change — try again in a moment.', on: await tweaksTab.stateOf(t) };
+  if (busy || (recover && (fixBusy || fixAllRunning))) return { ok: false, message: 'FrameForge is busy with another change. Try again in a moment.', on: await tweaksTab.stateOf(t) };
   if (t.admin && !admin) return { ok: false, message: 'This one needs FrameForge to run as administrator.', on: await tweaksTab.stateOf(t) };
   busy = true;
   let reboot = false;
   try {
+    if (byUser) {
+      const userOff = { ...(settings.get().userOff || {}) };
+      if (on) delete userOff[id];
+      else userOff[id] = true;
+      settings.set({ userOff });
+    }
     if (on) {
-      const r = await tweakPhase(t)();
+      const r = await tweakPhase(t, { recover })();
       reboot = !!(r && r.reboot);
-      if (r.status !== 'done') return { ok: false, locked: !!r.locked, message: r.message, on: await tweaksTab.stateOf(t) };
+      const confirmedOn = r.verified ?? (await tweaksTab.stateOf(t));
+      if (r.status !== 'done') return { ok: false, locked: !!r.locked, message: r.message, on: confirmedOn };
       const c = changes.all()[t.id];
-      return { ok: true, message: c ? c.summary : `${t.name} is on.`, on: await tweaksTab.stateOf(t), reboot };
+      return { ok: true, message: c ? c.summary : `${t.name} is on.`, on: confirmedOn, reboot, recovered: r.recovered };
     }
     if (backup.get(t.id)) {
-      await revertPhase(t, 'Switched off in Tweaks')();
+      const r = await revertPhase(t, 'Switched off in Tweaks')();
+      if (r.status !== 'done') return { ok: false, message: r.message, on: await tweaksTab.stateOf(t) };
     } else if (!DEMO && typeof t.forceOff === 'function') {
       const fo = await t.forceOff(); // Windows had it on before FrameForge: set the Windows default
       if (fo && fo.keptOn) return { ok: false, message: t.offNote || 'Windows keeps this on.', on: await tweaksTab.stateOf(t) };
@@ -861,7 +900,7 @@ async function setTweak(id, on, { byUser = false } = {}) {
 }
 
 ipcMain.handle('tweaks:catalog', () => tweakCatalog());
-ipcMain.handle('tweaks:set', (_e, id, on) => setTweak(id, !!on, { byUser: true }));
+ipcMain.handle('tweaks:set', (_e, id, on) => setTweak(id, !!on, { byUser: true, recover: true }));
 
 // ---------- Fix mode ----------
 // The built-in fixer: it finds problems, knows several ways to fix each one, tries them in order and checks
@@ -932,8 +971,10 @@ async function detectExtra() {
       if (c && c.size) out.disk = { freeGB: Math.round((c.size - c.used) / 1024 ** 3), usePct: Math.round((c.used / c.size) * 100) };
     } catch {}
     if (!DEMO) {
+      const userOff = settings.get().userOff || {};
+      const failed = problems.all();
       for (const t of tweaksTab.tabTweaks()) {
-        if (!backup.get(t.id) || locked[t.id] || t.id === 'max_refresh' || (t.id === 'visual_effects' && settings.get().animations === 'on')) continue;
+        if (!backup.get(t.id) || failed[t.id] || userOff[t.id] || locked[t.id] || t.id === 'max_refresh' || (t.id === 'visual_effects' && settings.get().animations === 'on')) continue;
         if (!(await tweaksTab.stateOf(t)) && !(await settledOff(t))) out.reverted.push(t.id);
       }
       const rr = await run('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired']);
@@ -1014,7 +1055,11 @@ function fixList() {
   }
   for (const p of Object.values(problems.all())) {
     const t = tweakById(p.id);
-    if (!t) continue;
+    if (!t || (s.userOff || {})[p.id]) continue;
+    if (p.locked || (s.lockedTweaks || {})[p.id]) {
+      add({ id: `step_${p.id}`, level: 'info', title: `${t.name} is unavailable on this PC`, body: p.message, details: p.details, at: p.at });
+      continue;
+    }
     const it = { id: `step_${p.id}`, level: p.status === 'error' ? 'big' : 'medium', title: `${t.name} didn’t finish`, body: p.message, details: p.details, at: p.at, actions: [], strategies: [] };
     if (p.adminSkipped) {
       it.actions.push(A('admin', 'Restart as administrator'));
@@ -1183,14 +1228,14 @@ async function runFixAction(action) {
       if (busy) return { ok: false, message: 'Auto Mode is running — wait for it to finish.' };
       const t = tweakById(arg);
       if (!t) return { ok: false, message: 'Unknown step' };
+      if ((settings.get().userOff || {})[arg]) return { ok: false, message: 'You switched this tweak off in Tweaks.' };
       busy = true;
       try {
-        await tweakPhase(t)();
+        const r = await tweakPhase(t)();
+        return { ok: r.status === 'done', message: r.message };
       } finally {
         busy = false;
       }
-      const still = problems.all()[arg];
-      return still ? { ok: false, message: still.message } : { ok: true, message: `${t.name} worked this time.` };
     }
     case 'tweak': {
       const r = await applyAndVerify(arg);
@@ -1520,7 +1565,7 @@ async function tryFix(it, ev = () => {}) {
     ev({ type: 'try', id: it.id, text: st.label, n: n + 1, of: it.strategies.length });
     last = await runFixAction(st.id).catch((e) => ({ ok: false, message: String(e.message || e) }));
     await detectExtra();
-    fixed = !fixList().some((x) => x.id === it.id) || (it.verifyLater && last && last.ok);
+    fixed = !!(last && last.ok && (it.verifyLater || !fixList().some((x) => x.id === it.id)));
     if (fixed) break;
   }
   if (fixed && it.verifyLater) heat[it.id === 'hot_gpu' ? 'gpu' : 'cpu'].last = 0; // start measuring again from now
