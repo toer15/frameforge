@@ -411,7 +411,7 @@ async function setStartWithWindows(on) {
 
 function applyMonitoring() {
   const s = settings.get();
-  sensors.start(rig && rig.gpu ? rig.gpu.vendor : null);
+  sensors.start(rig && rig.gpu ? rig.gpu.vendor : null, { performanceMode: !!s.windowsPerformanceMode });
   if (!DEMO) {
     if (s.tempMonitor && tools.status().lhm) tools.startLhm();
     const pm = tools.presentMonPath();
@@ -2279,6 +2279,9 @@ ipcMain.handle('profile:reset', () => {
 ipcMain.handle('tweaks:list', () => optimizer.list());
 ipcMain.handle('settings:get', () => settings.get());
 ipcMain.handle('settings:set', async (_e, patch) => {
+  if ('windowsPerformanceMode' in patch && typeof patch.windowsPerformanceMode !== 'boolean') {
+    return { ...settings.get(), _error: 'Windows performance mode must be on or off.' };
+  }
   if (patch.tweaks) patch.tweaksCustomized = true;
   if ('scanSchedule' in patch) patch.autoScan = true; // the old on/off switch is replaced by the schedule menu
   const before = settings.get();
@@ -2304,8 +2307,9 @@ ipcMain.handle('settings:set', async (_e, patch) => {
   }
   let hotkeyFailed = false;
   if ('overlayHotkey' in patch && patch.overlayHotkey !== before.overlayHotkey) hotkeyFailed = !registerHotkey();
-  if ('fpsCounter' in patch || 'tempMonitor' in patch || 'overlayPosition' in patch) applyMonitoring();
+  if ('fpsCounter' in patch || 'tempMonitor' in patch || 'overlayPosition' in patch || 'windowsPerformanceMode' in patch) applyMonitoring();
   if (limiterError) return { ...settings.get(), _error: limiterError };
+  if (patch.windowsPerformanceMode && sensors.warning && !hotkeyFailed) return { ...settings.get(), _warning: sensors.warning };
   return hotkeyFailed ? { ...settings.get(), _error: `“${s.overlayHotkey}” couldn’t be registered — another program is probably using it. Pick a different shortcut.` } : settings.get();
 });
 ipcMain.handle('auto:set', (_e, on) => runAuto(!!on));

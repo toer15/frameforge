@@ -16,6 +16,7 @@ Pick a goal — **Competitive**, **Best performance**, **Balanced** or **Best gr
 **Auto Mode** on. FrameForge scans your PC and applies only the tweaks that fit your hardware:
 
 - Ultimate Performance power plan, Game Mode, game CPU/GPU priority
+- **Windows performance mode** in Settings: reduces FrameForge's sensor polling from once a second to once every three seconds and lowers its own Windows sensor helpers' priority. Slow reads cannot overlap. Turn it off to restore standard monitoring; existing tuning and protection choices stay in place. It reduces the app's background load, without promising a lag-free PC.
 - Every Steam and Epic game set to run on your fastest graphics card
 - Xbox background recording off, raw mouse aim, no pop-ups mid-match (Competitive)
 - Chris Titus Tech's Windows Utility tweaks (Standard preset)

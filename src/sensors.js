@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const readline = require('readline');
 const http = require('http');
 const si = require('systeminformation');
+const os = require('os');
 const { run, DEMO } = require('./util');
 
 const LHM_LOOP = `
@@ -43,7 +44,7 @@ const isDedicatedGpuId = (id) => /^\/gpu-(nvidia|amd)/i.test(id || '');
 function pickSensors(list) {
   const pick = (arr, prefs) => {
     for (const p of prefs) {
-      const f = arr.find((s) => p.test(s.Name) && Number.isFinite(s.Value) && s.Value > 0);
+      const f = arr.find((s) => p.test(s.Name) && Number.isFinite(s.Value) && (s.SensorType === 'Load' ? s.Value >= 0 : s.Value > 0));
       if (f) return Math.round(f.Value);
     }
     return null;
@@ -113,66 +114,119 @@ class Sensors {
     this.procs = [];
     this.nv = null;
     this.nvAt = 0;
+    this.nvAttemptAt = 0;
     this.cpuLoad = null;
+    this.cpuLoadAt = 0;
     this.winGpuLoad = null;
+    this.winGpuLoadAt = 0;
     this.timers = [];
+    this.generation = 0;
+    this.running = false;
+    this.config = null;
+    this.performanceMode = false;
+    this.pollInterval = 1000;
+    this.freshMs = 5000;
+    this.warning = null;
   }
 
-  start(vendor) {
-    if (DEMO) return;
+  start(vendor, { performanceMode = false } = {}) {
+    const enabled = performanceMode === true;
+    const config = JSON.stringify([vendor || null, enabled]);
+    if (this.running && this.config === config) return;
     this.stop();
+    this.running = true;
+    this.config = config;
+    this.performanceMode = enabled;
+    this.pollInterval = enabled ? 3000 : 1000;
+    this.freshMs = Math.max(5000, this.pollInterval * 2);
+    this.warning = null;
+    if (DEMO) return;
+    const generation = this.generation;
+    const active = () => this.running && this.generation === generation;
+    const spawnMonitor = (script, onLine) => {
+      try {
+        const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script.replace('Start-Sleep -Milliseconds 1000', `Start-Sleep -Milliseconds ${this.pollInterval}`)], { windowsHide: true });
+        this.procs.push(child);
+        child.on('error', () => {
+          if (active()) this.warning = 'A Windows monitoring helper could not start. Available sensor sources are still used.';
+        });
+        readline.createInterface({ input: child.stdout }).on('line', (line) => {
+          if (active()) onLine(line);
+        });
+        if (enabled && Number.isInteger(child.pid) && child.pid > 0) {
+          try {
+            os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+          } catch {
+            this.warning = 'Windows could not lower the monitoring helpers’ priority. Reduced polling is still active.';
+          }
+        }
+      } catch {
+        this.warning = 'A Windows monitoring helper could not start. Available sensor sources are still used.';
+      }
+    };
 
     // 1a. LibreHardwareMonitor over WMI
-    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', LHM_LOOP], { windowsHide: true });
-    readline.createInterface({ input: p.stdout }).on('line', (l) => {
+    spawnMonitor(LHM_LOOP, (l) => {
       try {
         const j = JSON.parse(l);
         if (j.ok) this.setLhm(pickSensors(j.s), 'LibreHardwareMonitor');
       } catch {}
     });
-    p.on('error', () => {});
-    this.procs.push(p);
 
     // 2. Windows GPU counter for load (only matters when nothing better is available)
-    const g = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', GPU_LOAD_LOOP], { windowsHide: true });
-    readline.createInterface({ input: g.stdout }).on('line', (l) => {
+    spawnMonitor(GPU_LOAD_LOOP, (l) => {
       const v = parseInt(l, 10);
       this.winGpuLoad = v >= 0 ? v : null;
+      this.winGpuLoadAt = Date.now();
     });
-    g.on('error', () => {});
-    this.procs.push(g);
 
+    let ticking = false;
+    const nvidiaInterval = enabled ? 6000 : 2000;
     const tick = async () => {
+      if (ticking || !active()) return;
+      ticking = true;
+      try {
       // 1b. LibreHardwareMonitor web server, if WMI has gone quiet
-      if (Date.now() - this.lhmAt > 3000) {
+      if (Date.now() - this.lhmAt > Math.max(3000, this.pollInterval * 2)) {
         const j = await fetchLhmJson();
+        if (!active()) return;
         if (j) this.setLhm(pickSensors(flattenLhmJson(j)), 'LibreHardwareMonitor');
       }
       // LibreHardwareMonitor already reports CPU load: skip the extra system call that would just duplicate it.
-      const fresh = Date.now() - this.lhmAt < 5000;
+      const fresh = Date.now() - this.lhmAt < this.freshMs;
       if (!fresh || !this.lhm || this.lhm.cpuLoad == null) {
         try {
           const l = await si.currentLoad();
+          if (!active()) return;
           this.cpuLoad = Math.round(l.currentLoad);
+          this.cpuLoadAt = Date.now();
         } catch {}
       }
       // nvidia-smi is a program of its own, so it only runs when the sensor reader isn't answering, and at most
-      // every two seconds — instead of once a second for the whole session.
-      if (vendor === 'nvidia' && !fresh && Date.now() - this.nvAt >= 2000) {
-        this.nvAt = Date.now();
+      // every two seconds, or six seconds in Windows performance mode.
+      if (!active()) return;
+      if (vendor === 'nvidia' && !fresh && Date.now() - this.nvAttemptAt >= nvidiaInterval) {
+        this.nvAttemptAt = Date.now();
         const r = await run('nvidia-smi', ['--query-gpu=temperature.gpu,utilization.gpu', '--format=csv,noheader,nounits'], { timeout: 4000 });
+        if (!active()) return;
         if (r.code === 0) {
           const [t, u] = r.stdout.trim().split(/\r?\n/)[0].split(',').map((x) => parseFloat(x));
           this.nv = { temp: Number.isFinite(t) ? t : null, load: Number.isFinite(u) ? u : null };
+          this.nvAt = Date.now();
         }
+      }
+      } catch {
+        // A missing sensor source must not stop the remaining sources or leave the poll locked.
+      } finally {
+        ticking = false;
       }
     };
     tick();
-    this.timers.push(setInterval(tick, 1000));
+    this.timers.push(setInterval(tick, this.pollInterval));
   }
 
   setLhm(v, source) {
-    if (v.cpuTemp == null && v.gpuTemp == null && v.cpuLoad == null) return;
+    if (v.cpuTemp == null && v.gpuTemp == null && v.cpuLoad == null && v.gpuLoad == null) return;
     this.lhm = { ...v, source };
     this.lhmAt = Date.now();
   }
@@ -183,26 +237,31 @@ class Sensors {
       const w = (b, r) => Math.round(b + (Math.random() - 0.5) * r);
       return { cpuTemp: w(63, 6), gpuTemp: w(71, 5), cpuLoad: w(38, 14), gpuLoad: w(94, 6), sources: { cpuTemp: 'LibreHardwareMonitor', gpuTemp: 'LibreHardwareMonitor' } };
     }
-    const l = Date.now() - this.lhmAt < 5000 ? this.lhm || {} : {};
-    const nv = Date.now() - this.nvAt < 5000 ? this.nv || {} : {};
+    const l = Date.now() - this.lhmAt < this.freshMs ? this.lhm || {} : {};
+    const nv = Date.now() - this.nvAt < Math.max(5000, this.performanceMode ? 12000 : 5000) ? this.nv || {} : {};
+    const cpuLoad = Date.now() - this.cpuLoadAt < this.freshMs ? this.cpuLoad : null;
+    const winGpuLoad = Date.now() - this.winGpuLoadAt < this.freshMs ? this.winGpuLoad : null;
     const val = (...pairs) => {
       for (const [v, src] of pairs) if (v != null) return [v, src];
       return [null, null];
     };
     const [cpuTemp, cpuTempSrc] = val([l.cpuTemp, 'LibreHardwareMonitor']);
     const [gpuTemp, gpuTempSrc] = val([nv.temp, 'NVIDIA driver'], [l.gpuTemp, 'LibreHardwareMonitor']);
-    const [cpuLoad, cpuLoadSrc] = val([l.cpuLoad, 'LibreHardwareMonitor'], [this.cpuLoad, 'Windows']);
-    const [gpuLoad, gpuLoadSrc] = val([nv.load, 'NVIDIA driver'], [l.gpuLoad, 'LibreHardwareMonitor'], [this.winGpuLoad, 'Windows']);
+    const [selectedCpuLoad, cpuLoadSrc] = val([l.cpuLoad, 'LibreHardwareMonitor'], [cpuLoad, 'Windows']);
+    const [gpuLoad, gpuLoadSrc] = val([nv.load, 'NVIDIA driver'], [l.gpuLoad, 'LibreHardwareMonitor'], [winGpuLoad, 'Windows']);
     return {
       cpuTemp,
       gpuTemp,
-      cpuLoad,
+      cpuLoad: selectedCpuLoad,
       gpuLoad,
       sources: { cpuTemp: cpuTempSrc, gpuTemp: gpuTempSrc, cpuLoad: cpuLoadSrc, gpuLoad: gpuLoadSrc },
     };
   }
 
   stop() {
+    this.generation++;
+    this.running = false;
+    this.config = null;
     this.timers.forEach(clearInterval);
     this.timers = [];
     this.procs.forEach((p) => {

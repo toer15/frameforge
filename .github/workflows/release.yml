@@ -43,6 +43,10 @@ jobs:
       - run: npm ci
         if: steps.check.outputs.skip != 'true'
 
+      - name: Check sensor performance mode
+        if: steps.check.outputs.skip != 'true'
+        run: node --test tests/sensors-performance.test.js
+
       - name: Build installer and publish release
         if: steps.check.outputs.skip != 'true'
         shell: bash
