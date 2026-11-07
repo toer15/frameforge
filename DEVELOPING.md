@@ -145,14 +145,21 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
 Pick a goal, then flip Auto Mode on. FrameForge applies that preset — adjusted to the PC it runs on
 (a laptop never gets the battery-draining power boosts, an old graphics card never gets GPU scheduling).
 
-| | Competitive | Best performance | Balanced | Best graphics |
-|---|---|---|---|---|
-| Power plan, game priority, Game Mode, games on fast GPU | ✓ | ✓ | ✓ | ✓ |
-| No power throttling, plain Windows visuals, Chris Titus tweaks | ✓ | ✓ | | |
-| No notifications / Sticky Keys pop-ups | ✓ | | | |
-| Raw mouse aim | ✓ | ✓ | ✓ | |
-| Auto HDR | | | | ✓ |
-| Driver checklist | Reflex/Anti-Lag, V-Sync off | Low latency, perf upscaling | Quality upscaling | High-quality textures, sharpening |
+| | Competitive | Best performance | Balanced | Best graphics | Extreme Performance |
+|---|---|---|---|---|---|
+| Power plan, game priority, Game Mode, games on fast GPU | ✓ | ✓ | ✓ | ✓ | ✓ |
+| No power throttling, plain Windows visuals, Chris Titus tweaks | ✓ | ✓ | | | ✓ |
+| No notifications / Sticky Keys pop-ups | ✓ | | | | ✓ |
+| Raw mouse aim | ✓ | ✓ | ✓ | | ✓ |
+| Auto HDR | | | | ✓ | |
+| Driver checklist | Reflex/Anti-Lag, V-Sync off | Low latency, perf upscaling | Quality upscaling | High-quality textures, sharpening | Max power limit + Reflex/Anti-Lag |
+| Windows Search indexing off | | | | | ✓ |
+| Delivery optimization off | | | | | ✓ |
+| Diagnostics & telemetry off | | | | | ✓ |
+| Memory compression off | | | | | ✓ |
+| SysMain (Superfetch) off | | | | | ✓ |
+| Game process priority boost | | | | | ✓ |
+| Timer resolution, core parking, menu delay | | | | | ✓ |
 
 Switching preset while Auto Mode is on moves the PC over right away, undoing boosts the new preset doesn't use.
 

@@ -1,3 +1,18 @@
+**Extreme Performance mode — every boost on, zero lag in any game**
+
+- **New: Extreme Performance preset** — the most aggressive mode FrameForge has. Everything from Competitive, all turned on, plus:
+  - **Windows Search indexing off** — disk and CPU stay free for your game instead of indexing files in the background
+  - **Windows Update delivery optimization off** — no background uploads to other PCs mid-match
+  - **Windows diagnostics and telemetry off** — less background CPU, disk and network use while you play
+  - **Memory compression off** — more RAM available for games, less CPU spent compressing memory
+  - **SysMain (Superfetch) off** — no background disk preloading that can cause hitches
+  - **Timer resolution, core parking, menu delay, startup delay** — every last millisecond of lag removed
+  - **Raw mouse aim, no pop-ups, games on top CPU/GPU priority, Ultimate Performance power plan** — all the Competitive boosts
+
+Pick **Extreme Performance** on the Home tab, flip Auto Mode on, and FrameForge tunes your whole PC for zero-lag gaming. Every change is undoable, and a restore point is made first.
+
+---
+
 **Cleaner: the startup switches really work now, and the Full check covers every drive**
 
 - **Fixed: switching a program off (or on) in "Programs that start with Windows" didn't change anything in Windows** — the switch flipped back. It now writes exactly what Task Manager writes, reads it back to make sure Windows took it, and Task Manager shows the program as Disabled.

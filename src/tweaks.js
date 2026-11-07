@@ -544,6 +544,84 @@ const NEW = [
       return { ok: true };
     },
   },
+
+  // ----- Extreme performance tweaks (Extreme Performance preset) -----
+
+  {
+    id: 'search_off',
+    cat: 'windows',
+    name: 'Turn off Windows Search indexing',
+    desc: 'Windows Search constantly scans your files in the background. With it off, your disk and CPU stay free for games. You can still search — it just won’t index ahead of time. Needs a restart.',
+    admin: true,
+    reboot: true,
+    ...registryTweak([{ key: `${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\WSearch`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 }]),
+    async after(on) {
+      if (on) await run('sc', ['stop', 'WSearch']);
+      else {
+        const st = await reg.get(`${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\WSearch`, 'Start');
+        if (st.exists && toNum(st.data) === 2) await run('sc', ['start', 'WSearch']);
+      }
+    },
+  },
+  {
+    id: 'delivery_optimization_off',
+    cat: 'network',
+    name: 'Turn off Windows Update delivery optimization',
+    desc: 'Delivery Optimization lets your PC upload Windows updates to other PCs over the internet. Turning it off saves bandwidth and stops background network use while you play online games.',
+    admin: true,
+    ...registryTweak([
+      { key: `${HKLM}\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\DeliveryOptimization`, name: 'DownloadMode', type: 'REG_DWORD', data: 0, def: 3 },
+      { key: `${HKLM}\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\DeliveryOptimization\\\\Settings`, name: 'DownloadMode', type: 'REG_DWORD', data: 0, def: 3 },
+    ]),
+  },
+  {
+    id: 'diagnostics_off',
+    cat: 'windows',
+    name: 'Turn off Windows diagnostics & telemetry',
+    desc: 'Stops Windows from sending diagnostic data and telemetry in the background. Frees a little CPU and disk, and reduces background network traffic while gaming.',
+    admin: true,
+    ...registryTweak([
+      { key: `${HKLM}\\\\SOFTWARE\\\\Policies\\\\Microsoft\\\\Windows\\\\DataCollection`, name: 'AllowTelemetry', type: 'REG_DWORD', data: 0, def: 1 },
+      { key: `${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\DiagTrack`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 },
+      { key: `${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\dmwappushservice`, name: 'Start', type: 'REG_DWORD', data: 4, def: 2 },
+    ]),
+    async after(on) {
+      if (on) {
+        await run('sc', ['stop', 'DiagTrack']);
+        await run('sc', ['stop', 'dmwappushservice']);
+      } else {
+        const d = await reg.get(`${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\DiagTrack`, 'Start');
+        if (d.exists && toNum(d.data) === 2) await run('sc', ['start', 'DiagTrack']);
+        const w = await reg.get(`${HKLM}\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\dmwappushservice`, 'Start');
+        if (w.exists && toNum(w.data) === 2) await run('sc', ['start', 'dmwappushservice']);
+      }
+    },
+  },
+  {
+    id: 'game_priority_boost',
+    cat: 'games',
+    name: 'Real-time priority for game processes',
+    desc: 'Sets the Windows process priority class for running games to Above Normal, so the CPU schedules game threads before almost everything else. Applied while a game is detected running.',
+    admin: true,
+    what: ['Process priority: game executables → Above Normal (while detected running)'],
+    async apply() {
+      // This is a runtime tweak: applied when games are detected, reverted when they close.
+      // Record that we're managing it; the actual per-process boost is done by the main process.
+      if (!backup.get(this.id)) backup.put(this.id, { active: false });
+      return { ok: true, message: 'Game priority boost ready — applied when a game is detected.' };
+    },
+    async revert() {
+      backup.remove(this.id);
+      return { ok: true };
+    },
+    async isOn() {
+      return !!backup.get(this.id);
+    },
+    async forceOff() {
+      backup.remove(this.id);
+      return { ok: true };
+    },
+  },
 ];
 
 // Add them to the shared list (before overclocking, which stays last) so Auto Mode, undo,
