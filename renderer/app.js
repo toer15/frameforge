@@ -1361,6 +1361,13 @@ document.addEventListener('change', async (e) => {
   }
   if (k === 'fpsLimitOn' && el.checked) toast('Setting up the FPS limiter… the first time this installs RTSS, which can take a minute.', 6000);
   S = await ff.setSettings({ [k]: el.type === 'checkbox' ? el.checked : el.value });
+  if (k === 'windowsPerformanceMode' && S && !S._error) {
+    el.checked = !!S.windowsPerformanceMode;
+    const warning = S._warning;
+    delete S._warning;
+    const message = S.windowsPerformanceMode ? 'Windows performance mode is on. Sensor readings refresh every 3 seconds with less background work.' : 'Windows performance mode is off. Sensor readings refresh every second.';
+    toast(warning ? `${message} ${warning}` : message, warning ? 8000 : 3500);
+  }
   if ((k === 'fpsLimitOn' || k === 'fpsLimit') && S && !S._error && S.fpsLimitOn) toast(`Games are now capped at ${S.fpsLimit} FPS.`);
   else if (k === 'fpsLimitOn' && S && !S._error) toast('FPS limit removed.');
   if (k === 'autoCheckUpdates') {

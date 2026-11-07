@@ -670,6 +670,13 @@
           <div class="set-head"><h2>Windows</h2></div>
           <div class="set-row">
             <div class="set-text">
+              <h3>Windows performance mode</h3>
+              <p id="windowsPerformanceHelp">Reduce FrameForge's background load. Refresh sensor readings every 3 seconds instead of every second, run its Windows sensor helpers at lower priority, and finish each check before starting another. Auto Mode, FPS and Windows tweaks keep your choices. This reduces monitoring overhead; it cannot remove all PC lag.</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="windowsPerformanceToggle" data-key="windowsPerformanceMode" aria-label="Windows performance mode" aria-describedby="windowsPerformanceHelp" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
               <h3>Windows animations</h3>
               <p><b>On:</b> enables Windows animations and shows app contents while you drag windows. Also restores shadows, smooth fonts, selection effects and thumbnail previews. <b>Off:</b> disables Windows animations, menu and tooltip fades, taskbar animations, Peek and live window contents while dragging. Animation and dragging changes apply right away; some Explorer effects may need you to sign out. FrameForge keeps your choice if another tool changes it. Apps that draw their own effects may have separate settings. Transparency is controlled separately in Tweaks.</p>
               <p class="why" id="animLine">Reading Windows’ settings…</p>

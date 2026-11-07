@@ -5,6 +5,7 @@ const { app } = require('electron');
 
 const DEFAULT_SETTINGS = {
   autoMode: false,
+  windowsPerformanceMode: false, // lighter sensor polling and lower priority for FrameForge's own Windows sensor helpers
   manualHardware: null, // { cpu, gpuVendor, gpu } when the user picks their parts by hand
   tweaks: {
     restore_point: true,

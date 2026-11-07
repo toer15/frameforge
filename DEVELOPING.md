@@ -14,6 +14,14 @@ Flip **Automatic PC Best Gaming Performance Assistance** on the Home tab and Fra
 
 Flip it off and every change is put back exactly how it was.
 
+## Windows performance mode (1.12.0)
+
+Settings > Windows saves `windowsPerformanceMode` independently of Auto Mode and existing tuning options. The settings IPC handler validates a boolean and reconfigures `Sensors` immediately. Enabled monitoring polls every 3 seconds, limits NVIDIA fallback launches to once every 6 seconds, and requests BelowNormal Windows priority only for its two owned PowerShell sensor helpers. Disabled monitoring returns to 1-second polling and normal helper priority. Main-process telemetry continues reading the cache each second, preserving heat/game detection and scheduled-scan behavior.
+
+`Sensors.start(vendor, { performanceMode })` is idempotent for an unchanged configuration. A generation token excludes completions from stopped readers, one in-flight fallback poll prevents overlap, and cache expiry follows the sampling interval. Priority or helper-start failures retain other available sources and produce a warning; the mode does not promise an FPS improvement or remove hardware/driver limitations.
+
+Checks: `node --test --test-concurrency=1` (47 passing tests), including `tests/sensors-performance.test.js` and an isolated demo UI relaunch in `tests/windows-performance-ui.test.js`. A separate real-Windows smoke check verified the owned helpers' BelowNormal/Normal priorities. The release workflow runs the focused sensor tests before packaging.
+
 ## Install
 
 Run `FrameForge-Setup-<version>.exe`. Because the app isn't code-signed yet, Windows SmartScreen will say
