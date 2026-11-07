@@ -1,9 +1,44 @@
-// The goals the user can pick in the preset slideshow. Each one decides which boosts Auto Mode
+﻿// The goals the user can pick in the preset slideshow. Each one decides which boosts Auto Mode
 // applies; the PC's own profile can still veto a boost that would hurt this hardware (e.g. a laptop
 // never gets the "no power saving" boosts, an old graphics card never gets GPU scheduling).
 const profile = require('./profile');
 
 const PRESETS = {
+  extreme: {
+    id: 'extreme',
+    name: 'Extreme Performance',
+    tagline: 'Everything FrameForge can do for zero-lag gaming \u2014 every boost on, background tasks silenced, games first.',
+    changes: [
+      'Every tweak from Competitive, all turned on',
+      'Windows Search indexing off \u2014 disk and CPU stay free for your game',
+      'Windows Update delivery optimization off \u2014 no background uploads mid-match',
+      'Windows diagnostics and telemetry off \u2014 less background CPU, disk and network',
+      'Memory compression off \u2014 more RAM available, less CPU spent compressing',
+      'SysMain (Superfetch) off \u2014 no background disk preloading causing hitches',
+      'Real-time priority boost for detected game processes',
+      'Timer resolution, core parking off, USB awake, PCIe link at full power',
+    ],
+    tweaks: {
+      restore_point: true,
+      power_plan: true,
+      game_mode: true,
+      game_dvr: true,
+      hags: true,
+      game_priority: true,
+      mouse_precision: true,
+      power_throttling: true,
+      visual_effects: true,
+      temp_cleanup: true,
+      ctt_tweaks: true,
+      dx_opt: true,
+      game_gpu: true,
+      usb_suspend: true, max_refresh: true, timer_res: true, core_parking: true, cpu_min: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, net_throttling: true, nagle_off: true, bg_apps: true, transparency: true, startup_delay: true, menu_delay: true,
+      sysmain_off: true, mem_compression: true,
+      search_off: true, delivery_optimization_off: true, diagnostics_off: true,
+      no_popups: true,
+      fso_off: true, kb_repeat: true,
+    },
+  },
   competitive: {
     id: 'competitive',
     name: 'Competitive',
@@ -118,41 +153,6 @@ const PRESETS = {
       game_gpu: true,
       usb_suspend: true, max_refresh: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, startup_delay: true,
       no_popups: false,
-    },
-  },
-  extreme: {
-    id: 'extreme',
-    name: 'Extreme Performance',
-    tagline: 'Everything FrameForge can do for zero-lag gaming — every boost on, background tasks silenced, games first.',
-    changes: [
-      'Every tweak from Competitive, all turned on',
-      'Windows Search indexing off — disk and CPU stay free for your game',
-      'Windows Update delivery optimization off — no background uploads mid-match',
-      'Windows diagnostics and telemetry off — less background CPU, disk and network',
-      'Memory compression off — more RAM available, less CPU spent compressing',
-      'SysMain (Superfetch) off — no background disk preloading causing hitches',
-      'Real-time priority boost for detected game processes',
-      'Timer resolution, core parking off, USB awake, PCIe link at full power',
-    ],
-    tweaks: {
-      restore_point: true,
-      power_plan: true,
-      game_mode: true,
-      game_dvr: true,
-      hags: true,
-      game_priority: true,
-      mouse_precision: true,
-      power_throttling: true,
-      visual_effects: true,
-      temp_cleanup: true,
-      ctt_tweaks: true,
-      dx_opt: true,
-      game_gpu: true,
-      usb_suspend: true, max_refresh: true, timer_res: true, core_parking: true, cpu_min: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, net_throttling: true, nagle_off: true, bg_apps: true, transparency: true, startup_delay: true, menu_delay: true,
-      sysmain_off: true, mem_compression: true,
-      search_off: true, delivery_optimization_off: true, diagnostics_off: true,
-      no_popups: true,
-      fso_off: true, kb_repeat: true,
     },
   },
 };
