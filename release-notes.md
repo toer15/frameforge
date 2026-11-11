@@ -1,6 +1,7 @@
-**Per-trigger deadzones**
+**Macro manager (live preview)**
 
-- New **Left trigger deadzone** and **Right trigger deadzone** sliders beside the stick deadzone controls.
-- Each trigger ignores the first part of its pull and rescales the rest, so a full pull still reaches 100%. The trigger fill, marker, percentage and Live input all follow the shaped pull.
-- The two values save with your controller settings and come back after a restart; **0%** leaves the raw analog trigger untouched.
-- These deadzones shape FrameForge's live input. Games and Steam Input read your trigger directly and keep their own trigger deadzone settings, so enter the same values there for the same pull in-game.
+- A new **Macros** card on the Controller tab with a red **Off** / green **On** switch and a macro dropdown.
+- **Rapid fire — RT** and **Rapid fire — LT** pulse that trigger at 8 Hz while you hold it.
+- **Combo — bottom face → right face → RT** and **Combo — right face → bottom face → LT** play one sequence when the first button is pressed.
+- The switch and selected macro are saved with your controller settings and come back after a restart.
+- Macros run on FrameForge's controller drawing and Live input only. They do not change the physical controller or what games receive; that needs a virtual controller driver.

@@ -110,6 +110,17 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     await delay(400);
     assert.equal((await evaluate('ff.settings()')).padTriggerDeadzoneL, 20);
     assert.equal(await evaluate('document.querySelector("#padTdzLVal").textContent'), '20%');
+    // The macro switch starts red/off, turns green/on, and the macro picker saves separately.
+    assert.equal(await evaluate('document.querySelector("#macroOn").checked'), false);
+    assert.equal(await evaluate('document.querySelector("#macroState").textContent'), 'Off');
+    await evaluate('(() => { const c = document.querySelector("#macroOn"); c.checked = true; c.dispatchEvent(new Event("change", { bubbles: true })); })()');
+    await delay(400);
+    assert.equal((await evaluate('ff.settings()')).macroOn, true);
+    assert.equal(await evaluate('document.querySelector("#macroState").textContent'), 'On');
+    assert.equal(await evaluate('document.querySelector("#macroState").classList.contains("on")'), true);
+    await evaluate('(() => { const s = document.querySelector("#macroPick"); s.value = "combo-ab"; s.dispatchEvent(new Event("change", { bubbles: true })); })()');
+    await delay(400);
+    assert.equal((await evaluate('ff.settings()')).macroPick, 'combo-ab');
     assert.equal(await evaluate('document.querySelectorAll("#padStage .pad-trig").length'), 2);
     assert.match(await evaluate('[...document.querySelectorAll("#padStage .pad-trig-text")].map((t) => t.textContent).join(",")'), /L2 0%/);
     // The animated graph exists for both sticks and follows each cubic slider separately.

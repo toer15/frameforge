@@ -438,6 +438,56 @@ const PADX = (() => {
     if (dz <= 0) return a;
     return a <= dz ? 0 : (a - dz) / (1 - dz);
   }
+
+  /* ---------- Macros (live preview only) ---------- */
+  const MACRO_PICKS = ['rapid-rt', 'rapid-lt', 'combo-ab', 'combo-ba'];
+  const MACRO_COMBOS = {
+    'combo-ab': { trigger: 's', steps: [['e', 120], ['rt', 160]] },
+    'combo-ba': { trigger: 'e', steps: [['s', 120], ['lt', 160]] },
+  };
+  const macroOn = () => !!(S && S.macroOn);
+  const macroPick = () => {
+    const v = S && S.macroPick;
+    return MACRO_PICKS.includes(v) ? v : 'rapid-rt';
+  };
+  const macroState = { pick: null, last: {}, combo: null };
+  function resetMacro() {
+    macroState.pick = null;
+    macroState.last = {};
+    macroState.combo = null;
+  }
+  /**
+   * The in-app macro engine. It never changes the physical pad: it returns button values to overlay on
+   * FrameForge's live drawing and readout. Rapid fire pulses the held trigger at 8 Hz; combos fire one
+   * sequence on the rising edge of their trigger and keep running if it is released.
+   */
+  function macroStep(pick, buttons, now, state = macroState) {
+    if (state.pick !== pick) {
+      state.pick = pick;
+      state.last = {};
+      state.combo = null;
+    }
+    if (pick === 'rapid-rt' || pick === 'rapid-lt') {
+      state.combo = null;
+      const key = pick === 'rapid-rt' ? 'rt' : 'lt';
+      if ((buttons[key] || 0) > 0.5) return { [key]: Math.floor(now / 125) % 2 ? 1 : 0 };
+      return {};
+    }
+    const cfg = MACRO_COMBOS[pick];
+    if (!cfg) return {};
+    const held = (buttons[cfg.trigger] || 0) > 0.5;
+    if (held && !state.last[cfg.trigger]) state.combo = { start: now };
+    state.last[cfg.trigger] = held;
+    if (!state.combo) return {};
+    const elapsed = now - state.combo.start;
+    let at = 0;
+    for (const [key, ms] of cfg.steps) {
+      if (elapsed < at + ms) return { [key]: 1 };
+      at += ms;
+    }
+    state.combo = null;
+    return {};
+  }
   const applyCurve = (v, cubic) => {
     if (!v) return 0;
     const a = Math.abs(v);
@@ -516,6 +566,18 @@ const PADX = (() => {
   }
 
   const TUNE_SAVE = { timer: null, pending: {} };
+  function syncMacroControls() {
+    const on = macroOn();
+    const power = $('#macroOn');
+    if (power) power.checked = on;
+    const state = $('#macroState');
+    if (state) {
+      state.textContent = on ? 'On' : 'Off';
+      state.classList.toggle('on', on);
+    }
+    const pick = $('#macroPick');
+    if (pick) pick.value = macroPick();
+  }
   function syncTuneControls() {
     const v = {
       padDeadzoneL: Math.round(deadzone('l') * 100),
@@ -806,6 +868,12 @@ const PADX = (() => {
     // Trigger deadzones apply to whichever controller/source is being shown, before anything is drawn.
     merged.buttons.lt = triggerShaped(merged.buttons.lt, triggerDeadzone('l'));
     merged.buttons.rt = triggerShaped(merged.buttons.rt, triggerDeadzone('r'));
+    // Overlay the selected macro on the live preview. The physical pad is never changed.
+    if (!macroOn()) resetMacro();
+    else {
+      const out = macroStep(macroPick(), merged.buttons, performance.now());
+      for (const [k, v] of Object.entries(out)) merged.buttons[k] = v;
+    }
     // Apply the saved deadzone and per-stick cubic curve: this is what the sticks and the Live input show.
     const cubicL = curve('l');
     const cubicR = curve('r');
@@ -929,6 +997,7 @@ const PADX = (() => {
 
   function open() {
     syncTuneControls();
+    syncMacroControls();
     buildCurvePreview();
     refresh();
     clearInterval(UI.timer);
@@ -968,6 +1037,16 @@ const PADX = (() => {
     const shape = DZ_SHAPES.includes(shapeEl.value) ? shapeEl.value : 'square';
     saveTune({ padDeadzoneShape: shape });
   });
+  const macroPower = $('#macroOn');
+  if (macroPower) macroPower.addEventListener('change', () => {
+    saveTune({ macroOn: macroPower.checked });
+    syncMacroControls();
+  });
+  const macroSelect = $('#macroPick');
+  if (macroSelect) macroSelect.addEventListener('change', () => {
+    const pick = MACRO_PICKS.includes(macroSelect.value) ? macroSelect.value : 'rapid-rt';
+    saveTune({ macroPick: pick });
+  });
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, triggerShaped, triggerDeadzone, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, triggerShaped, triggerDeadzone, macroStep, macroOn, macroPick, MACRO_PICKS, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
 })();

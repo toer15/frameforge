@@ -40,6 +40,8 @@ const DEFAULT_SETTINGS = {
   padDeadzoneShape: 'square', // Controller tab: shape of the deadzone — circle | cross | square
   padTriggerDeadzoneL: 0, // Controller tab: left trigger deadzone in % of full pull (0-40)
   padTriggerDeadzoneR: 0, // Controller tab: right trigger deadzone in % of full pull (0-40)
+  macroOn: false, // Controller tab: run the selected macro on the live preview
+  macroPick: 'rapid-rt', // rapid-rt | rapid-lt | combo-ab | combo-ba
   padCurveL: 60, // Controller tab: left stick cubic aim curve, 0 = linear, 100 = full cubic
   padCurveR: 60, // Controller tab: right stick cubic aim curve
   fpsLimitOn: false, // Settings > FPS limiter: cap games at fpsLimit through RTSS

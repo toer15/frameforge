@@ -572,6 +572,26 @@
           </div>
         </div>
         <div class="pad-side">
+          <div class="pad-card pad-macro-card">
+            <div class="pad-cardhead">
+              <h2 class="pad-h">Macros</h2>
+              <label class="pad-macro-power">
+                <input type="checkbox" id="macroOn" aria-label="Macros on or off" />
+                <span class="pad-macro-track" aria-hidden="true"><span></span></span>
+                <b id="macroState">Off</b>
+              </label>
+            </div>
+            <p class="muted pad-macro-note">Runs on the controller drawing and Live input. Games need a virtual controller driver.</p>
+            <label class="pad-macro-row" for="macroPick">
+              <span>Macro</span>
+              <select id="macroPick" class="select pad-macro-pick" aria-label="Macro">
+                <option value="rapid-rt">Rapid fire — RT</option>
+                <option value="rapid-lt">Rapid fire — LT</option>
+                <option value="combo-ab">Combo — bottom face → right face → RT</option>
+                <option value="combo-ba">Combo — right face → bottom face → LT</option>
+              </select>
+            </label>
+          </div>
           <div class="pad-card">
             <h2 class="pad-h">Live input</h2>
             <div id="padReadout" class="pad-readout"></div>

@@ -786,6 +786,19 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .pad-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; align-items: start; }
 .pad-cardhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .pad-cardhead .pad-h { margin: 0; }
+.pad-macro-note { margin: 0 0 10px; font-size: 13px; }
+.pad-macro-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; }
+.pad-macro-row > span { color: var(--muted); font-weight: 600; }
+.pad-macro-pick { width: 100%; }
+.pad-macro-power { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 700; }
+.pad-macro-power input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.pad-macro-track { width: 44px; height: 22px; border-radius: 11px; background: rgba(255, 77, 109, 0.2); border: 1px solid var(--bad); position: relative; transition: background 0.2s, border-color 0.2s; }
+.pad-macro-track > span { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #ffd7dd; transition: transform 0.2s, background 0.2s; }
+.pad-macro-power input:checked + .pad-macro-track { background: rgba(76, 217, 160, 0.2); border-color: #4cd9a0; }
+.pad-macro-power input:checked + .pad-macro-track > span { transform: translateX(22px); background: #eafff5; }
+.pad-macro-power b { min-width: 26px; color: var(--bad); font-size: 14px; }
+.pad-macro-power b.on { color: #4cd9a0; }
+.pad-macro-power input:focus-visible + .pad-macro-track { outline: 2px solid var(--coolant); outline-offset: 2px; }
 .pad-stage { display: flex; justify-content: center; align-items: center; gap: 28px; min-height: 300px; perspective: 900px; padding: 18px 0; }
 .pad-part { transform-style: preserve-3d; will-change: transform; flex: 0 1 auto; }
 .pad-part .pad-svg { display: block; width: 100%; max-width: 480px; height: auto; max-height: 340px; }

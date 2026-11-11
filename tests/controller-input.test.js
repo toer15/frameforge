@@ -256,6 +256,31 @@ test('trigger deadzones: each back trigger ignores its first pull and keeps full
   assert.equal(clamped.triggerDeadzone('l'), 0.4);
 });
 
+test('macros: rapid fire pulses and combos fire once on the rising edge', () => {
+  const P = load();
+  assert.equal(P.MACRO_PICKS.join(','), 'rapid-rt,rapid-lt,combo-ab,combo-ba');
+  assert.equal(P.macroOn(), false);
+  assert.equal(P.macroPick(), 'rapid-rt');
+  const tuned = load({ macroOn: true, macroPick: 'combo-ba' });
+  assert.equal(tuned.macroOn(), true);
+  assert.equal(tuned.macroPick(), 'combo-ba');
+  assert.equal(load({ macroPick: 'bad' }).macroPick(), 'rapid-rt');
+
+  const rapid = {};
+  assert.deepEqual({ ...P.macroStep('rapid-rt', { rt: 1 }, 0, rapid) }, { rt: 0 });
+  assert.deepEqual({ ...P.macroStep('rapid-rt', { rt: 1 }, 125, rapid) }, { rt: 1 });
+  assert.deepEqual({ ...P.macroStep('rapid-rt', { rt: 1 }, 250, rapid) }, { rt: 0 });
+  assert.deepEqual({ ...P.macroStep('rapid-rt', { rt: 0 }, 300, rapid) }, {});
+
+  const combo = {};
+  assert.deepEqual({ ...P.macroStep('combo-ab', { s: 1 }, 1000, combo) }, { e: 1 });
+  assert.deepEqual({ ...P.macroStep('combo-ab', { s: 1 }, 1120, combo) }, { rt: 1 });
+  assert.deepEqual({ ...P.macroStep('combo-ab', { s: 1 }, 1300, combo) }, {});
+  assert.deepEqual({ ...P.macroStep('combo-ab', { s: 1 }, 1400, combo) }, {});
+  P.macroStep('combo-ab', { s: 0 }, 1500, combo);
+  assert.deepEqual({ ...P.macroStep('combo-ab', { s: 1 }, 1600, combo) }, { e: 1 });
+});
+
 test('every model in the dropdown has a drawing', () => {
   const P = load();
   const html = fs.readFileSync(path.join(__dirname, '../renderer/index.html'), 'utf8');
@@ -274,6 +299,8 @@ test('every model in the dropdown has a drawing', () => {
   }
   const shapeSel = html.slice(html.indexOf('id="padDzShape"'), html.indexOf('</select>', html.indexOf('id="padDzShape"')));
   for (const shape of ['circle', 'cross', 'square']) assert.match(shapeSel, new RegExp(`value="${shape}"`), shape);
+  for (const id of ['macroOn', 'macroPick', 'macroState']) assert.match(html, new RegExp(`id="${id}"`), id);
+  for (const pick of ['rapid-rt', 'rapid-lt', 'combo-ab', 'combo-ba']) assert.match(html, new RegExp(`value="${pick}"`), pick);
   for (const id of ['padCurvePathL', 'padCurvePathR', 'padCurveDotL', 'padCurveDotR', 'padCurveCaption']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
