@@ -266,6 +266,16 @@ test('trigger preview labels follow the selected controller', () => {
   assert.deepEqual({ ...P.triggerNames('missing-model') }, { l: 'LT', r: 'RT' });
 });
 
+test('trigger preview percentages clamp the physical pull', () => {
+  const P = load();
+  assert.equal(P.triggerPercent(0), 0);
+  assert.equal(P.triggerPercent(0.376), 38);
+  assert.equal(P.triggerPercent(1), 100);
+  assert.equal(P.triggerPercent(-1), 0);
+  assert.equal(P.triggerPercent(2), 100);
+  assert.equal(P.triggerPercent(NaN), 0);
+});
+
 test('macros: rapid fire pulses and combos fire once on the rising edge', () => {
   const P = load();
   assert.equal(P.MACRO_PICKS.join(','), 'rapid-rt,rapid-lt,combo-ab,combo-ba');
@@ -311,10 +321,12 @@ test('every model in the dropdown has a drawing', () => {
   for (const shape of ['circle', 'cross', 'square']) assert.match(shapeSel, new RegExp(`value="${shape}"`), shape);
   for (const id of ['macroOn', 'macroPick', 'macroState']) assert.match(html, new RegExp(`id="${id}"`), id);
   for (const pick of ['rapid-rt', 'rapid-lt', 'combo-ab', 'combo-ba']) assert.match(html, new RegExp(`value="${pick}"`), pick);
-  for (const id of ['padTdzLMap', 'padTdzRMap', 'padTdzLLabel', 'padTdzRLabel', 'padTdzLiveL', 'padTdzLiveR']) {
+  for (const id of ['padTdzLMap', 'padTdzRMap', 'padTdzLLabel', 'padTdzRLabel', 'padTdzLiveL', 'padTdzLiveR', 'padTdzLPull', 'padTdzRPull']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
   for (const side of ['l', 'r']) assert.match(html, new RegExp(`data-trigger-live="${side}"`), side);
+  assert.match(html, /dz 0%/);
+  assert.match(html, /pull 0%/);
   assert.match(html, /Trigger deadzones/);
   for (const id of ['padCurvePathL', 'padCurvePathR', 'padCurveDotL', 'padCurveDotR', 'padCurveCaption']) {
     assert.match(html, new RegExp(`id="${id}"`), id);

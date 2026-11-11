@@ -115,6 +115,7 @@ const PADX = (() => {
     const labels = labelsFor(MODELS[id] ? id : 'xbox-series');
     return { l: labels.lt, r: labels.rt };
   };
+  const triggerPercent = (v) => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 100);
 
   const ACTIONS = [
     ['Jump / Confirm', 's'], ['Dodge / Back', 'e'], ['Reload / Interact', 'w'], ['Switch weapon / Item', 'n'],
@@ -575,23 +576,29 @@ const PADX = (() => {
       const fill = $(`.pad-trigger-dz[data-trigger-dz="${axis}"]`);
       if (fill) fill.style.width = `${pct}%`;
       const out = $(axis === 'l' ? '#padTdzLMap' : '#padTdzRMap');
-      if (out) out.textContent = `${pct}%`;
+      if (out) out.textContent = `dz ${pct}%`;
       const label = $(axis === 'l' ? '#padTdzLLabel' : '#padTdzRLabel');
       if (label && label.textContent !== names[axis]) label.textContent = names[axis];
     }
   }
   const TRIGGER_BARS = { l: null, r: null };
+  const TRIGGER_PULL_OUT = { l: null, r: null };
   function syncTriggerPulls(pull) {
     for (const axis of ['l', 'r']) {
+      const pct = triggerPercent(pull[axis]);
       if (!TRIGGER_BARS[axis]) TRIGGER_BARS[axis] = $(axis === 'l' ? '#padTdzLiveL' : '#padTdzLiveR');
       const bar = TRIGGER_BARS[axis];
-      if (!bar) continue;
-      const pct = Math.round(Math.max(0, Math.min(1, Number(pull[axis]) || 0)) * 100);
-      const width = `${pct}%`;
-      if (bar.dataset.pull !== width) {
-        bar.style.width = width;
-        bar.dataset.pull = width;
+      if (bar) {
+        const width = `${pct}%`;
+        if (bar.dataset.pull !== width) {
+          bar.style.width = width;
+          bar.dataset.pull = width;
+        }
       }
+      if (!TRIGGER_PULL_OUT[axis]) TRIGGER_PULL_OUT[axis] = $(axis === 'l' ? '#padTdzLPull' : '#padTdzRPull');
+      const out = TRIGGER_PULL_OUT[axis];
+      const text = `pull ${pct}%`;
+      if (out && out.textContent !== text) out.textContent = text;
     }
   }
 
@@ -1086,5 +1093,5 @@ const PADX = (() => {
     saveTune({ macroPick: pick });
   });
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, triggerShaped, triggerDeadzone, triggerNames, macroStep, macroOn, macroPick, MACRO_PICKS, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, triggerShaped, triggerDeadzone, triggerNames, triggerPercent, macroStep, macroOn, macroPick, MACRO_PICKS, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
 })();
