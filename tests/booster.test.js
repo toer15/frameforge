@@ -173,6 +173,8 @@ test('real Windows: priorities really change and really come back', { skip: proc
   const prios = async () => (await exec(`${kids.map((k) => `"$((Get-Process -Id ${k.pid}).PriorityClass)"`).join('; ')}`)).stdout.trim().split(/\r?\n/).map((s) => s.trim());
   try {
     await delay(1500);
+    // A build machine may run everything at Below Normal, and children inherit that: start from a known state.
+    await exec(kids.map((k) => `(Get-Process -Id ${k.pid}).PriorityClass = 'Normal'`).join('; '));
     assert.deepEqual(await prios(), ['Normal', 'Normal', 'Normal']);
     const b = new Booster({ exec, demo: false, background: ['ffboostbg'] });
     assert.equal(await b.tick({ enabled: true, app: 'FFBoostGame', gaming: true, now: 1 }), true);
