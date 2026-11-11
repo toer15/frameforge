@@ -27,6 +27,7 @@ const controllers = require('./src/controllers');
 const cleaner = require('./src/cleaner');
 const startupApps = require('./src/startup');
 const drives = require('./src/drives');
+const { Booster } = require('./src/booster');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -43,6 +44,17 @@ let showWhenReady = false;
 
 const fps = new FpsReader();
 const sensors = new Sensors();
+// Game Booster: raises the running game's priority and slows background apps while it runs.
+const booster = new Booster({
+  knownGames: async () => (await require('./src/games').findGamesCached(30 * 60 * 1000)).flatMap((g) => g.exes || []),
+});
+let boostOn = { at: 0, on: false };
+/** Is the Game Booster switch on? (Read from disk at most every 3 seconds.) */
+function boosterEnabled() {
+  const now = Date.now();
+  if (now - boostOn.at > 3000) boostOn = { at: now, on: !!backup.get('game_priority_boost') && (admin || DEMO) };
+  return boostOn.on;
+}
 
 const ICON = path.join(__dirname, 'assets', 'icon.png');
 
@@ -219,7 +231,7 @@ function createMainWindow(hidden, focusWhenReady = false) {
     minHeight: 640,
     frame: false,
     show: !hidden && !focusWhenReady,
-    backgroundColor: '#0a0f1c',
+    backgroundColor: '#0d0f13',
     icon: ICON,
     title: 'FrameForge',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
@@ -240,6 +252,9 @@ function createMainWindow(hidden, focusWhenReady = false) {
   // Opening the window checks for updates too (at most every 10 minutes).
   mainWin.on('show', () => updates && updates.maybeCheck && updates.maybeCheck());
   mainWin.on('focus', () => updates && updates.maybeCheck && updates.maybeCheck());
+  const freshStats = () => lastStats && send('stats', lastStats); // hidden windows get fewer updates: catch up at once
+  mainWin.on('show', freshStats);
+  mainWin.on('restore', freshStats);
   mainWin.on('maximize', () => send('window:state', { maximized: true }));
   mainWin.on('unmaximize', () => send('window:state', { maximized: false }));
 }
@@ -422,6 +437,7 @@ function applyMonitoring() {
 }
 
 let demoFps = 142;
+let statsTick = 0;
 let lastStats = null;
 let lastRunLog = [];
 let runQuiet = false;
@@ -449,9 +465,17 @@ function telemetryTick() {
     fpsReady: DEMO || (tl.presentmon && admin),
     sensorsReady: tl.lhm,
   };
-  lastStats = stats;
   trackLoad(stats);
-  send('stats', stats);
+  stats.boost = { ...booster.status(), enabled: boosterEnabled() };
+  lastStats = stats;
+  booster
+    .tick({ enabled: boosterEnabled(), app: f && f.fps > 0 ? f.app : null, gaming: gameRunning() })
+    .then((changed) => changed && send('boost', { ...booster.status(), enabled: boosterEnabled() }))
+    .catch(() => {});
+  // Nobody is looking at a hidden or minimized window: update it every 5 seconds instead of every second.
+  statsTick++;
+  const watching = mainWin && !mainWin.isDestroyed() && mainWin.isVisible() && !mainWin.isMinimized();
+  if (watching || statsTick % 5 === 0) send('stats', stats);
   if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.send('stats', stats);
 }
 
@@ -862,6 +886,7 @@ async function setTweak(id, on, { byUser = false, recover = false } = {}) {
   if (busy || (recover && (fixBusy || fixAllRunning))) return { ok: false, message: 'FrameForge is busy with another change. Try again in a moment.', on: await tweaksTab.stateOf(t) };
   if (t.admin && !admin) return { ok: false, message: 'This one needs FrameForge to run as administrator.', on: await tweaksTab.stateOf(t) };
   busy = true;
+  boostOn.at = 0; // the Game Booster switch may be the one changing: read it fresh
   let reboot = false;
   try {
     if (byUser) {
@@ -2289,6 +2314,7 @@ ipcMain.handle('profile:get', () => {
     insights: profile.insights(rig),
     overclock: profile.overclockPlan(rig, s.preset),
     guide: vg ? vg[s.preset] || vg.performance : [],
+    framePlan: require('./src/frameplan').plan(rig, { on: backup.all() }),
   };
 });
 ipcMain.handle('presets:list', () => presets.list());
@@ -2439,6 +2465,9 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
   sensors.stop();
   fps.stop(tools.presentMonPath());
+  // Give background apps their normal priority back (not waited for — quitting must stay instant).
+  const undoBoost = booster.quitScript();
+  if (undoBoost) ps(undoBoost, { timeout: 15000 }).catch(() => {});
 });
 app.on('window-all-closed', () => {
   if (!settings.get().minimizeToTray) app.quit();

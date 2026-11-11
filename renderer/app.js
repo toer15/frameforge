@@ -257,6 +257,17 @@ async function refreshProfile() {
     ? ins.map((i) => `<div class="insight ${i.level}"><h3>${esc(i.title)}</h3><p>${esc(i.body)}</p></div>`).join('')
     : '<p class="insight-empty">Nothing holding this PC back that FrameForge can see. Nice build.</p>';
 
+  const fp = PROFILE.framePlan || [];
+  $('#planPanel').classList.toggle('hidden', !fp.length);
+  $('#planFor').textContent = RIG ? [RIG.gpu && RIG.gpu.name, RIG.cpu && RIG.cpu.name].filter(Boolean).join(' + ') : '';
+  $('#planList').innerHTML = fp
+    .map((i) => {
+      const a = i.action;
+      const btn = !a ? '' : a.type === 'tweak' ? `<button class="primary small heat" data-plantweak="${esc(a.id)}">${esc(a.label)}</button>` : a.type === 'vendor' ? `<button class="ghost small" data-planvendor>${esc(a.label)}</button>` : `<button class="ghost small" data-plangoto="${esc(a.view)}">${esc(a.label)}</button>`;
+      return `<li class="plan-item"><div class="plan-gain">${esc(i.gain)}</div><div class="plan-body"><h3>${esc(i.title)}</h3><p>${esc(i.body)}</p>${i.where ? `<code>${esc(i.where)}</code>` : ''}</div>${btn}</li>`;
+    })
+    .join('');
+
   const vendorName = RIG ? RIG.gpu.vendorName : '';
   $('#tuneTitle').textContent = vendorName && vendorName !== 'Unknown' ? `${vendorName} driver tune-up` : 'Driver tune-up';
   $('#guideList').innerHTML = PROFILE.guide.length
@@ -286,10 +297,100 @@ const cls = (sel, v) => {
   const el = $(sel);
   if (el.className !== v) el.className = v;
 };
-const width = (sel, v) => {
+/** Fill a bar to 0–100 %. Uses a transform, which the graphics card animates without re-laying-out the page. */
+const fill = (sel, pct) => {
   const el = $(sel);
-  if (el.style.width !== v) el.style.width = v;
+  // The bar's colours stay put; a cover anchored to the right end shrinks to reveal them.
+  const v = `scaleX(${1 - Math.max(0, Math.min(100, pct || 0)) / 100})`;
+  if (el.style.transform !== v) el.style.transform = v;
 };
+
+/* Sparklines: the last two minutes of each live number. */
+const SPARK_LEN = 120;
+const sparks = {
+  spFps: { data: [], color: '#ffffff', span: 30 },
+  spCpu: { data: [], color: '#3fd8ff', span: 12 },
+  spGpu: { data: [], color: '#3fd8ff', span: 12 },
+};
+function sparkPush(id, v) {
+  const s = sparks[id];
+  s.data.push(typeof v === 'number' && isFinite(v) ? v : null);
+  if (s.data.length > SPARK_LEN) s.data.shift();
+}
+function sparkDraw(id) {
+  const s = sparks[id];
+  const c = $('#' + id);
+  if (!c || !c.offsetParent) return; // Home isn't on screen: nothing to draw
+  const vals = s.data.filter((v) => v != null);
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth;
+  const h = c.clientHeight;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+  }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  if (vals.length < 2) return;
+  // Scale to what the number actually did, with a minimum span so a steady reading draws as a calm line.
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const span = Math.max(max - min, s.span);
+  const lo = Math.max(0, min - span * 0.5);
+  const hi = max + span * 0.25;
+  // A young graph spreads over the whole width; once two minutes are stored it scrolls.
+  const step = w / (Math.max(s.data.length, 20) - 1);
+  const x0 = w - (s.data.length - 1) * step;
+  const y = (v) => h - 2 - ((v - lo) / (hi - lo)) * (h - 6);
+  g.beginPath();
+  let started = false;
+  let firstX = 0;
+  let lastX = 0;
+  s.data.forEach((v, i) => {
+    if (v == null) return;
+    const x = x0 + i * step;
+    if (!started) {
+      g.moveTo(x, y(v));
+      firstX = x;
+      started = true;
+    } else g.lineTo(x, y(v));
+    lastX = x;
+  });
+  g.lineWidth = 1.6;
+  g.lineJoin = 'round';
+  g.strokeStyle = s.color;
+  g.globalAlpha = 0.9;
+  g.stroke();
+  g.lineTo(lastX, h);
+  g.lineTo(firstX, h);
+  g.closePath();
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, s.color);
+  grad.addColorStop(1, 'transparent');
+  g.globalAlpha = 0.16;
+  g.fillStyle = grad;
+  g.fill();
+  g.globalAlpha = 1;
+}
+
+/* Game Booster strip on Home */
+let boosterHold = 0; // right after a click, the switch shows the click rather than a slightly older reading
+function showBooster(b) {
+  if (!b) return;
+  const sw = $('#boosterSwitch');
+  if (Date.now() > boosterHold && sw.checked !== !!b.enabled) sw.checked = !!b.enabled;
+  const on = sw.checked;
+  const box = $('#booster');
+  cls('#booster', `booster${on ? ' on' : ''}${on && b.active ? ' live' : ''}`);
+  let msg;
+  if (!on) msg = 'Off. Turn it on and the game you play gets the processor first.';
+  else if (!b.active) msg = 'Ready. It starts by itself when a game runs, and costs nothing until then.';
+  else if (b.protected) msg = `Boosting ${b.game}: its anti-cheat keeps its own priority, so FrameForge slowed ${b.slowed} background app${b.slowed === 1 ? '' : 's'} instead.`;
+  else msg = `Boosting ${b.game}: High priority${b.slowed ? `, ${b.slowed} background app${b.slowed === 1 ? '' : 's'} slowed` : ''}. Everything goes back when you close the game.`;
+  txt('#boosterState', msg);
+  box.title = on ? 'Game Booster is on' : 'Game Booster is off';
+}
 ff.onStats((s) => {
   lastStats = s;
   if (s.fpsEnabled && s.fps) {
@@ -304,8 +405,17 @@ ff.onStats((s) => {
   txt('#tGpuT', showT ? s.gpuTemp : null);
   cls('#tCpuT', showT && s.cpuTemp ? tempClass(s.cpuTemp) : '');
   cls('#tGpuT', showT && s.gpuTemp ? tempClass(s.gpuTemp) : '');
-  width('#bCpu', showT && s.cpuTemp ? Math.min(100, s.cpuTemp) + '%' : '0');
-  width('#bGpu', showT && s.gpuTemp ? Math.min(100, s.gpuTemp) + '%' : '0');
+  fill('#bCpu', showT && s.cpuTemp ? s.cpuTemp : 0);
+  fill('#bGpu', showT && s.gpuTemp ? s.gpuTemp : 0);
+  fill('#bCpuL', s.cpuLoad);
+  fill('#bGpuL', s.gpuLoad);
+  sparkPush('spFps', s.fpsEnabled && s.fps ? s.fps.fps : null);
+  sparkPush('spCpu', showT ? s.cpuTemp : null);
+  sparkPush('spGpu', showT ? s.gpuTemp : null);
+  sparks.spCpu.color = showT && s.cpuTemp >= 88 ? '#ff4d6d' : showT && s.cpuTemp >= 78 ? '#ffb347' : '#3fd8ff';
+  sparks.spGpu.color = showT && s.gpuTemp >= 88 ? '#ff4d6d' : showT && s.gpuTemp >= 78 ? '#ffb347' : '#3fd8ff';
+  if (!document.hidden) for (const id of Object.keys(sparks)) sparkDraw(id);
+  showBooster(s.boost);
   const src = s.sources || {};
   txt('#sCpu', showT ? (src.cpuTemp ? `From ${src.cpuTemp}` : 'Needs a real CPU sensor reader') : '');
   txt('#sGpu', showT ? (src.gpuTemp ? `From ${src.gpuTemp}` : 'Needs a real GPU sensor reader') : '');
@@ -333,6 +443,36 @@ ff.onStats((s) => {
     hint.classList.add('hidden');
     hint.dataset.tool = '';
   }
+});
+
+$('#planList').addEventListener('click', async (e) => {
+  const tw = e.target.closest('[data-plantweak]');
+  if (tw) {
+    tw.disabled = true;
+    const r = await ff.tw.set(tw.dataset.plantweak, true);
+    toast(r.ok ? r.message || 'Done.' : r.message, r.ok ? 3500 : 8000);
+    refreshProfile();
+    if (TW) refreshTweaks();
+    return;
+  }
+  if (e.target.closest('[data-planvendor]')) return void ff.openVendor();
+  const go = e.target.closest('[data-plangoto]');
+  if (go) $(`.nav-item[data-view="${go.dataset.plangoto}"]`).click();
+});
+if (ff.onBoost) ff.onBoost((b) => showBooster(b));
+$('#boosterSwitch').addEventListener('change', async (e) => {
+  const on = e.target.checked;
+  boosterHold = Date.now() + 4000;
+  showBooster({ enabled: on, active: false });
+  const r = await ff.tw.set('game_priority_boost', on);
+  boosterHold = Date.now() + 1500;
+  if (!r.ok) {
+    e.target.checked = !!r.on;
+    showBooster({ enabled: !!r.on, active: false });
+    toast(`Game Booster: ${r.message}`, 8000);
+  } else toast(on ? 'Game Booster is on. It starts by itself when a game runs.' : 'Game Booster is off.');
+  if (typeof refreshTweaks === 'function' && TW) refreshTweaks();
+  refreshProfile();
 });
 
 document.addEventListener('click', async (e) => {
@@ -567,6 +707,7 @@ function renderTweaks() {
     const d = $(`#twList [data-tw="${id}"] details`);
     if (d) d.open = true;
   });
+  applyTwFilter();
   const on = TW.items.filter((t) => t.on).length;
   $('#twCount').textContent = `${on} of ${TW.items.length} on`;
   const offRec = TW.items.filter((t) => !t.on && t.recommended && !t.locked).length;
@@ -575,6 +716,33 @@ function renderTweaks() {
   $('#twReboot').classList.toggle('hidden', !twRebootNames.size);
   $('#twRebootText').textContent = `Restart your PC to finish: ${[...twRebootNames].join(', ')}.`;
 }
+
+/* Search box and On / Off / Recommended filter above the list */
+let twShow = 'all';
+function applyTwFilter() {
+  if (!TW) return;
+  const q = $('#twSearch').value.trim().toLowerCase();
+  let shown = 0;
+  for (const row of $$('#twList .tw-row')) {
+    const t = TW.items.find((x) => x.id === row.dataset.tw);
+    const match =
+      !!t &&
+      (twShow === 'all' || (twShow === 'on' && t.on) || (twShow === 'off' && !t.on) || (twShow === 'rec' && t.recommended)) &&
+      (!q || `${t.name} ${t.desc} ${t.reason || ''} ${(t.what || []).join(' ')}`.toLowerCase().includes(q));
+    row.classList.toggle('hidden', !match);
+    if (match) shown++;
+  }
+  for (const cat of $$('#twList .tw-cat')) cat.classList.toggle('hidden', !cat.querySelector('.tw-row:not(.hidden)'));
+  $('#twNone').classList.toggle('hidden', shown > 0);
+}
+$('#twSearch').addEventListener('input', applyTwFilter);
+$('#twFilter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-twshow]');
+  if (!b) return;
+  twShow = b.dataset.twshow;
+  $$('#twFilter [data-twshow]').forEach((x) => x.classList.toggle('on', x === b));
+  applyTwFilter();
+});
 
 async function refreshTweaks() {
   TW = await ff.tw.catalog();

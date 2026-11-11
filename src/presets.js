@@ -15,8 +15,8 @@ const PRESETS = {
       'Windows diagnostics and telemetry off \u2014 less background CPU, disk and network',
       'Memory compression off \u2014 more RAM available, less CPU spent compressing',
       'SysMain (Superfetch) off \u2014 no background disk preloading causing hitches',
-      'Real-time priority boost for detected game processes',
-      'Timer resolution, core parking off, USB awake, PCIe link at full power',
+      'Game Booster: the game gets High priority, background browsers and launchers are slowed',
+      'Edge, Chrome and Widgets no longer run in the background; timer resolution, USB awake, PCIe at full power',
     ],
     tweaks: {
       restore_point: true,
@@ -35,6 +35,7 @@ const PRESETS = {
       usb_suspend: true, max_refresh: true, timer_res: true, core_parking: true, cpu_min: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, net_throttling: true, nagle_off: true, bg_apps: true, transparency: true, startup_delay: true, menu_delay: true,
       sysmain_off: true, mem_compression: true,
       search_off: true, delivery_optimization_off: true, diagnostics_off: true,
+      hybrid_pcores: true, game_priority_boost: true, edge_bg_off: true, chrome_bg_off: true, widgets_off: true, suggestions_off: true, start_web_off: true, folder_discovery_off: true,
       no_popups: true,
       fso_off: true, kb_repeat: true,
     },
@@ -65,6 +66,7 @@ const PRESETS = {
       dx_opt: true,
       game_gpu: true,
       usb_suspend: true, max_refresh: true, timer_res: true, core_parking: true, cpu_min: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, net_throttling: true, nagle_off: true, bg_apps: true, transparency: true, startup_delay: true,
+      hybrid_pcores: true, game_priority_boost: true, widgets_off: true, suggestions_off: true, start_web_off: true, folder_discovery_off: true,
       no_popups: true,
     },
   },
@@ -77,6 +79,7 @@ const PRESETS = {
       'Windows animations and shadows turned off',
       'Chris Titus tweaks: telemetry and background services off',
       'Games get top CPU/GPU priority and the fastest graphics card',
+      'Game Booster slows background apps while you play; Widgets, tips and ads off',
       'Driver set to low latency and high-performance texture filtering',
     ],
     tweaks: {
@@ -94,6 +97,7 @@ const PRESETS = {
       dx_opt: true,
       game_gpu: true,
       usb_suspend: true, max_refresh: true, core_parking: true, cpu_min: true, cpu_boost: true, sys_responsiveness: true, pcie_lspm: true, net_throttling: true, bg_apps: true, transparency: true, startup_delay: true,
+      hybrid_pcores: true, game_priority_boost: true, widgets_off: true, suggestions_off: true, start_web_off: true, folder_discovery_off: true,
       no_popups: false,
     },
   },
@@ -123,6 +127,7 @@ const PRESETS = {
       dx_opt: true,
       game_gpu: true,
       usb_suspend: true, max_refresh: true, cpu_boost: true, sys_responsiveness: true, startup_delay: true,
+      hybrid_pcores: true, game_priority_boost: true, suggestions_off: true, folder_discovery_off: true,
       no_popups: false,
     },
   },
@@ -158,7 +163,7 @@ const PRESETS = {
 };
 
 // Boosts the PC profile may switch off for hardware reasons, whatever the preset says.
-const HARDWARE_VETO = ['power_plan', 'power_throttling', 'hags', 'core_parking', 'cpu_min', 'timer_res', 'mem_compression'];
+const HARDWARE_VETO = ['power_plan', 'power_throttling', 'hags', 'core_parking', 'cpu_min', 'timer_res', 'mem_compression', 'hybrid_pcores'];
 
 /** Boost list for this preset on this PC, plus a reason for each. */
 function compose(presetId, rig) {

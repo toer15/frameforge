@@ -51,6 +51,7 @@ function testMain({ autoFix = true, hasAdmin = true, outcomes = [failure, succes
     './src/presets': { PRESETS: { balanced: { name: 'Balanced' } } },
     './src/fps': { FpsReader: class {} },
     './src/sensors': { Sensors: class {} },
+    './src/booster': { Booster: class {} },
     './src/optimizer': {
       TWEAKS: [t],
       planned: () => [t],

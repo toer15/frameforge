@@ -1,5 +1,8 @@
-**Live trigger percentages**
+**A faster PC while you play, and a new look**
 
-- Each trigger preview now shows **dz N%** for its deadzone next to **pull N%** for the live physical pull.
-- The pull percentage and bar track the trigger together, so the ignored area and remaining travel are easy to compare at a glance.
-- Controller-specific trigger names remain: **LT/RT** on Xbox, **L2/R2** on PlayStation and **ZL/ZR** on Nintendo Switch.
+- **Game Booster.** While a game runs, FrameForge now gives the game High CPU priority and slows background browsers, launcher web views and file sync, then puts everything back when you close the game. Discord, OBS and music are never touched. The switch is on Home. (The old “priority for game processes” switch only saved a setting and never changed a process; this replaces it.)
+- **Biggest FPS gains for your PC.** Home now shows a short list made for the exact graphics card, processor and memory FrameForge finds: the frame generation your card has (NVIDIA Smooth Motion on RTX 40/50, AMD Fluid Motion Frames 2 on RX 6000 and newer), the right upscaler (DLSS, FSR, XeSS), RAM running below its rated speed, and a frame cap matched to your screen — each with where to click and what it realistically gives.
+- **9 new tweaks**: keep games on the fast cores of Intel 12th gen and newer processors, stop Edge and Chrome running after you close them, Widgets off, no promoted apps or ads, faster Start menu search, folders that open instantly, a fix for flicker and stutter in borderless games, and an optional Memory Integrity switch for a few percent more FPS (a security trade-off, off unless you choose it).
+- **Find tweaks fast**: a search box and On / Off / Recommended filters on the Tweaks tab.
+- **New look**: forged-steel design across every tab, live graphs for FPS and temperatures, CPU and GPU load bars.
+- **FrameForge itself is lighter**: the Home tab uses about a tenth of the processor time it did, and a hidden or minimized window updates every 5 seconds instead of every second.

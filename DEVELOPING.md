@@ -198,9 +198,38 @@ over your mouse or keyboard — so you can keep using your PC while it works.
   Settings. These tweaks are NOT undone by turning Auto Mode off — use the restore point FrameForge makes
   first, or winutil's own Undo (Settings › "Open Chris Titus tool").
 
+## Game Booster and the FPS plan (1.14.0)
+
+- `src/booster.js` — the Tweaks switch `game_priority_boost` used to save a flag and nothing else. `Booster.tick()` is
+  called from `telemetryTick()` once a second. While a game runs (PresentMon's app name, or — with the FPS counter
+  off — an installed game's .exe once the graphics card has been busy for 20 s) one PowerShell pass sets the game to
+  High and the processes in `BACKGROUND` (browsers, launcher web helpers, file sync, Widgets) from Normal to Below
+  Normal. It re-runs once a minute to catch new helper processes, and restores every PID it changed (same name,
+  still at the priority FrameForge set) when the game is gone, the switch goes off, or FrameForge quits. Never
+  Realtime; never voice chat, streaming, music or anti-cheat; nothing is touched when no game is found. Process
+  names are whitelisted by `cleanName()` before they reach a script. Home shows the state (`stats.boost`, `boost`
+  event). `tests/booster.test.js` covers the logic with a simulated PC and, on Windows, runs the real scripts
+  against copies of PING.EXE — that test is part of the release build.
+- `src/frameplan.js` — `plan(rig, { on })` builds "Biggest FPS gains for your PC" on Home from the detected parts:
+  driver frame generation (Smooth Motion on RTX 40/50, AFMF 2 on RX 6000+ and Radeon 700M/800M), the upscaler the
+  card has, Resizable BAR for Arc, RAM below its rated speed, the Intel fast-core tweak, Game Booster and a frame cap
+  3 FPS under the refresh rate. Gains are worded as the ranges makers and reviews report; nothing is measured or
+  promised. Items FrameForge can do carry a button (`ff.tw.set`), the rest say where to click.
+- New tweaks in `src/tweaks.js`: `hybrid_pcores` (powercfg SCHEDPOLICY / SHORTSCHEDPOLICY = 2, vetoed on non-hybrid
+  CPUs), `edge_bg_off`, `chrome_bg_off`, `widgets_off`, `suggestions_off`, `start_web_off`, `folder_discovery_off`,
+  and two that are never recommended or part of a preset: `mpo_off` and `vbs_off` (Memory Integrity; switching it
+  back on without a backup is left to Windows Security, which checks drivers first).
+- UI: the 1.14 look is one layer at the end of `renderer/styles.css`. Home's bars use transforms and the Auto Mode
+  switch no longer animates forever (Home went from ~36 layouts a second to ~2); hidden or minimized windows get
+  `stats` every 5 s. Sparklines are canvases drawn once a second while Home is visible. Tweaks has a search box
+  and On / Off / Recommended filters (`applyTwFilter`).
+- `.github/workflows/test.yml` runs the tests on Windows for every branch and pull request.
+- Not yet run on real hardware: the new registry tweaks (they use the same `registryTweak` path as the others),
+  and Game Booster against a real anti-cheat game.
+
 ## Tweaks tab
 
-28 tweaks in five groups (input lag, CPU, graphics & games, network, Windows & background), each a switch
+42 tweaks in five groups (input lag, CPU, graphics & games, network, Windows & background), each a switch
 with a short explanation, a "recommended for your PC" flag and the exact settings it changes. Switches read
 the real state from Windows (registry, powercfg, services, MMAgent) — language-independent, so it works on any
 Windows language. Switching on saves the previous values first; switching off restores them, or sets the
@@ -404,6 +433,8 @@ Set `FRAMEFORGE_DEMO=1` on Windows to try the UI without touching the system.
 - `src/startup.js` – Cleaner checks: programs that start with Windows (on/off, kept off) and programs using a lot right now
 - `src/drives.js` – every drive (SSD, HDD, external, USB) with type and health, for the Full check and the virus full scan
 - `src/animations.js` – the Windows animations switch
+- `src/booster.js` – Game Booster: game priority up, background apps down, while a game runs
+- `src/frameplan.js` – the hardware-specific “Biggest FPS gains for your PC” list on Home
 - `src/guides.js` – step-by-step instructions for what no app can do (BIOS, cables, dust)
 - `src/updater.js` – update checks, download, fingerprint check, popup events
 - `src/games.js` – finds installed Steam and Epic games

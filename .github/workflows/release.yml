@@ -43,9 +43,9 @@ jobs:
       - run: npm ci
         if: steps.check.outputs.skip != 'true'
 
-      - name: Check Fix Mode recovery and sensor performance
+      - name: Check Fix Mode recovery, sensor performance and the Game Booster (on this real Windows machine)
         if: steps.check.outputs.skip != 'true'
-        run: node --test tests/fix-recovery.test.js tests/sensors-performance.test.js
+        run: node --test tests/fix-recovery.test.js tests/sensors-performance.test.js tests/booster.test.js
 
       - name: Build installer and publish release
         if: steps.check.outputs.skip != 'true'

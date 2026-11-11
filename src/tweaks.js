@@ -23,6 +23,8 @@ const P = {
   CPMINCORES: [SUB_PROCESSOR, '0cc5b647-c1df-4637-891a-dec35c318583'], // core parking: min % of cores unparked
   PROCTHROTTLEMIN: [SUB_PROCESSOR, '893dee8e-2bef-41e0-89c6-b55d0929964c'], // minimum processor state %
   PERFBOOSTMODE: [SUB_PROCESSOR, 'be337238-0d82-4146-a960-4f3749d470c7'], // 0 off, 1 on, 2 aggressive…
+  SCHEDPOLICY: [SUB_PROCESSOR, '93b8b6dc-0698-4d1c-9ee4-0644e900c85d'], // which cores long-running threads use: 2 prefer fast cores, 5 automatic
+  SHORTSCHEDPOLICY: [SUB_PROCESSOR, 'bae08b81-2d5e-4688-ad6a-13243356654b'], // the same for short-running threads
   ASPM: [SUB_PCIE, 'ee12f906-d277-404b-b6da-e5fa1a576df5'], // PCIe link state power management: 0 off
   USBSUSPEND: [SUB_USB, '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'], // USB selective suspend: 0 disabled
 };
@@ -336,6 +338,18 @@ const NEW = [
     ...powerTweak([{ p: P.PERFBOOSTMODE, value: 2, def: 1, label: 'Processor performance boost mode', unit: ' (2 = Aggressive)' }]),
   },
 
+  {
+    id: 'hybrid_pcores',
+    cat: 'cpu',
+    name: 'Keep games on the fast cores (Intel 12th gen and newer)',
+    desc: 'Newer Intel processors mix fast performance cores with slower efficiency cores. This tells Windows to prefer the fast cores while plugged in, so game threads don’t land on a slow core. Helps most on Windows 10 and in older games; Windows 11 already does much of this by itself. Does nothing on processors where every core is the same.',
+    admin: true,
+    ...powerTweak([
+      { p: P.SCHEDPOLICY, value: 2, def: 5, label: 'Processor scheduling policy for long-running threads', unit: ' (2 = prefer performance cores)' },
+      { p: P.SHORTSCHEDPOLICY, value: 2, def: 5, label: 'Processor scheduling policy for short-running threads', unit: ' (2 = prefer performance cores)' },
+    ]),
+  },
+
   // Graphics & games
   {
     id: 'max_refresh',
@@ -600,15 +614,18 @@ const NEW = [
   {
     id: 'game_priority_boost',
     cat: 'games',
-    name: 'Real-time priority for game processes',
-    desc: 'Sets the Windows process priority class for running games to Above Normal, so the CPU schedules game threads before almost everything else. Applied while a game is detected running.',
+    name: 'Game Booster (works while you play)',
+    desc: 'While a game runs, FrameForge gives the game’s process High CPU priority and slows background browsers, launcher web views and file sync to Below Normal, so the processor serves the game first. When you close the game everything gets its normal priority back. Voice chat, streaming and music apps are never touched, and it never uses Realtime priority. Does nothing while no game runs.',
     admin: true,
-    what: ['Process priority: game executables → Above Normal (while detected running)'],
+    what: [
+      'Game process › priority class = High (only while the game runs)',
+      'Browsers, launcher web helpers, OneDrive/Dropbox/Teams, Widgets › priority class = Below Normal (only while the game runs)',
+      'Not touched: Discord, OBS, Spotify, anti-cheat, Windows itself',
+    ],
     async apply() {
-      // This is a runtime tweak: applied when games are detected, reverted when they close.
-      // Record that we're managing it; the actual per-process boost is done by the main process.
-      if (!backup.get(this.id)) backup.put(this.id, { active: false });
-      return { ok: true, message: 'Game priority boost ready — applied when a game is detected.' };
+      // The work happens live in the main process (src/booster.js); this records that the switch is on.
+      if (!backup.get(this.id)) backup.put(this.id, { active: true });
+      return { ok: true, message: 'Game Booster is ready — it starts by itself when a game runs.', details: ['Game Booster: off → on (acts only while a game is running)'] };
     },
     async revert() {
       backup.remove(this.id);
@@ -620,6 +637,87 @@ const NEW = [
     async forceOff() {
       backup.remove(this.id);
       return { ok: true };
+    },
+  },
+
+  // ----- 1.14: a lighter Windows behind your game, and faster everyday use -----
+
+  {
+    id: 'edge_bg_off',
+    cat: 'windows',
+    name: 'Stop Edge running when it’s closed',
+    desc: 'Microsoft Edge keeps processes alive after you close it (“Startup boost” and background mode) so it opens a little faster. This turns both off and frees that memory and CPU for whatever you’re actually using. Edge still works normally; its settings page will say these two options are managed.',
+    admin: true,
+    ...registryTweak([
+      { key: `${HKLM}\\SOFTWARE\\Policies\\Microsoft\\Edge`, name: 'StartupBoostEnabled', type: 'REG_DWORD', data: 0 },
+      { key: `${HKLM}\\SOFTWARE\\Policies\\Microsoft\\Edge`, name: 'BackgroundModeEnabled', type: 'REG_DWORD', data: 0 },
+    ]),
+  },
+  {
+    id: 'chrome_bg_off',
+    cat: 'windows',
+    name: 'Stop Chrome running when it’s closed',
+    desc: 'Chrome can keep running in the background after you close the last window. This turns that off, so closing Chrome really frees its memory. Chrome’s settings page will say this option is managed.',
+    admin: true,
+    ...registryTweak([{ key: `${HKLM}\\SOFTWARE\\Policies\\Google\\Chrome`, name: 'BackgroundModeEnabled', type: 'REG_DWORD', data: 0 }]),
+  },
+  {
+    id: 'widgets_off',
+    cat: 'windows',
+    name: 'Turn off Widgets',
+    desc: 'The Widgets board (weather and news on the taskbar) keeps several web processes running all day. This switches Widgets off and removes its taskbar button. Takes effect after you sign out or restart.',
+    admin: true,
+    reboot: true,
+    ...registryTweak([{ key: `${HKLM}\\SOFTWARE\\Policies\\Microsoft\\Dsh`, name: 'AllowNewsAndInterests', type: 'REG_DWORD', data: 0 }]),
+  },
+  {
+    id: 'suggestions_off',
+    cat: 'windows',
+    name: 'No promoted apps, tips or ads',
+    desc: 'Stops Windows from quietly installing promoted apps and from downloading tips, suggestions and lock-screen ads in the background. Less background downloading and nothing popping up.',
+    ...registryTweak(
+      (() => {
+        const k = `${HKCU}\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager`;
+        return ['SilentInstalledAppsEnabled', 'SystemPaneSuggestionsEnabled', 'SoftLandingEnabled', 'SubscribedContent-338388Enabled', 'SubscribedContent-338389Enabled', 'SubscribedContent-310093Enabled', 'SubscribedContent-353698Enabled'].map((name) => ({ key: k, name, type: 'REG_DWORD', data: 0, def: 1 }));
+      })()
+    ),
+  },
+  {
+    id: 'start_web_off',
+    cat: 'windows',
+    name: 'Faster Start menu search',
+    desc: 'Start menu search normally sends everything you type to Bing and waits for web results. This keeps search to your own apps, files and settings, so results show up right away. Takes effect after you sign out or restart.',
+    reboot: true,
+    ...registryTweak([{ key: `${HKCU}\\Software\\Policies\\Microsoft\\Windows\\Explorer`, name: 'DisableSearchBoxSuggestions', type: 'REG_DWORD', data: 1 }]),
+  },
+  {
+    id: 'folder_discovery_off',
+    cat: 'windows',
+    name: 'Folders open instantly',
+    desc: 'File Explorer looks inside every folder to guess its type (pictures, music, videos) before showing it — the reason Downloads and big game folders can take seconds to open. This turns the guessing off. New Explorer windows use it right away.',
+    ...registryTweak([{ key: `${HKCU}\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\\AllFolders\\Shell`, name: 'FolderType', type: 'REG_SZ', data: 'NotSpecified' }]),
+  },
+  {
+    id: 'mpo_off',
+    cat: 'games',
+    name: 'Fix flicker and stutter in borderless games (MPO off)',
+    desc: 'Multiplane Overlay is a Windows display feature that causes flickering, black flashes or stutter on some PCs — mostly with two monitors at different refresh rates, or a browser video next to a game. Only turn this on if you see that; on PCs without the problem it changes nothing you’d notice. Needs a restart.',
+    admin: true,
+    reboot: true,
+    ...registryTweak([{ key: `${HKLM}\\SOFTWARE\\Microsoft\\Windows\\Dwm`, name: 'OverlayTestMode', type: 'REG_DWORD', data: 5 }]),
+  },
+  {
+    id: 'vbs_off',
+    cat: 'cpu',
+    name: 'Turn off Memory Integrity (security trade-off)',
+    desc: 'Memory Integrity (Core Isolation) is a Windows security feature that runs driver checks inside a small virtual machine. Microsoft itself says turning it off can raise gaming performance — typically a few percent, more on older CPUs. The trade-off is real: Windows is less protected against malicious drivers, so leave it on if you install things from sources you don’t fully trust. Some anti-cheats may ask for it. Needs a restart; you can turn it back on here or in Windows Security › Device security › Core isolation.',
+    admin: true,
+    reboot: true,
+    ...registryTweak([{ key: `${HKLM}\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity`, name: 'Enabled', type: 'REG_DWORD', data: 0 }]),
+    offNote: 'Memory Integrity was already off before FrameForge, so FrameForge leaves it alone. To turn it on, use Windows Security › Device security › Core isolation — Windows checks your drivers first.',
+    // Never switch a security feature ON from here without a backup: Windows Security checks drivers for compatibility first.
+    async forceOff() {
+      return { ok: true, keptOn: true };
     },
   },
 ];

@@ -100,6 +100,54 @@
         <div class="forge-glow"></div>
       </div>
 
+      <div class="telemetry panel" id="telemetry">
+        <div class="tele fps">
+          <div class="tele-val"><span id="tFps">—</span><small>FPS</small></div>
+          <div class="tele-sub" id="tFpsSub">FPS counter is off</div>
+          <canvas class="spark" id="spFps" width="240" height="44" aria-hidden="true"></canvas>
+        </div>
+        <div class="tele">
+          <div class="tele-val"><span id="tCpuT">—</span><small>°C</small></div>
+          <div class="tele-sub">CPU temperature</div>
+          <canvas class="spark" id="spCpu" width="240" height="44" aria-hidden="true"></canvas>
+          <div class="bar"><i id="bCpu"></i></div>
+          <div class="src" id="sCpu"></div>
+        </div>
+        <div class="tele">
+          <div class="tele-val"><span id="tGpuT">—</span><small>°C</small></div>
+          <div class="tele-sub">GPU temperature</div>
+          <canvas class="spark" id="spGpu" width="240" height="44" aria-hidden="true"></canvas>
+          <div class="bar"><i id="bGpu"></i></div>
+          <div class="src" id="sGpu"></div>
+        </div>
+        <div class="tele load">
+          <div class="load-row"><span>CPU load</span><b id="tCpuL">—</b></div>
+          <div class="bar thin"><i id="bCpuL"></i></div>
+          <div class="load-row"><span>GPU load</span><b id="tGpuL">—</b></div>
+          <div class="bar thin"><i id="bGpuL"></i></div>
+          <button class="ghost small" id="overlayBtn">Show overlay</button>
+        </div>
+      </div>
+      <div class="hint hidden" id="teleHint"></div>
+
+      <div class="booster" id="booster">
+        <svg class="booster-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+        <div class="booster-text">
+          <b>Game Booster</b>
+          <span id="boosterState">Off. Turn it on and the game you play gets the processor first.</span>
+        </div>
+        <label class="switch heat" title="Game Booster"><input type="checkbox" id="boosterSwitch" aria-label="Game Booster" /><span></span></label>
+      </div>
+
+      <div class="panel plan hidden" id="planPanel">
+        <div class="panel-head">
+          <h2>Biggest FPS gains for your PC</h2>
+          <span class="muted head-note" id="planFor"></span>
+        </div>
+        <p class="muted plan-lead">Picked for the parts FrameForge found in this PC, biggest first. Most of these live in your graphics driver app or in each game, because that is where the large gains are.</p>
+        <ol class="plan-list" id="planList"></ol>
+      </div>
+
       <div class="panel presets" id="presets">
         <div class="panel-head">
           <h2>Your goal</h2>
@@ -112,31 +160,6 @@
         </div>
         <div class="car-dots" id="carDots" role="tablist"></div>
       </div>
-
-      <div class="telemetry panel" id="telemetry">
-        <div class="tele fps">
-          <div class="tele-val"><span id="tFps">—</span><small>FPS</small></div>
-          <div class="tele-sub" id="tFpsSub">FPS counter is off</div>
-        </div>
-        <div class="tele">
-          <div class="tele-val"><span id="tCpuT">—</span><small>°C</small></div>
-          <div class="tele-sub">CPU temperature</div>
-          <div class="bar"><i id="bCpu"></i></div>
-          <div class="src" id="sCpu"></div>
-        </div>
-        <div class="tele">
-          <div class="tele-val"><span id="tGpuT">—</span><small>°C</small></div>
-          <div class="tele-sub">GPU temperature</div>
-          <div class="bar"><i id="bGpu"></i></div>
-          <div class="src" id="sGpu"></div>
-        </div>
-        <div class="tele load">
-          <div class="load-row"><span>CPU load</span><b id="tCpuL">—</b></div>
-          <div class="load-row"><span>GPU load</span><b id="tGpuL">—</b></div>
-          <button class="ghost small" id="overlayBtn">Show overlay</button>
-        </div>
-      </div>
-      <div class="hint hidden" id="teleHint"></div>
 
       <div class="panel changes" id="changesPanel">
         <div class="panel-head">
@@ -216,6 +239,16 @@
         <span id="twRebootText">Restart your PC to finish some tweaks.</span>
         <button class="ghost small" id="twRebootBtn">Restart now</button>
       </div>
+      <div class="tw-filter" id="twFilter">
+        <input class="text-in" id="twSearch" type="search" placeholder="Search tweaks — try “mouse”, “ping” or “startup”" aria-label="Search tweaks" />
+        <div class="seg tw-seg" role="group" aria-label="Show">
+          <button data-twshow="all" class="on">All</button>
+          <button data-twshow="on">On</button>
+          <button data-twshow="off">Off</button>
+          <button data-twshow="rec">Recommended</button>
+        </div>
+      </div>
+      <p class="muted hidden" id="twNone">No tweak matches that. Clear the search to see them all.</p>
       <div id="twList"><p class="muted">Reading your current Windows settings…</p></div>
     </section>
 

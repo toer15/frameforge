@@ -59,6 +59,22 @@ function recommend(rig) {
     mem_compression: [!!rig.ramGB && rig.ramGB >= 16, rig.ramGB && rig.ramGB >= 16 ? `${rig.ramGB} GB RAM is plenty — compression isn’t needed.` : `Keep it with ${rig.ramGB || 'under 16'} GB RAM — Windows needs it.`],
     dx_opt: [true, 'Lower latency for borderless games on every PC.'],
     ctt_tweaks: [true, 'Chris Titus’s Standard preset is built to be safe on every PC.'],
+    hybrid_pcores: [
+      require('./frameplan').isHybridIntel(rig.cpu),
+      require('./frameplan').isHybridIntel(rig.cpu) ? 'Your processor has fast and slow cores — games belong on the fast ones.' : 'Only for Intel processors with performance and efficiency cores. Yours has one kind of core.',
+    ],
+    search_off: [false, 'Only worth it if your disk is always busy — finding files gets slower without the index.'],
+    delivery_optimization_off: [true, 'No background uploads while you play.'],
+    diagnostics_off: [true, 'Less background CPU, disk and network on every PC.'],
+    game_priority_boost: [true, 'More CPU time for the game on every PC — and it only acts while a game runs.'],
+    edge_bg_off: [false, 'Frees memory if you use Edge. Edge will show these two settings as “managed”.'],
+    chrome_bg_off: [false, 'Frees memory if you use Chrome. Chrome will show “managed by your organization”.'],
+    widgets_off: [true, 'Widgets keeps web processes running all day.'],
+    suggestions_off: [true, 'No surprise app installs or ads on any PC.'],
+    start_web_off: [true, 'Search results appear without waiting for the web.'],
+    folder_discovery_off: [true, 'Big folders open without the wait.'],
+    mpo_off: [false, 'Only if you see flicker, black flashes or stutter in borderless games.'],
+    vbs_off: [false, 'Your choice: a few percent more FPS for less protection against bad drivers.'],
     game_gpu: [
       true,
       (rig.otherGpus && rig.otherGpus.length) || rig.laptop
