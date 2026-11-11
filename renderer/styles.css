@@ -843,6 +843,15 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .pad-shape-select { width: 100%; }
 .pad-shape-hint { margin: -2px 0 10px; font-size: 13px; }
 .pad-trigger-hint { margin: -2px 0 10px; font-size: 13px; }
+.pad-trigger-box { margin: 0 0 10px; padding: 10px 14px; background: var(--bg-2); border: 1px solid var(--line); }
+.pad-trigger-boxhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+.pad-trigger-boxhead b { color: var(--brass); font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+.pad-trigger-boxhead span { color: var(--muted); font-size: 12px; }
+.pad-trigger-map-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 46px; align-items: center; gap: 10px; margin: 5px 0; }
+.pad-trigger-map-row > span { color: var(--muted); font-weight: 700; font-size: 13px; }
+.pad-trigger-scale { height: 12px; background: var(--bg); border: 1px solid var(--line-2); position: relative; overflow: hidden; }
+.pad-trigger-dz { position: absolute; inset: 0 auto 0 0; width: 0; background: repeating-linear-gradient(135deg, rgba(255, 209, 102, 0.3) 0 5px, rgba(255, 209, 102, 0.14) 5px 10px); border-right: 2px solid var(--brass); transition: width 0.08s linear; }
+.pad-trigger-map-row output { color: var(--brass); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .pad-slider-row output { text-align: right; font-weight: 700; color: var(--brass); font-variant-numeric: tabular-nums; }
 .pad-slider-row input[type="range"] { width: 100%; height: 22px; accent-color: var(--brass); cursor: pointer; }
 .pad-tune-hint { margin: 8px 0 0; font-size: 13px; }

@@ -537,6 +537,19 @@
               <output id="padTdzRVal" for="padTdzR">0%</output>
             </div>
             <p class="muted pad-trigger-hint" id="padTdzHint">The trigger deadzones ignore the first part of each pull and rescale the rest, so a full pull still reaches 100%. They shape FrameForge's live input; games and Steam Input use their own trigger deadzone settings.</p>
+            <div class="pad-trigger-box" id="padTriggerBox">
+              <div class="pad-trigger-boxhead"><b>Trigger deadzones</b><span>shaded part is ignored</span></div>
+              <div class="pad-trigger-map-row">
+                <span>LT</span>
+                <div class="pad-trigger-scale" aria-hidden="true"><i class="pad-trigger-dz" data-trigger-dz="l"></i></div>
+                <output id="padTdzLMap">0%</output>
+              </div>
+              <div class="pad-trigger-map-row">
+                <span>RT</span>
+                <div class="pad-trigger-scale" aria-hidden="true"><i class="pad-trigger-dz" data-trigger-dz="r"></i></div>
+                <output id="padTdzRMap">0%</output>
+              </div>
+            </div>
             <div class="pad-slider-row">
               <label for="padCurveL">Left stick aim curve</label>
               <input type="range" id="padCurveL" min="0" max="100" step="5" value="60" />

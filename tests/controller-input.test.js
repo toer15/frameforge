@@ -301,6 +301,8 @@ test('every model in the dropdown has a drawing', () => {
   for (const shape of ['circle', 'cross', 'square']) assert.match(shapeSel, new RegExp(`value="${shape}"`), shape);
   for (const id of ['macroOn', 'macroPick', 'macroState']) assert.match(html, new RegExp(`id="${id}"`), id);
   for (const pick of ['rapid-rt', 'rapid-lt', 'combo-ab', 'combo-ba']) assert.match(html, new RegExp(`value="${pick}"`), pick);
+  for (const id of ['padTdzLMap', 'padTdzRMap']) assert.match(html, new RegExp(`id="${id}"`), id);
+  assert.match(html, /Trigger deadzones/);
   for (const id of ['padCurvePathL', 'padCurvePathR', 'padCurveDotL', 'padCurveDotR', 'padCurveCaption']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }

@@ -110,6 +110,8 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     await delay(400);
     assert.equal((await evaluate('ff.settings()')).padTriggerDeadzoneL, 20);
     assert.equal(await evaluate('document.querySelector("#padTdzLVal").textContent'), '20%');
+    assert.equal(await evaluate('document.querySelector("#padTdzLMap").textContent'), '20%');
+    assert.equal(await evaluate('document.querySelector(".pad-trigger-dz[data-trigger-dz=l]").style.width'), '20%');
     // The macro switch starts red/off, turns green/on, and the macro picker saves separately.
     assert.equal(await evaluate('document.querySelector("#macroOn").checked'), false);
     assert.equal(await evaluate('document.querySelector("#macroState").textContent'), 'Off');

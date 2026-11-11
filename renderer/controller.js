@@ -564,6 +564,15 @@ const PADX = (() => {
       p.classList.toggle('off', dz <= 0);
     }
   }
+  function syncTriggerMap() {
+    for (const axis of ['l', 'r']) {
+      const pct = Math.round(triggerDeadzone(axis) * 100);
+      const fill = $(`.pad-trigger-dz[data-trigger-dz="${axis}"]`);
+      if (fill) fill.style.width = `${pct}%`;
+      const out = $(axis === 'l' ? '#padTdzLMap' : '#padTdzRMap');
+      if (out) out.textContent = `${pct}%`;
+    }
+  }
 
   const TUNE_SAVE = { timer: null, pending: {} };
   function syncMacroControls() {
@@ -596,6 +605,7 @@ const PADX = (() => {
     const shapeEl = $('#padDzShape');
     if (shapeEl) shapeEl.value = deadzoneShape();
     syncDeadzoneRings();
+    syncTriggerMap();
   }
   function saveTune(patch) {
     // Show the change right away (the drawing and Live input follow the slider); save a moment later,
@@ -603,6 +613,7 @@ const PADX = (() => {
     S = { ...(S || {}), ...patch };
     TUNE_SAVE.pending = { ...TUNE_SAVE.pending, ...patch };
     syncDeadzoneRings();
+    syncTriggerMap();
     clearTimeout(TUNE_SAVE.timer);
     TUNE_SAVE.timer = setTimeout(() => {
       const pending = TUNE_SAVE.pending;
