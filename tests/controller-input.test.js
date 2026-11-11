@@ -143,6 +143,45 @@ test('scaled square (axial) deadzone: each axis is independent and the range is 
   assert.ok(P.curveOutput(0.5, 1) < P.curveOutput(0.5, 0));
 });
 
+test('deadzone shapes: circle, cross and square shape one stick differently', () => {
+  const P = load();
+  // Square is the default and keeps the original per-axis behaviour.
+  assert.equal(P.deadzoneShape(), 'square');
+  const square = P.shapeStick(0.5, 0.25, 0.2, 0, 'square');
+  assert.ok(Math.abs(square.x - 0.375) < 1e-12);
+  assert.ok(Math.abs(square.y - 0.0625) < 1e-12);
+  // Circle uses the combined radius, so a diagonal inside that radius is dead even though both axes are
+  // above nothing on their own; direction is kept when it moves.
+  assert.deepEqual({ ...P.shapeStick(0.1, 0.1, 0.2, 0, 'circle') }, { x: 0, y: 0 });
+  const circle = P.shapeStick(0.5, 0.5, 0.2, 0, 'circle');
+  assert.ok(Math.abs(circle.x - circle.y) < 1e-12);
+  assert.ok(Math.abs(Math.hypot(circle.x, circle.y) - (Math.SQRT1_2 - 0.2) / 0.8) < 1e-12);
+  // Full diagonal travel stops on the circle instead of reaching 1 on both axes.
+  const fullCircle = P.shapeStick(1, 1, 0.2, 0, 'circle');
+  assert.ok(Math.abs(Math.hypot(fullCircle.x, fullCircle.y) - 1) < 1e-12);
+  assert.ok(Math.abs(fullCircle.x - Math.SQRT1_2) < 1e-12);
+  // Cross locks a small off-axis wobble to the dominant axis…
+  const cross = P.shapeStick(0.5, 0.05, 0.1, 0, 'cross');
+  assert.ok(Math.abs(cross.x - (0.5 - 0.1) / 0.9) < 1e-12);
+  assert.equal(cross.y, 0);
+  // …but keeps true diagonals diagonal.
+  const diag = P.shapeStick(0.5, 0.5, 0.1, 0, 'cross');
+  assert.ok(diag.x > 0 && Math.abs(diag.x - diag.y) < 1e-12);
+  // Every shape is off at 0 %, and a bad saved shape falls back to square.
+  const none = P.shapeStick(0.4, -0.3, 0, 0, 'circle');
+  assert.ok(Math.abs(none.x - 0.4) < 1e-12 && Math.abs(none.y + 0.3) < 1e-12);
+  assert.equal(load({ padDeadzoneShape: 'cross' }).deadzoneShape(), 'cross');
+  assert.equal(load({ padDeadzoneShape: 'nope' }).deadzoneShape(), 'square');
+  // The yellow graphic is a circle, plus or square, not always a ring.
+  const circlePath = P.deadzonePath(100, 100, 10, 'circle');
+  const crossPath = P.deadzonePath(100, 100, 10, 'cross');
+  const squarePath = P.deadzonePath(100, 100, 10, 'square');
+  assert.match(circlePath, /a10 10/);
+  assert.notEqual(circlePath, crossPath);
+  assert.notEqual(crossPath, squarePath);
+  assert.match(squarePath, /H/);
+});
+
 test('deadzone and cubic aim curve: centre stays still, edge reaches full, curve softens small moves', () => {
   const P = load();
   // Inside the deadzone the stick reads the centre; just outside, movement starts from zero.
@@ -210,11 +249,13 @@ test('every model in the dropdown has a drawing', () => {
     assert.ok(P.MODELS[id].parts().length >= 1);
   }
   assert.equal(P.MODELS['joycon-pair'].parts().length, 2);
-  // The deadzone and both aim curve controls live in the same tab.
-  for (const id of ['padDzL', 'padDzR', 'padCurveL', 'padCurveR']) {
+  // The deadzone, shape and both aim curve controls live in the same tab.
+  for (const id of ['padDzL', 'padDzR', 'padDzShape', 'padCurveL', 'padCurveR']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
-    assert.match(html, new RegExp(`id="${id}Val"`), id);
+    if (id !== 'padDzShape') assert.match(html, new RegExp(`id="${id}Val"`), id);
   }
+  const shapeSel = html.slice(html.indexOf('id="padDzShape"'), html.indexOf('</select>', html.indexOf('id="padDzShape"')));
+  for (const shape of ['circle', 'cross', 'square']) assert.match(shapeSel, new RegExp(`value="${shape}"`), shape);
   for (const id of ['padCurvePathL', 'padCurvePathR', 'padCurveDotL', 'padCurveDotR', 'padCurveCaption']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }

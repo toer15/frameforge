@@ -826,6 +826,9 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .pad-tune-note { margin: 0 0 10px; max-width: 74ch; font-size: 14px; }
 .pad-slider-row { display: grid; grid-template-columns: 170px minmax(120px, 1fr) 56px; align-items: center; gap: 12px; margin: 8px 0; }
 .pad-slider-row label { color: var(--muted); font-weight: 600; }
+.pad-shape-row { grid-template-columns: 170px minmax(120px, 240px); }
+.pad-shape-select { width: 100%; }
+.pad-shape-hint { margin: -2px 0 10px; font-size: 13px; }
 .pad-slider-row output { text-align: right; font-weight: 700; color: var(--brass); font-variant-numeric: tabular-nums; }
 .pad-slider-row input[type="range"] { width: 100%; height: 22px; accent-color: var(--brass); cursor: pointer; }
 .pad-tune-hint { margin: 8px 0 0; font-size: 13px; }

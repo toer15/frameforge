@@ -2328,6 +2328,9 @@ ipcMain.handle('settings:set', async (_e, patch) => {
     return { ...settings.get(), _error: 'Windows performance mode must be on or off.' };
   }
   if (patch.tweaks) patch.tweaksCustomized = true;
+  if ('padDeadzoneShape' in patch && !['circle', 'cross', 'square'].includes(patch.padDeadzoneShape)) {
+    return { ...settings.get(), _error: 'Deadzone shape must be circle, cross or square.' };
+  }
   // Controller tab sliders: keep stored values inside the range the UI can show.
   for (const [key, max] of [['padDeadzoneL', 40], ['padDeadzoneR', 40], ['padCurveL', 100], ['padCurveR', 100]]) {
     if (key in patch) patch[key] = Math.max(0, Math.min(max, Math.round(Number(patch[key]) || 0)));

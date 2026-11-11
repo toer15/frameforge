@@ -37,6 +37,7 @@ const DEFAULT_SETTINGS = {
   controllerType: 'auto', // Controller tab: auto | xbox | playstation
   padDeadzoneL: 8, // Controller tab: left stick deadzone in % of full travel (0-40)
   padDeadzoneR: 8, // Controller tab: right stick deadzone in % of full travel (0-40)
+  padDeadzoneShape: 'square', // Controller tab: shape of the deadzone — circle | cross | square
   padCurveL: 60, // Controller tab: left stick cubic aim curve, 0 = linear, 100 = full cubic
   padCurveR: 60, // Controller tab: right stick cubic aim curve
   fpsLimitOn: false, // Settings > FPS limiter: cap games at fpsLimit through RTSS

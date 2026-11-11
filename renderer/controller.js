@@ -139,7 +139,7 @@ const PADX = (() => {
       if (it.type === 'pill') s += g(it.k, `<rect x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="${it.w}" height="${it.h}" rx="${Math.min(8, it.h / 2)}"/>${it.t ? `<text x="${it.x}" y="${it.y + 4}" text-anchor="middle" font-size="${it.h < 14 ? 8 : 11}">${esc(it.t)}</text>` : ''}`);
       else if (it.type === 'trig') s += g(it.k, `<rect x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="${it.w}" height="${it.h}" rx="6"/><rect class="pad-fill" data-fill="${it.k}" x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="0" height="${it.h}" rx="6"/><circle class="pad-trig" data-trig="${it.k}" data-x="${it.x - it.w / 2 + 4}" data-w="${it.w - 8}" cx="${it.x - it.w / 2 + 4}" cy="${it.y + it.h / 2 - 2.5}" r="2.5" aria-hidden="true"/><text class="pad-trig-text" data-trig-text="${it.k}" data-label="${esc(it.t)}" x="${it.x}" y="${it.y + 4}" text-anchor="middle" font-size="11">${esc(it.t)} 0%</text>`);
       else if (it.type === 'round') s += g(it.k, `<circle cx="${it.x}" cy="${it.y}" r="${it.r}"/>${it.t ? `<text x="${it.x}" y="${it.y + it.r * 0.38}" text-anchor="middle" font-size="${Math.max(8, it.r)}">${esc(it.t)}</text>` : ''}`);
-      else if (it.type === 'stick') s += g(it.k, `<circle cx="${it.x}" cy="${it.y}" r="25"/><line class="pad-cross" x1="${it.x - 25}" y1="${it.y}" x2="${it.x + 25}" y2="${it.y}"/><line class="pad-cross" x1="${it.x}" y1="${it.y - 25}" x2="${it.x}" y2="${it.y + 25}"/><circle class="pad-stick" data-stick="${it.ax}" data-cx="${it.x}" data-cy="${it.y}" cx="${it.x}" cy="${it.y}" r="12"/><circle class="pad-deadzone" data-dz="${it.ax}" cx="${it.x}" cy="${it.y}" r="0" aria-hidden="true"/>`);
+      else if (it.type === 'stick') s += g(it.k, `<circle cx="${it.x}" cy="${it.y}" r="25"/><line class="pad-cross" x1="${it.x - 25}" y1="${it.y}" x2="${it.x + 25}" y2="${it.y}"/><line class="pad-cross" x1="${it.x}" y1="${it.y - 25}" x2="${it.x}" y2="${it.y + 25}"/><circle class="pad-stick" data-stick="${it.ax}" data-cx="${it.x}" data-cy="${it.y}" cx="${it.x}" cy="${it.y}" r="12"/><path class="pad-deadzone" data-dz="${it.ax}" data-cx="${it.x}" data-cy="${it.y}" d="" aria-hidden="true"/>`);
       else if (it.type === 'dpad') {
         const { x, y } = it;
         s += g('up', `<rect x="${x - 8}" y="${y - 28}" width="16" height="19" rx="3"/>`) + g('down', `<rect x="${x - 8}" y="${y + 9}" width="16" height="19" rx="3"/>`);
@@ -395,6 +395,7 @@ const PADX = (() => {
   // Saved as whole percentages: 0-40 % of full stick travel per stick, and 0-100 % for how cubic the aim curve is.
   const DZ_MAX = 40;
   const CURVE_MAX = 100;
+  const DZ_SHAPES = ['circle', 'cross', 'square'];
   const clampPct = (v, max) => {
     const n = Number(v);
     return Number.isFinite(n) ? Math.max(0, Math.min(max, Math.round(n))) : null;
@@ -409,6 +410,10 @@ const PADX = (() => {
     const v = clampPct(S && S[key], CURVE_MAX);
     return (v === null ? (legacy === null ? 60 : legacy) : v) / 100;
   };
+  const deadzoneShape = () => {
+    const v = S && S.padDeadzoneShape;
+    return DZ_SHAPES.includes(v) ? v : 'square';
+  };
   /**
    * Scaled square (axial) deadzone for one axis. X and Y are evaluated independently, so the deadzone is a
    * square around the centre rather than a circle. Below the threshold the axis reads 0; above it the
@@ -419,25 +424,80 @@ const PADX = (() => {
     if (a <= dz) return 0;
     return Math.sign(v) * ((a - dz) / (1 - dz));
   }
+  const applyCurve = (v, cubic) => {
+    if (!v) return 0;
+    const a = Math.abs(v);
+    return Math.sign(v) * ((1 - cubic) * a + cubic * a * a * a);
+  };
   /**
    * One stick axis, -1…1 in and out: the scaled square deadzone first, then the cubic aim curve on what is
    * left. Full deflection still reaches 1, and the centre stays still so a resting stick cannot drift aim.
    */
   function shapeAxis(v, dz, cubic) {
-    const dead = axialDeadzone(v, dz);
-    if (!dead) return 0;
-    const a = Math.abs(dead);
-    return Math.sign(dead) * ((1 - cubic) * a + cubic * a * a * a);
+    return applyCurve(axialDeadzone(v, dz), cubic);
   }
-  // The yellow ring is drawn over the stick cap: it grows with the deadzone and is hidden at 0 %.
+  const CROSS_LOCK = 0.45;
+  /**
+   * One complete stick through the selected deadzone shape, -1…1 per axis in and out.
+   *  - circle: radial deadzone; the whole direction is kept and diagonal travel stops at the circle.
+   *  - cross: a small circle at the centre plus straight cardinal arms. Near-straight presses lock to the
+   *    dominant axis instead of leaking a little movement into the other one.
+   *  - square: each axis is judged and rescaled independently (the original FrameForge deadzone).
+   * At 0 % the deadzone is off, so the raw axes pass through the aim curve unchanged.
+   */
+  function shapeStick(x, y, dz, cubic, shape = 'square') {
+    const rawX = Math.max(-1, Math.min(1, Number(x) || 0));
+    const rawY = Math.max(-1, Math.min(1, Number(y) || 0));
+    if (dz <= 0) return { x: applyCurve(rawX, cubic), y: applyCurve(rawY, cubic) };
+    if (shape === 'circle') {
+      const r = Math.hypot(rawX, rawY);
+      if (r <= dz) return { x: 0, y: 0 };
+      const shaped = applyCurve((Math.min(1, r) - dz) / (1 - dz), cubic);
+      return { x: (rawX / r) * shaped, y: (rawY / r) * shaped };
+    }
+    if (shape === 'cross') {
+      const ax = Math.abs(rawX);
+      const ay = Math.abs(rawY);
+      if (Math.hypot(ax, ay) <= dz) return { x: 0, y: 0 };
+      if (ax >= ay && ay <= ax * CROSS_LOCK) {
+        const out = ax <= dz ? 0 : Math.sign(rawX) * applyCurve((ax - dz) / (1 - dz), cubic);
+        return { x: out, y: 0 };
+      }
+      if (ay > ax && ax <= ay * CROSS_LOCK) {
+        const out = ay <= dz ? 0 : Math.sign(rawY) * applyCurve((ay - dz) / (1 - dz), cubic);
+        return { x: 0, y: out };
+      }
+      return { x: shapeAxis(rawX, dz, cubic), y: shapeAxis(rawY, dz, cubic) };
+    }
+    return { x: shapeAxis(rawX, dz, cubic), y: shapeAxis(rawY, dz, cubic) };
+  }
+  // The yellow shape over the stick cap: it grows with the deadzone and is hidden at 0 %.
   const ringRadius = (dz) => (dz <= 0 ? 0 : Math.max(2.5, 62.5 * dz));
+  function deadzonePath(cx, cy, r, shape = 'square') {
+    if (!(r > 0)) return '';
+    const x = Number(cx) || 0;
+    const y = Number(cy) || 0;
+    if (shape === 'circle') {
+      return `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+    }
+    if (shape === 'cross') {
+      const w = Math.max(1.2, r * 0.42);
+      return `M${x - w} ${y - r}H${x + w}V${y - w}H${x + r}V${y + w}H${x + w}V${y + r}H${x - w}V${y + w}H${x - r}V${y - w}H${x - w}Z`;
+    }
+    const side = r * 0.7;
+    return `M${x - side} ${y - side}H${x + side}V${y + side}H${x - side}Z`;
+  }
 
   function syncDeadzoneRings() {
     if (!UI.stage) return;
-    for (const c of UI.stage.rings || []) {
-      const dz = deadzone(c.dataset.dz);
-      c.setAttribute('r', ringRadius(dz).toFixed(2));
-      c.classList.toggle('off', dz <= 0);
+    const shape = deadzoneShape();
+    for (const p of UI.stage.rings || []) {
+      const dz = deadzone(p.dataset.dz);
+      const r = ringRadius(dz);
+      p.setAttribute('data-r', r.toFixed(2));
+      p.setAttribute('data-shape', shape);
+      p.setAttribute('d', deadzonePath(Number(p.dataset.cx), Number(p.dataset.cy), r, shape));
+      p.classList.toggle('off', dz <= 0);
     }
   }
 
@@ -455,6 +515,8 @@ const PADX = (() => {
       const out = $(`${id}Val`);
       if (out) out.textContent = `${v[key]}%`;
     }
+    const shapeEl = $('#padDzShape');
+    if (shapeEl) shapeEl.value = deadzoneShape();
     syncDeadzoneRings();
   }
   function saveTune(patch) {
@@ -730,10 +792,10 @@ const PADX = (() => {
     const cubicR = curve('r');
     const dzL = deadzone('l');
     const dzR = deadzone('r');
-    const shown = {
-      lx: shapeAxis(merged.axes.lx, dzL, cubicL), ly: shapeAxis(merged.axes.ly, dzL, cubicL),
-      rx: shapeAxis(merged.axes.rx, dzR, cubicR), ry: shapeAxis(merged.axes.ry, dzR, cubicR),
-    };
+    const shape = deadzoneShape();
+    const left = shapeStick(merged.axes.lx, merged.axes.ly, dzL, cubicL, shape);
+    const right = shapeStick(merged.axes.rx, merged.axes.ry, dzR, cubicR, shape);
+    const shown = { lx: left.x, ly: left.y, rx: right.x, ry: right.y };
     const stage = UI.stage || { keys: [], fills: [], trigs: [], trigTexts: [], sticks: [], touches: [] };
     for (const g of stage.keys) g.classList.toggle('pressed', (merged.buttons[g.dataset.k] || 0) > 0.5);
     for (const r of stage.fills) {
@@ -781,8 +843,8 @@ const PADX = (() => {
     const dirs = ['up', 'down', 'left', 'right'].filter((k) => m.buttons[k] > 0.5).map((k) => `D-pad ${k}`);
     setText(R.ls.value, `X ${num(shown.lx)} · Y ${num(shown.ly)}`);
     setText(R.rs.value, `X ${num(shown.rx)} · Y ${num(shown.ry)}`);
-    if (R.tuneL) setText(R.tuneL.value, `deadzone ${Math.round(deadzone('l') * 100)}% · curve ${Math.round(curve('l') * 100)}%`);
-    if (R.tuneR) setText(R.tuneR.value, `deadzone ${Math.round(deadzone('r') * 100)}% · curve ${Math.round(curve('r') * 100)}%`);
+    if (R.tuneL) setText(R.tuneL.value, `deadzone ${Math.round(deadzone('l') * 100)}% ${deadzoneShape()} · curve ${Math.round(curve('l') * 100)}%`);
+    if (R.tuneR) setText(R.tuneR.value, `deadzone ${Math.round(deadzone('r') * 100)}% ${deadzoneShape()} · curve ${Math.round(curve('r') * 100)}%`);
     const lt = pct(m.buttons.lt || 0);
     const rt = pct(m.buttons.rt || 0);
     setWidth(R.lt.fill, lt);
@@ -880,6 +942,11 @@ const PADX = (() => {
   bindTune('#padDzR', 'padDeadzoneR', DZ_MAX);
   bindTune('#padCurveL', 'padCurveL', CURVE_MAX, (v) => previewCurve('l', v));
   bindTune('#padCurveR', 'padCurveR', CURVE_MAX, (v) => previewCurve('r', v));
+  const shapeEl = $('#padDzShape');
+  if (shapeEl) shapeEl.addEventListener('change', () => {
+    const shape = DZ_SHAPES.includes(shapeEl.value) ? shapeEl.value : 'square';
+    saveTune({ padDeadzoneShape: shape });
+  });
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
 })();

@@ -506,7 +506,7 @@
           <p class="muted" id="padLive">Press any button on your controller to test it here.</p>
           <div class="pad-tune">
             <h2 class="pad-h">Stick deadzone &amp; aim curve</h2>
-            <p class="muted pad-tune-note">The yellow rings on the sticks are their deadzones. Each axis has its own scaled deadzone, so X and Y are judged separately. Drag a slider and the ring changes right away. FrameForge applies the setting to the live input beside it, so you can feel the difference; enter the same numbers in your game or Steam Input for the same aim in-game.</p>
+            <p class="muted pad-tune-note">The yellow shape on each stick is its deadzone. Choose a shape and drag a slider — the drawing changes right away. FrameForge applies the shape and size to the live input beside it, so you can feel the difference; enter the same numbers in your game or Steam Input for the same aim in-game.</p>
             <div class="pad-slider-row">
               <label for="padDzL">Left stick deadzone</label>
               <input type="range" id="padDzL" min="0" max="40" step="1" value="8" />
@@ -517,6 +517,15 @@
               <input type="range" id="padDzR" min="0" max="40" step="1" value="8" />
               <output id="padDzRVal" for="padDzR">8%</output>
             </div>
+            <div class="pad-slider-row pad-shape-row">
+              <label for="padDzShape">Deadzone shape</label>
+              <select id="padDzShape" class="select pad-shape-select" aria-label="Deadzone shape" aria-describedby="padDzShapeHint">
+                <option value="circle">Circle</option>
+                <option value="cross">Cross</option>
+                <option value="square" selected>Square</option>
+              </select>
+            </div>
+            <p class="muted pad-shape-hint" id="padDzShapeHint"><b>Circle</b> keeps the response even all the way round. <b>Cross</b> keeps near-straight presses on one axis. <b>Square</b> judges each axis separately, so diagonals keep their full range.</p>
             <div class="pad-slider-row">
               <label for="padCurveL">Left stick aim curve</label>
               <input type="range" id="padCurveL" min="0" max="100" step="5" value="60" />

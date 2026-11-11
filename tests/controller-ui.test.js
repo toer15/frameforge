@@ -79,16 +79,31 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     assert.match(await evaluate('document.querySelector("#padKeys").textContent'), /✕/);
     assert.equal((await evaluate('ff.settings()')).controllerType, 'dualshock4');
     assert.match(await evaluate('document.querySelector("#padReadout").textContent'), /Left stick/);
-    // Deadzone sliders: changing one saves the value and grows that stick's yellow ring at once.
+    // Deadzone sliders: changing one saves the value and grows that stick's yellow shape at once.
     assert.equal(await evaluate('document.querySelector("#padDzL").value'), '8');
-    const ring = (side) => evaluate(`Number(document.querySelector(".pad-deadzone[data-dz=${side}]").getAttribute("r"))`);
+    const ring = (side) => evaluate(`Number(document.querySelector(".pad-deadzone[data-dz=${side}]").getAttribute("data-r"))`);
+    const dzPath = () => evaluate('document.querySelector(".pad-deadzone[data-dz=l]").getAttribute("d")');
     const leftBefore = await ring('l');
     await evaluate('(() => { const s = document.querySelector("#padDzL"); s.value = "20"; s.dispatchEvent(new Event("input", { bubbles: true })); })()');
     await delay(400);
     assert.equal((await evaluate('ff.settings()')).padDeadzoneL, 20);
-    assert.ok((await ring('l')) > leftBefore + 2, `left ring ${await ring('l')} vs ${leftBefore}`);
+    assert.ok((await ring('l')) > leftBefore + 2, `left shape ${await ring('l')} vs ${leftBefore}`);
     assert.equal(await evaluate('document.querySelector("#padDzLVal").textContent'), '20%');
     assert.match(await evaluate('document.querySelector("#padReadout").textContent'), /deadzone 20%/);
+    // The deadzone shape dropdown controls both the saved shape and the yellow graphic on the stick.
+    assert.equal(await evaluate('document.querySelector("#padDzShape").value'), 'square');
+    const squarePath = await dzPath();
+    assert.match(squarePath, /H/);
+    assert.equal(await evaluate('document.querySelector(".pad-deadzone[data-dz=l]").getAttribute("data-shape")'), 'square');
+    await evaluate('(() => { const s = document.querySelector("#padDzShape"); s.value = "cross"; s.dispatchEvent(new Event("change", { bubbles: true })); })()');
+    await delay(400);
+    assert.equal((await evaluate('ff.settings()')).padDeadzoneShape, 'cross');
+    assert.equal(await evaluate('document.querySelector(".pad-deadzone[data-dz=l]").getAttribute("data-shape")'), 'cross');
+    assert.notEqual(await dzPath(), squarePath);
+    await evaluate('(() => { const s = document.querySelector("#padDzShape"); s.value = "circle"; s.dispatchEvent(new Event("change", { bubbles: true })); })()');
+    await delay(400);
+    assert.equal((await evaluate('ff.settings()')).padDeadzoneShape, 'circle');
+    assert.match(await dzPath(), /a/);
     assert.equal(await evaluate('document.querySelectorAll("#padStage .pad-trig").length'), 2);
     assert.match(await evaluate('[...document.querySelectorAll("#padStage .pad-trig-text")].map((t) => t.textContent).join(",")'), /L2 0%/);
     // The animated graph exists for both sticks and follows each cubic slider separately.
