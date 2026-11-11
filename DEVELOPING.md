@@ -111,14 +111,15 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
 - Sidebar > **Controller**. A dropdown (`controllerType`: auto, xbox-series, xbox-elite2, xbox-one, xbox-360, dualsense,
   dualsense-edge, dualshock4, switch-pro, joycon-pair, joycon-l, joycon-r, generic) picks the drawing; Automatic uses
   the pad that is plugged in. Old values `xbox` / `playstation` still work.
-- `renderer/controller.js` draws each model (SVG), lights up pressed buttons, fills the analog triggers, moves the stick
-  dots and touchpad points, and tilts the drawing in 3D with the pad's motion sensors.
+- `renderer/controller.js` draws each model (SVG), lights up pressed buttons, fills the analog triggers, and moves the stick
+  dots and touchpad points. The drawing stays fixed on screen; motion sensors only feed the Live input tilt and turning-speed rows.
 - Input sources: **WebHID** for Sony and Nintendo pads (main.js `allowPadHid` grants HID only for vendors 054C/057E).
   FrameForge parses the raw reports itself: DualSense/Edge 0x01 (USB) / 0x31 (BT), DualShock 4 0x01 / 0x11, Switch
   0x30 (it sends the full-report and IMU-on subcommands). No driver needed. Other pads (Xbox, generic) use the
   Gamepad API (buttons, sticks, triggers; no motion).
 - Motion: Mahony filter (gyro + gravity) in a shared frame (x right, y out of the face, z toward the player; Switch axes
-  are converted like SDL does). The drawing shows the rotation since tracking started; **Re-centre motion** resets it.
+  are converted like SDL does). It feeds the Live input tilt/turning-speed rows; the drawing does not rotate or follow the
+  pad. **Re-centre motion** resets the tilt reference used by the readout.
   Verified on a real DualSense Edge over USB (reports, gravity 1.0 g, sticks); Switch pads and the motion directions
   have not been checked on hardware.
 - `src/controllers.js` still reports what Windows hands games (XInput pad = Xbox) for the status line.

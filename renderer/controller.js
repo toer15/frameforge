@@ -4,8 +4,8 @@
 //    their raw reports itself, so every button, the analog triggers, the touchpad and the motion sensors work without
 //    any driver or extra program.
 //  - The browser Gamepad API for everything else (Xbox and other XInput pads): buttons, sticks and triggers.
-// Motion: gyro + accelerometer go through a Mahony filter (gyro for fast moves, gravity to stop tilt drift), and the
-// drawing is rotated in 3D by the result, relative to the pose the controller had when tracking started.
+// Motion: gyro + accelerometer go through a Mahony filter (gyro for fast moves, gravity to stop tilt drift) and show up
+// as tilt and turning-speed readouts. The drawing itself stays fixed, so the controller never follows the pad around.
 /* global $, $$, esc, S, ff */
 'use strict';
 
@@ -298,16 +298,6 @@ const PADX = (() => {
   ];
   const qconj = (q) => [q[0], -q[1], -q[2], -q[3]];
 
-  // Rotation since the straight pose, as a CSS matrix. Sensor frame (x right, y out of the face, z toward the player)
-  // maps to the screen as x -> x, z -> CSS y (down the screen), y -> CSS z (toward you): the drawing is the pad seen from above.
-  function cssMatrix(st) {
-    if (!st.ref) return '';
-    const R = rel(st);
-    const P = [0, 2, 1]; // CSS axis i <- sensor axis P[i]
-    const C = P.map((pi) => P.map((pj) => R[pi][pj]));
-    // CSS matrix3d is column-major.
-    return `matrix3d(${C[0][0]},${C[1][0]},${C[2][0]},0,${C[0][1]},${C[1][1]},${C[2][1]},0,${C[0][2]},${C[1][2]},${C[2][2]},0,0,0,0,1)`;
-  }
   function rel(st) {
     const [w, x, y, z] = qmul(qconj(st.ref), st.q);
     return [
@@ -539,7 +529,6 @@ const PADX = (() => {
       fills: [...stage.querySelectorAll('.pad-fill')],
       sticks: [...stage.querySelectorAll('.pad-stick')],
       touches: [...stage.querySelectorAll('.pad-touch')],
-      parts: [...stage.querySelectorAll('.pad-part')],
       rings: [...stage.querySelectorAll('.pad-deadzone')],
     };
     syncDeadzoneRings();
@@ -636,7 +625,7 @@ const PADX = (() => {
       lx: shapeAxis(merged.axes.lx, dzL, cubic), ly: shapeAxis(merged.axes.ly, dzL, cubic),
       rx: shapeAxis(merged.axes.rx, dzR, cubic), ry: shapeAxis(merged.axes.ry, dzR, cubic),
     };
-    const stage = UI.stage || { keys: [], fills: [], sticks: [], touches: [], parts: [] };
+    const stage = UI.stage || { keys: [], fills: [], sticks: [], touches: [] };
     for (const g of stage.keys) g.classList.toggle('pressed', (merged.buttons[g.dataset.k] || 0) > 0.5);
     for (const r of stage.fills) {
       const full = Number(r.previousElementSibling.getAttribute('width'));
@@ -655,12 +644,7 @@ const PADX = (() => {
       }
       c.classList.toggle('on', !!t);
     }
-    // Motion: each part follows its own device (both halves of a Joy-Con pair move on their own).
-    stage.parts.forEach((p) => {
-      const side = p.dataset.side;
-      const s = side ? states.find((x) => x.motion && x.kind === `joycon-${side}`) : states.find((x) => x.motion);
-      p.style.transform = s ? cssMatrix(s) : '';
-    });
+    // The drawing stays fixed on screen: motion sensors only feed the Live input numbers.
     readout(merged, shown, states, source);
     UI.raf = requestAnimationFrame(paint);
   }
