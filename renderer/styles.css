@@ -793,15 +793,17 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .pad-stage .pad-part:only-child { flex: 1 1 auto; }
 .pad-body { fill: var(--panel-2); stroke: var(--line-2); stroke-width: 2; }
 .pad-light { fill: var(--coolant); opacity: .7; }
-.pad-key rect, .pad-key circle:not(.pad-stick):not(.pad-touch):not(.pad-deadzone) { fill: var(--bg-2); stroke: var(--line-2); stroke-width: 1.5; }
+.pad-key rect, .pad-key circle:not(.pad-stick):not(.pad-touch):not(.pad-deadzone):not(.pad-trig) { fill: var(--bg-2); stroke: var(--line-2); stroke-width: 1.5; }
 .pad-key text { fill: var(--text); pointer-events: none; }
 .pad-sym { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .pad-cross { stroke: var(--line); stroke-width: 1; }
 .pad-stick { fill: var(--line-2); stroke: none; }
 .pad-key rect.pad-fill { fill: var(--heat); stroke: none; opacity: .75; }
+.pad-trig { fill: var(--heat-hot); stroke: #1a0700; stroke-width: .8; opacity: .35; pointer-events: none; }
+.pad-trig.on { opacity: 1; filter: drop-shadow(0 0 4px rgba(255, 179, 71, 0.9)); }
 .pad-touch { fill: var(--coolant); opacity: 0; }
 .pad-touch.on { opacity: 1; }
-.pad-key.pressed rect:not(.pad-fill), .pad-key.pressed circle:not(.pad-stick):not(.pad-touch):not(.pad-deadzone) { fill: var(--heat); stroke: var(--heat-hot); }
+.pad-key.pressed rect:not(.pad-fill), .pad-key.pressed circle:not(.pad-stick):not(.pad-touch):not(.pad-deadzone):not(.pad-trig) { fill: var(--heat); stroke: var(--heat-hot); }
 .pad-deadzone { fill: rgba(255, 209, 102, 0.22); stroke: #ffd166; stroke-width: 1.8; pointer-events: none; filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.7)); }
 .pad-deadzone.off { opacity: 0; }
 .pad-key.pressed .pad-stick { fill: var(--heat-hot); }

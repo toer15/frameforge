@@ -1,6 +1,6 @@
-**Separate cubic aim curves for each stick**
+**Analog trigger graphics follow every partial press**
 
-- The **Controller** tab now has two aim-curve sliders: one for the left stick and one for the right. Use cubic on aim and linear on movement, or any mix you like.
-- The animated graph shows both curves at once — blue for the left stick, yellow for the right — and sweeps both dots from the centre to the edge whenever either slider changes.
-- Saved single-curve values from older versions carry over to both sticks automatically.
-- The per-stick deadzone sliders and yellow deadzone rings are unchanged.
+- The LT and RT triggers on the controller drawing now follow the exact analog value: pressing slowly fills the trigger and moves a bright marker to the precise press position instead of snapping on or off.
+- The Gamepad API path used by Xbox and generic pads no longer treats a partly pressed trigger as fully pressed; it keeps the exact 0–100 % value. Sony pads read through WebHID were already analog, and Switch triggers stay digital.
+- The Live input trigger percentages and the drawing now always match the physical trigger position.
+- Everything else on the Controller tab is unchanged.

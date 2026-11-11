@@ -179,6 +179,22 @@ test('deadzone and cubic aim curve: centre stays still, edge reaches full, curve
   assert.equal(P.curve('r'), 0.6);
 });
 
+test('analog triggers keep their exact partial value through the Gamepad API', () => {
+  const P = load();
+  // A partly pulled trigger stays partly pulled even when the browser also marks it pressed.
+  assert.equal(P.gamepadButton('lt', { value: 0.37, pressed: true }), 0.37);
+  assert.equal(P.gamepadButton('rt', { value: 0.05, pressed: false }), 0.05);
+  assert.equal(P.gamepadButton('lt', { value: 1, pressed: true }), 1);
+  assert.equal(P.gamepadButton('lt', { value: 0, pressed: true }), 0);
+  // Values outside 0-1 are clamped.
+  assert.equal(P.gamepadButton('rt', { value: 1.4, pressed: true }), 1);
+  assert.equal(P.gamepadButton('rt', { value: -0.2, pressed: false }), 0);
+  // Digital buttons still read as pressed/unpressed.
+  assert.equal(P.gamepadButton('s', { value: 1, pressed: true }), 1);
+  assert.equal(P.gamepadButton('s', { value: 0, pressed: false }), 0);
+  assert.equal(P.gamepadButton('lt', null), 0);
+});
+
 test('every model in the dropdown has a drawing', () => {
   const P = load();
   const html = fs.readFileSync(path.join(__dirname, '../renderer/index.html'), 'utf8');
