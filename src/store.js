@@ -35,6 +35,9 @@ const DEFAULT_SETTINGS = {
   openVendorApp: true,
   fpsCounter: false,
   controllerType: 'auto', // Controller tab: auto | xbox | playstation
+  padDeadzoneL: 8, // Controller tab: left stick deadzone in % of full travel (0-40)
+  padDeadzoneR: 8, // Controller tab: right stick deadzone in % of full travel (0-40)
+  padCurve: 60, // Controller tab: aim curve after the deadzone, 0 = linear, 100 = full cubic
   fpsLimitOn: false, // Settings > FPS limiter: cap games at fpsLimit through RTSS
   fpsLimit: 60,
   tempMonitor: true,

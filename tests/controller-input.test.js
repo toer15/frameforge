@@ -5,10 +5,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 // Load renderer/controller.js with just enough of a page around it.
-function load() {
+function load(settings = {}) {
   const el = () => ({ addEventListener() {}, classList: { toggle() {} }, set onclick(_) {}, style: {}, textContent: '', innerHTML: '' });
   const ctx = {
-    $: el, $$: () => [], esc: (s) => String(s), S: { controllerType: 'auto' }, ff: {},
+    $: el, $$: () => [], esc: (s) => String(s), S: { controllerType: 'auto', ...settings }, ff: {},
     navigator: {}, window: { addEventListener() {} }, performance: { now: () => 1e9 },
     requestAnimationFrame() {}, cancelAnimationFrame() {}, setInterval() {}, clearInterval() {},
   };
@@ -117,6 +117,35 @@ test('motion: turning the pad 60° forward shows 60° forward tilt, and gravity 
   assert.ok(Math.abs(Math.abs(t.roll) - 30) < 3, `roll ${t.roll}`);
 });
 
+test('deadzone and cubic aim curve: centre stays still, edge reaches full, curve softens small moves', () => {
+  const P = load();
+  // Inside the deadzone the stick reads the centre; just outside, movement starts from zero.
+  assert.equal(P.shapeAxis(0.09, 0.1, 0), 0);
+  assert.equal(P.shapeAxis(-0.1, 0.1, 0), 0);
+  const justOut = P.shapeAxis(0.11, 0.1, 0);
+  assert.ok(justOut > 0 && justOut < 0.02, `just outside the deadzone: ${justOut}`);
+  // The whole travel still reaches full deflection, in both directions.
+  assert.equal(P.shapeAxis(1, 0.15, 0.5), 1);
+  assert.equal(P.shapeAxis(-1, 0.15, 0.5), -1);
+  // A cubic curve gives finer control near the centre than linear.
+  assert.ok(P.shapeAxis(0.4, 0, 1) < P.shapeAxis(0.4, 0, 0) / 2);
+  // The yellow deadzone ring grows with the setting and disappears at 0 %.
+  assert.ok(P.ringRadius(0.2) > P.ringRadius(0.08));
+  assert.equal(P.ringRadius(0), 0);
+  // Saved sliders drive it, clamped to the ranges the UI offers.
+  const tuned = load({ padDeadzoneL: 20, padDeadzoneR: 40, padCurve: 100 });
+  assert.equal(tuned.deadzone('l'), 0.2);
+  assert.equal(tuned.deadzone('r'), 0.4);
+  assert.equal(tuned.curve(), 1);
+  const clamped = load({ padDeadzoneL: 999, padCurve: -5 });
+  assert.equal(clamped.deadzone('l'), 0.4);
+  assert.equal(clamped.curve(), 0);
+  // Defaults match the values in index.html.
+  assert.equal(P.deadzone('l'), 0.08);
+  assert.equal(P.deadzone('r'), 0.08);
+  assert.equal(P.curve(), 0.6);
+});
+
 test('every model in the dropdown has a drawing', () => {
   const P = load();
   const html = fs.readFileSync(path.join(__dirname, '../renderer/index.html'), 'utf8');
@@ -128,4 +157,10 @@ test('every model in the dropdown has a drawing', () => {
     assert.ok(P.MODELS[id].parts().length >= 1);
   }
   assert.equal(P.MODELS['joycon-pair'].parts().length, 2);
+  // The deadzone and aim curve controls live in the same tab.
+  for (const id of ['padDzL', 'padDzR', 'padCurve']) {
+    assert.match(html, new RegExp(`id="${id}"`), id);
+    assert.match(html, new RegExp(`id="${id}Val"`), id);
+  }
+  assert.match(html, /Stick deadzone &amp; aim curve/);
 });

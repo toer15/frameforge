@@ -2328,6 +2328,10 @@ ipcMain.handle('settings:set', async (_e, patch) => {
     return { ...settings.get(), _error: 'Windows performance mode must be on or off.' };
   }
   if (patch.tweaks) patch.tweaksCustomized = true;
+  // Controller tab sliders: keep stored values inside the range the UI can show.
+  for (const [key, max] of [['padDeadzoneL', 40], ['padDeadzoneR', 40], ['padCurve', 100]]) {
+    if (key in patch) patch[key] = Math.max(0, Math.min(max, Math.round(Number(patch[key]) || 0)));
+  }
   if ('scanSchedule' in patch) patch.autoScan = true; // the old on/off switch is replaced by the schedule menu
   const before = settings.get();
   const s = settings.set(patch);

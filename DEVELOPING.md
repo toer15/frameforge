@@ -122,6 +122,8 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
   Verified on a real DualSense Edge over USB (reports, gravity 1.0 g, sticks); Switch pads and the motion directions
   have not been checked on hardware.
 - `src/controllers.js` still reports what Windows hands games (XInput pad = Xbox) for the status line.
+- Stick tuning: `padDeadzoneL` / `padDeadzoneR` (0–40 % of full travel, default 8) and `padCurve` (0 = linear, 100 = full cubic, default 60). `shapeAxis()` in `renderer/controller.js` reads 0 inside the deadzone, stretches the rest of the travel back to full range and blends in a cubic curve for finer aim near the centre. `paint()` uses it for the stick dots and the Live input numbers, so the sliders change what you feel while testing. Each stick drawing has a yellow deadzone ring (`ringRadius()`) that grows with its slider and is hidden at 0 %. Values save with the other settings and are clamped in `settings:set`. Windows has no system-wide controller deadzone, so FrameForge applies the setting to its own live reading; games and Steam Input have their own deadzone fields and need the same numbers.
+- Tests: `node --test tests/controller-input.test.js` covers the deadzone/cubic shaping and the slider markup; `tests/controller-ui.test.js` (Windows demo) checks the sliders, the saved value and the yellow ring.
 - Demo mode: `FRAMEFORGE_DEMO_PAD=playstation|xbox:1|nintendo|none` fakes the detected pad.
 
 ## FPS limiter

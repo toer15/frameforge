@@ -79,6 +79,16 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     assert.match(await evaluate('document.querySelector("#padKeys").textContent'), /✕/);
     assert.equal((await evaluate('ff.settings()')).controllerType, 'dualshock4');
     assert.match(await evaluate('document.querySelector("#padReadout").textContent'), /Left stick/);
+    // Deadzone sliders: changing one saves the value and grows that stick's yellow ring at once.
+    assert.equal(await evaluate('document.querySelector("#padDzL").value'), '8');
+    const ring = (side) => evaluate(`Number(document.querySelector(".pad-deadzone[data-dz=${side}]").getAttribute("r"))`);
+    const leftBefore = await ring('l');
+    await evaluate('(() => { const s = document.querySelector("#padDzL"); s.value = "20"; s.dispatchEvent(new Event("input", { bubbles: true })); })()');
+    await delay(400);
+    assert.equal((await evaluate('ff.settings()')).padDeadzoneL, 20);
+    assert.ok((await ring('l')) > leftBefore + 2, `left ring ${await ring('l')} vs ${leftBefore}`);
+    assert.equal(await evaluate('document.querySelector("#padDzLVal").textContent'), '20%');
+    assert.match(await evaluate('document.querySelector("#padReadout").textContent'), /L 20%/);
     await pick('auto');
     assert.deepEqual(exceptions, []);
   } finally {

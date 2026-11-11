@@ -139,7 +139,7 @@ const PADX = (() => {
       if (it.type === 'pill') s += g(it.k, `<rect x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="${it.w}" height="${it.h}" rx="${Math.min(8, it.h / 2)}"/>${it.t ? `<text x="${it.x}" y="${it.y + 4}" text-anchor="middle" font-size="${it.h < 14 ? 8 : 11}">${esc(it.t)}</text>` : ''}`);
       else if (it.type === 'trig') s += g(it.k, `<rect x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="${it.w}" height="${it.h}" rx="6"/><rect class="pad-fill" data-fill="${it.k}" x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="0" height="${it.h}" rx="6"/><text x="${it.x}" y="${it.y + 4}" text-anchor="middle" font-size="11">${esc(it.t)}</text>`);
       else if (it.type === 'round') s += g(it.k, `<circle cx="${it.x}" cy="${it.y}" r="${it.r}"/>${it.t ? `<text x="${it.x}" y="${it.y + it.r * 0.38}" text-anchor="middle" font-size="${Math.max(8, it.r)}">${esc(it.t)}</text>` : ''}`);
-      else if (it.type === 'stick') s += g(it.k, `<circle cx="${it.x}" cy="${it.y}" r="25"/><line class="pad-cross" x1="${it.x - 25}" y1="${it.y}" x2="${it.x + 25}" y2="${it.y}"/><line class="pad-cross" x1="${it.x}" y1="${it.y - 25}" x2="${it.x}" y2="${it.y + 25}"/><circle class="pad-stick" data-stick="${it.ax}" data-cx="${it.x}" data-cy="${it.y}" cx="${it.x}" cy="${it.y}" r="12"/>`);
+      else if (it.type === 'stick') s += g(it.k, `<circle cx="${it.x}" cy="${it.y}" r="25"/><line class="pad-cross" x1="${it.x - 25}" y1="${it.y}" x2="${it.x + 25}" y2="${it.y}"/><line class="pad-cross" x1="${it.x}" y1="${it.y - 25}" x2="${it.x}" y2="${it.y + 25}"/><circle class="pad-stick" data-stick="${it.ax}" data-cx="${it.x}" data-cy="${it.y}" cx="${it.x}" cy="${it.y}" r="12"/><circle class="pad-deadzone" data-dz="${it.ax}" cx="${it.x}" cy="${it.y}" r="0" aria-hidden="true"/>`);
       else if (it.type === 'dpad') {
         const { x, y } = it;
         s += g('up', `<rect x="${x - 8}" y="${y - 28}" width="16" height="19" rx="3"/>`) + g('down', `<rect x="${x - 8}" y="${y + 9}" width="16" height="19" rx="3"/>`);
@@ -401,6 +401,82 @@ const PADX = (() => {
     } catch {}
   }
 
+  /* ---------- Deadzone and aim curve ---------- */
+  // Saved as whole percentages: 0-40 % of full stick travel per stick, and 0-100 % for how cubic the aim curve is.
+  const DZ_MAX = 40;
+  const CURVE_MAX = 100;
+  const clampPct = (v, max) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(0, Math.min(max, Math.round(n))) : null;
+  };
+  const deadzone = (axis) => {
+    const v = clampPct(S && S[axis === 'r' ? 'padDeadzoneR' : 'padDeadzoneL'], DZ_MAX);
+    return (v === null ? 8 : v) / 100;
+  };
+  const curve = () => {
+    const v = clampPct(S && S.padCurve, CURVE_MAX);
+    return (v === null ? 60 : v) / 100;
+  };
+  /**
+   * One stick axis, -1…1 in and out. Inside the deadzone there is no movement at all, so a stick that rests
+   * slightly off-centre cannot drift your aim. After it the rest of the travel is stretched back to the full
+   * range, and the cubic blend gives finer control near the centre — the usual "cubic" aim curve.
+   */
+  function shapeAxis(v, dz, cubic) {
+    const a = Math.min(1, Math.abs(Number(v) || 0));
+    if (a <= dz) return 0;
+    const n = (a - dz) / (1 - dz);
+    return Math.sign(v) * ((1 - cubic) * n + cubic * n * n * n);
+  }
+  // The yellow ring is drawn over the stick cap: it grows with the deadzone and is hidden at 0 %.
+  const ringRadius = (dz) => (dz <= 0 ? 0 : Math.max(2.5, 62.5 * dz));
+
+  function syncDeadzoneRings() {
+    if (!UI.stage) return;
+    for (const c of UI.stage.rings || []) {
+      const dz = deadzone(c.dataset.dz);
+      c.setAttribute('r', ringRadius(dz).toFixed(2));
+      c.classList.toggle('off', dz <= 0);
+    }
+  }
+
+  const TUNE_SAVE = { timer: null };
+  function syncTuneControls() {
+    const v = {
+      padDeadzoneL: Math.round(deadzone('l') * 100),
+      padDeadzoneR: Math.round(deadzone('r') * 100),
+      padCurve: Math.round(curve() * 100),
+    };
+    for (const [id, key] of [['#padDzL', 'padDeadzoneL'], ['#padDzR', 'padDeadzoneR'], ['#padCurve', 'padCurve']]) {
+      const el = $(id);
+      if (el && String(el.value) !== String(v[key])) el.value = String(v[key]);
+      const out = $(`${id}Val`);
+      if (out) out.textContent = `${v[key]}%`;
+    }
+    syncDeadzoneRings();
+  }
+  function saveTune(patch) {
+    // Show the change right away (the drawing and Live input follow the slider); save a moment later,
+    // because a slider fires an input event for every pixel.
+    S = { ...(S || {}), ...patch };
+    syncDeadzoneRings();
+    clearTimeout(TUNE_SAVE.timer);
+    TUNE_SAVE.timer = setTimeout(() => {
+      Promise.resolve(ff.setSettings(patch)).then((s) => { if (s && !s._error) S = s; }).catch(() => {});
+    }, 180);
+  }
+  function bindTune(id, key, max) {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      const v = clampPct(el.value, max);
+      if (v === null) return;
+      const out = $(`${id}Val`);
+      if (out) out.textContent = `${v}%`;
+      saveTune({ [key]: v });
+    });
+  }
+
   /* ---------- Rendering ---------- */
   const UI = { model: null, timer: null, raf: null, detected: null, lastLive: '', stage: null, read: null };
 
@@ -455,7 +531,9 @@ const PADX = (() => {
       sticks: [...stage.querySelectorAll('.pad-stick')],
       touches: [...stage.querySelectorAll('.pad-touch')],
       parts: [...stage.querySelectorAll('.pad-part')],
+      rings: [...stage.querySelectorAll('.pad-deadzone')],
     };
+    syncDeadzoneRings();
     buildReadout(!!M.motion);
   }
   function chip(family, label, key) {
@@ -495,7 +573,7 @@ const PADX = (() => {
       host.appendChild(r);
       return { row: r, fill, value: v };
     };
-    const read = { ls: row('Left stick'), rs: row('Right stick'), lt: barRow(labels.lt), rt: barRow(labels.rt), pressed: row('Pressed') };
+    const read = { ls: row('Left stick'), rs: row('Right stick'), tune: row('Deadzone · curve'), lt: barRow(labels.lt), rt: barRow(labels.rt), pressed: row('Pressed') };
     if (motion) {
       read.motion = row('Motion');
       read.motion.value.className = 'muted';
@@ -541,6 +619,14 @@ const PADX = (() => {
       for (const k of ['lx', 'ly', 'rx', 'ry']) if (Math.abs(s.axes[k]) > Math.abs(merged.axes[k])) merged.axes[k] = s.axes[k];
       s.touch.forEach((t, i) => { if (t) merged.touch[i] = t; });
     }
+    // Apply the saved deadzone and cubic curve: this is what the sticks and the Live input show.
+    const cubic = curve();
+    const dzL = deadzone('l');
+    const dzR = deadzone('r');
+    const shown = {
+      lx: shapeAxis(merged.axes.lx, dzL, cubic), ly: shapeAxis(merged.axes.ly, dzL, cubic),
+      rx: shapeAxis(merged.axes.rx, dzR, cubic), ry: shapeAxis(merged.axes.ry, dzR, cubic),
+    };
     const stage = UI.stage || { keys: [], fills: [], sticks: [], touches: [], parts: [] };
     for (const g of stage.keys) g.classList.toggle('pressed', (merged.buttons[g.dataset.k] || 0) > 0.5);
     for (const r of stage.fills) {
@@ -549,8 +635,8 @@ const PADX = (() => {
     }
     for (const c of stage.sticks) {
       const ax = c.dataset.stick;
-      setAttr(c, 'cx', (Number(c.dataset.cx) + merged.axes[ax + 'x'] * 14).toFixed(2));
-      setAttr(c, 'cy', (Number(c.dataset.cy) + merged.axes[ax + 'y'] * 14).toFixed(2));
+      setAttr(c, 'cx', (Number(c.dataset.cx) + shown[ax + 'x'] * 14).toFixed(2));
+      setAttr(c, 'cy', (Number(c.dataset.cy) + shown[ax + 'y'] * 14).toFixed(2));
     }
     for (const c of stage.touches) {
       const t = merged.touch[Number(c.dataset.touch)];
@@ -566,13 +652,13 @@ const PADX = (() => {
       const s = side ? states.find((x) => x.motion && x.kind === `joycon-${side}`) : states.find((x) => x.motion);
       p.style.transform = s ? cssMatrix(s) : '';
     });
-    readout(merged, states, source);
+    readout(merged, shown, states, source);
     UI.raf = requestAnimationFrame(paint);
   }
 
   const pct = (v) => `${Math.round(v * 100)}%`;
   const num = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2);
-  function readout(m, states, source) {
+  function readout(m, shown, states, source) {
     const R = UI.read;
     if (!R) return;
     const labels = labelsFor(UI.model);
@@ -580,8 +666,9 @@ const PADX = (() => {
     const tilt = motionSt ? tiltAngles(motionSt) : null;
     const pressed = Object.entries(m.buttons).filter(([k, v]) => v > 0.5 && labels[k] !== undefined).map(([k]) => labels[k]);
     const dirs = ['up', 'down', 'left', 'right'].filter((k) => m.buttons[k] > 0.5).map((k) => `D-pad ${k}`);
-    setText(R.ls.value, `X ${num(m.axes.lx)} · Y ${num(m.axes.ly)}`);
-    setText(R.rs.value, `X ${num(m.axes.rx)} · Y ${num(m.axes.ry)}`);
+    setText(R.ls.value, `X ${num(shown.lx)} · Y ${num(shown.ly)}`);
+    setText(R.rs.value, `X ${num(shown.rx)} · Y ${num(shown.ry)}`);
+    if (R.tune) setText(R.tune.value, `L ${Math.round(deadzone('l') * 100)}% · R ${Math.round(deadzone('r') * 100)}% · cubic ${Math.round(curve() * 100)}%`);
     const lt = pct(m.buttons.lt || 0);
     const rt = pct(m.buttons.rt || 0);
     setWidth(R.lt.fill, lt);
@@ -646,6 +733,7 @@ const PADX = (() => {
   }
 
   function open() {
+    syncTuneControls();
     refresh();
     clearInterval(UI.timer);
     UI.timer = setInterval(refresh, 6000);
@@ -673,6 +761,9 @@ const PADX = (() => {
   });
   window.addEventListener('gamepadconnected', () => { if (UI.raf) refresh(); });
   window.addEventListener('gamepaddisconnected', () => { if (UI.raf) refresh(); });
+  bindTune('#padDzL', 'padDeadzoneL', DZ_MAX);
+  bindTune('#padDzR', 'padDeadzoneR', DZ_MAX);
+  bindTune('#padCurve', 'padCurve', CURVE_MAX);
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, shapeAxis, deadzone, curve, ringRadius };
 })();
