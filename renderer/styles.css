@@ -826,6 +826,15 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .pad-slider-row output { text-align: right; font-weight: 700; color: var(--brass); font-variant-numeric: tabular-nums; }
 .pad-slider-row input[type="range"] { width: 100%; height: 22px; accent-color: var(--brass); cursor: pointer; }
 .pad-tune-hint { margin: 8px 0 0; font-size: 13px; }
+.pad-curve-box { display: flex; align-items: center; gap: 18px; margin: 10px 0 2px; padding: 10px 14px; background: var(--bg-2); border: 1px solid var(--line); }
+.pad-curve-graph { flex: none; width: 260px; max-width: 100%; height: auto; }
+.pad-curve-axis { stroke: var(--line-2); stroke-width: 1; }
+.pad-curve-linear { stroke: var(--line-2); stroke-width: 1.5; stroke-dasharray: 5 5; }
+.pad-curve-line { fill: none; stroke: var(--brass); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(255, 209, 102, 0.35)); }
+.pad-curve-dot { fill: var(--brass); filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.9)); }
+.pad-curve-label { fill: var(--muted); font: 600 10px var(--body); letter-spacing: 0.05em; text-transform: uppercase; }
+.pad-curve-caption { margin: 0; color: var(--muted); font-size: 13px; max-width: 32ch; }
+@media (max-width: 760px) { .pad-curve-box { flex-direction: column; align-items: flex-start; } }
 @media (max-width: 700px) { .pad-slider-row { grid-template-columns: 1fr auto; } .pad-slider-row input { grid-column: 1 / -1; } }
 @media (max-width: 1150px) { .pad-grid { grid-template-columns: 1fr; } }
 

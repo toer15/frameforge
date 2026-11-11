@@ -89,6 +89,13 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     assert.ok((await ring('l')) > leftBefore + 2, `left ring ${await ring('l')} vs ${leftBefore}`);
     assert.equal(await evaluate('document.querySelector("#padDzLVal").textContent'), '20%');
     assert.match(await evaluate('document.querySelector("#padReadout").textContent'), /L 20%/);
+    // The animated aim-curve graph exists and follows the cubic slider.
+    assert.ok(await evaluate('document.querySelector("#padCurvePath").getAttribute("d").startsWith("M")'));
+    await evaluate('(() => { const s = document.querySelector("#padCurve"); s.value = "85"; s.dispatchEvent(new Event("input", { bubbles: true })); })()');
+    await delay(400);
+    assert.equal((await evaluate('ff.settings()')).padCurve, 85);
+    assert.equal(await evaluate('document.querySelector("#padCurveVal").textContent'), '85%');
+    assert.match(await evaluate('document.querySelector("#padCurveCaption").textContent'), /Cubic at/);
     await pick('auto');
     assert.deepEqual(exceptions, []);
   } finally {

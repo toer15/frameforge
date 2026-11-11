@@ -137,6 +137,10 @@ test('scaled square (axial) deadzone: each axis is independent and the range is 
   // The cubic curve comes after the deadzone, so full travel is still preserved.
   assert.equal(P.shapeAxis(1, 0.2, 1), 1);
   assert.equal(P.shapeAxis(-1, 0.2, 1), -1);
+  // The preview graph plots the same cubic as the stick response.
+  assert.equal(P.curveOutput(0, 0.6), 0);
+  assert.equal(P.curveOutput(1, 0.6), 1);
+  assert.ok(P.curveOutput(0.5, 1) < P.curveOutput(0.5, 0));
 });
 
 test('deadzone and cubic aim curve: centre stays still, edge reaches full, curve softens small moves', () => {

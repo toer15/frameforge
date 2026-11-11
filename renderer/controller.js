@@ -464,7 +464,7 @@ const PADX = (() => {
       Promise.resolve(ff.setSettings(patch)).then((s) => { if (s && !s._error) S = s; }).catch(() => {});
     }, 180);
   }
-  function bindTune(id, key, max) {
+  function bindTune(id, key, max, onInput) {
     const el = $(id);
     if (!el) return;
     el.addEventListener('input', () => {
@@ -473,7 +473,75 @@ const PADX = (() => {
       const out = $(`${id}Val`);
       if (out) out.textContent = `${v}%`;
       saveTune({ [key]: v });
+      if (onInput) onInput(v);
     });
+  }
+
+  /* ---------- Animated aim-curve preview ---------- */
+  // A small graph of the response from the centre to the edge: dashed = linear, yellow = the current
+  // cubic, dot = a sweep along the curve. It animates whenever the cubic slider changes.
+  const CURVE_GRAPH = { x0: 20, y0: 112, x1: 240, y1: 16, samples: 56, sweep: 900 };
+  const curveAnim = { shown: 0.6, target: 0.6, active: false, start: 0 };
+  const curveNodes = { path: null, dot: null, caption: null };
+
+  function curveOutput(t, cubic) {
+    return (1 - cubic) * t + cubic * t * t * t;
+  }
+  function curvePath(cubic) {
+    const { x0, y0, x1, y1, samples } = CURVE_GRAPH;
+    let d = '';
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples;
+      const x = x0 + t * (x1 - x0);
+      const y = y0 - curveOutput(t, cubic) * (y0 - y1);
+      d += `${i ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`;
+    }
+    return d;
+  }
+  function curveCaption(cubic) {
+    const v = Math.round(cubic * 100);
+    if (v === 0) return 'Linear: the stick speeds up evenly from the centre to the edge.';
+    if (v < 50) return `Mostly linear at ${v}% cubic: a little extra precision near the centre.`;
+    if (v < 100) return `Cubic at ${v}%: fine control near the centre, full speed at the edge.`;
+    return 'Full cubic: the finest control near the centre, full speed at the edge.';
+  }
+  function drawCurve(dotT) {
+    if (!curveNodes.path) return;
+    const cubic = curveAnim.shown;
+    curveNodes.path.setAttribute('d', curvePath(cubic));
+    if (curveNodes.dot) {
+      const t = Math.max(0, Math.min(1, dotT));
+      const out = curveOutput(t, cubic);
+      curveNodes.dot.setAttribute('cx', (CURVE_GRAPH.x0 + t * (CURVE_GRAPH.x1 - CURVE_GRAPH.x0)).toFixed(2));
+      curveNodes.dot.setAttribute('cy', (CURVE_GRAPH.y0 - out * (CURVE_GRAPH.y0 - CURVE_GRAPH.y1)).toFixed(2));
+    }
+    if (curveNodes.caption) {
+      const text = curveCaption(cubic);
+      if (curveNodes.caption.textContent !== text) curveNodes.caption.textContent = text;
+    }
+  }
+  function buildCurvePreview() {
+    curveNodes.path = $('#padCurvePath');
+    curveNodes.dot = $('#padCurveDot');
+    curveNodes.caption = $('#padCurveCaption');
+    curveAnim.shown = curve();
+    curveAnim.target = curveAnim.shown;
+    curveAnim.active = false;
+    drawCurve(0.55);
+  }
+  function previewCurve(v) {
+    const now = performance.now();
+    if (!curveAnim.active) curveAnim.start = now;
+    curveAnim.active = true;
+    curveAnim.target = clampPct(v, CURVE_MAX) / 100;
+  }
+  function animateCurve(now) {
+    if (!curveAnim.active) return;
+    const diff = curveAnim.target - curveAnim.shown;
+    curveAnim.shown = Math.abs(diff) < 0.001 ? curveAnim.target : curveAnim.shown + diff * 0.18;
+    const t = Math.min(1, Math.max(0, (now - curveAnim.start) / CURVE_GRAPH.sweep));
+    drawCurve(t);
+    if (t >= 1 && Math.abs(curveAnim.target - curveAnim.shown) < 0.001) curveAnim.active = false;
   }
 
   /* ---------- Rendering ---------- */
@@ -645,6 +713,7 @@ const PADX = (() => {
       c.classList.toggle('on', !!t);
     }
     // The drawing stays fixed on screen: motion sensors only feed the Live input numbers.
+    animateCurve(performance.now());
     readout(merged, shown, states, source);
     UI.raf = requestAnimationFrame(paint);
   }
@@ -727,6 +796,7 @@ const PADX = (() => {
 
   function open() {
     syncTuneControls();
+    buildCurvePreview();
     refresh();
     clearInterval(UI.timer);
     UI.timer = setInterval(refresh, 6000);
@@ -756,7 +826,7 @@ const PADX = (() => {
   window.addEventListener('gamepaddisconnected', () => { if (UI.raf) refresh(); });
   bindTune('#padDzL', 'padDeadzoneL', DZ_MAX);
   bindTune('#padDzR', 'padDeadzoneR', DZ_MAX);
-  bindTune('#padCurve', 'padCurve', CURVE_MAX);
+  bindTune('#padCurve', 'padCurve', CURVE_MAX, previewCurve);
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, deadzone, curve, ringRadius };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, curveOutput, deadzone, curve, ringRadius };
 })();

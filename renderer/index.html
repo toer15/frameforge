@@ -522,6 +522,19 @@
               <input type="range" id="padCurve" min="0" max="100" step="5" value="60" />
               <output id="padCurveVal" for="padCurve">60%</output>
             </div>
+            <div class="pad-curve-box">
+              <svg class="pad-curve-graph" id="padCurveGraph" viewBox="0 0 260 130" role="img" aria-label="Aim curve preview from the centre to the edge of the stick">
+                <line class="pad-curve-axis" x1="20" y1="112" x2="244" y2="112" />
+                <line class="pad-curve-axis" x1="20" y1="112" x2="20" y2="14" />
+                <line class="pad-curve-linear" x1="20" y1="112" x2="244" y2="14" />
+                <path class="pad-curve-line" id="padCurvePath" d="" />
+                <circle class="pad-curve-dot" id="padCurveDot" cx="20" cy="112" r="4.5" />
+                <text class="pad-curve-label" x="20" y="126">centre</text>
+                <text class="pad-curve-label" x="244" y="126" text-anchor="end">edge</text>
+                <text class="pad-curve-label" x="24" y="24">speed</text>
+              </svg>
+              <p class="pad-curve-caption" id="padCurveCaption">Cubic at 60%: fine control near the centre, full speed at the edge.</p>
+            </div>
             <p class="muted pad-tune-hint">0% = linear, raw stick · 100% = full cubic, the finest control near the centre with full speed at the edge.</p>
           </div>
         </div>

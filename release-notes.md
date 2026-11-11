@@ -1,6 +1,6 @@
-**Static controller drawing and scaled square deadzone**
+**Animated aim-curve preview**
 
-- The controller drawing on the **Controller** tab now stays still. It no longer rotates or follows the controller in your hands, so the buttons, sticks and yellow deadzone rings are always easy to read.
-- Motion sensors still work: DualSense, DualShock 4, Switch Pro and Joy-Con tilt and turning speed are shown in **Live input**.
-- Stick input now uses an explicit **scaled square (axial) deadzone**: X and Y are judged independently, values inside the deadzone read zero, and the remaining travel is linearly rescaled to full range. The cubic aim curve is applied after that.
-- The per-stick deadzone sliders and yellow deadzone rings are unchanged.
+- The **Cubic aim curve** slider on the Controller tab now has a live graph. Move the slider and the yellow curve morphs to the new response, while a dot sweeps from the centre to the edge so you can see how the stick speed changes.
+- The dashed line is the linear reference. With a strong cubic curve the dot moves slowly near the centre and speeds up toward the edge; at 0 % it follows the straight line.
+- A caption under the graph explains the current setting, and the graph uses the same cubic as the live stick input.
+- Per-stick deadzones, their yellow rings and the fixed controller drawing are unchanged.
