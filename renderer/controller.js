@@ -394,6 +394,7 @@ const PADX = (() => {
   /* ---------- Deadzone and aim curve ---------- */
   // Saved as whole percentages: 0-40 % of full stick travel per stick, and 0-100 % for how cubic the aim curve is.
   const DZ_MAX = 40;
+  const TRIGGER_DZ_MAX = 40;
   const CURVE_MAX = 100;
   const DZ_SHAPES = ['circle', 'cross', 'square'];
   const clampPct = (v, max) => {
@@ -403,6 +404,10 @@ const PADX = (() => {
   const deadzone = (axis) => {
     const v = clampPct(S && S[axis === 'r' ? 'padDeadzoneR' : 'padDeadzoneL'], DZ_MAX);
     return (v === null ? 8 : v) / 100;
+  };
+  const triggerDeadzone = (axis) => {
+    const v = clampPct(S && S[axis === 'r' ? 'padTriggerDeadzoneR' : 'padTriggerDeadzoneL'], TRIGGER_DZ_MAX);
+    return (v === null ? 0 : v) / 100;
   };
   const curve = (axis) => {
     const key = axis === 'r' ? 'padCurveR' : 'padCurveL';
@@ -423,6 +428,15 @@ const PADX = (() => {
     const a = Math.min(1, Math.abs(Number(v) || 0));
     if (a <= dz) return 0;
     return Math.sign(v) * ((a - dz) / (1 - dz));
+  }
+  /**
+   * One analog trigger, 0…1 in and out. The first `dz` of the pull is ignored, then the remaining travel
+   * is rescaled so a full pull still reaches 1. At 0 % the raw value passes through unchanged.
+   */
+  function triggerShaped(v, dz) {
+    const a = Math.max(0, Math.min(1, Number(v) || 0));
+    if (dz <= 0) return a;
+    return a <= dz ? 0 : (a - dz) / (1 - dz);
   }
   const applyCurve = (v, cubic) => {
     if (!v) return 0;
@@ -506,10 +520,12 @@ const PADX = (() => {
     const v = {
       padDeadzoneL: Math.round(deadzone('l') * 100),
       padDeadzoneR: Math.round(deadzone('r') * 100),
+      padTriggerDeadzoneL: Math.round(triggerDeadzone('l') * 100),
+      padTriggerDeadzoneR: Math.round(triggerDeadzone('r') * 100),
       padCurveL: Math.round(curve('l') * 100),
       padCurveR: Math.round(curve('r') * 100),
     };
-    for (const [id, key] of [['#padDzL', 'padDeadzoneL'], ['#padDzR', 'padDeadzoneR'], ['#padCurveL', 'padCurveL'], ['#padCurveR', 'padCurveR']]) {
+    for (const [id, key] of [['#padDzL', 'padDeadzoneL'], ['#padDzR', 'padDeadzoneR'], ['#padTdzL', 'padTriggerDeadzoneL'], ['#padTdzR', 'padTriggerDeadzoneR'], ['#padCurveL', 'padCurveL'], ['#padCurveR', 'padCurveR']]) {
       const el = $(id);
       if (el && String(el.value) !== String(v[key])) el.value = String(v[key]);
       const out = $(`${id}Val`);
@@ -787,6 +803,9 @@ const PADX = (() => {
       for (const k of ['lx', 'ly', 'rx', 'ry']) if (Math.abs(s.axes[k]) > Math.abs(merged.axes[k])) merged.axes[k] = s.axes[k];
       s.touch.forEach((t, i) => { if (t) merged.touch[i] = t; });
     }
+    // Trigger deadzones apply to whichever controller/source is being shown, before anything is drawn.
+    merged.buttons.lt = triggerShaped(merged.buttons.lt, triggerDeadzone('l'));
+    merged.buttons.rt = triggerShaped(merged.buttons.rt, triggerDeadzone('r'));
     // Apply the saved deadzone and per-stick cubic curve: this is what the sticks and the Live input show.
     const cubicL = curve('l');
     const cubicR = curve('r');
@@ -940,6 +959,8 @@ const PADX = (() => {
   window.addEventListener('gamepaddisconnected', () => { if (UI.raf) refresh(); });
   bindTune('#padDzL', 'padDeadzoneL', DZ_MAX);
   bindTune('#padDzR', 'padDeadzoneR', DZ_MAX);
+  bindTune('#padTdzL', 'padTriggerDeadzoneL', TRIGGER_DZ_MAX);
+  bindTune('#padTdzR', 'padTriggerDeadzoneR', TRIGGER_DZ_MAX);
   bindTune('#padCurveL', 'padCurveL', CURVE_MAX, (v) => previewCurve('l', v));
   bindTune('#padCurveR', 'padCurveR', CURVE_MAX, (v) => previewCurve('r', v));
   const shapeEl = $('#padDzShape');
@@ -948,5 +969,5 @@ const PADX = (() => {
     saveTune({ padDeadzoneShape: shape });
   });
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, triggerShaped, triggerDeadzone, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
 })();

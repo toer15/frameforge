@@ -463,7 +463,7 @@
       <div class="tw-head">
         <div>
           <h1 class="page-title">Controller</h1>
-          <p class="muted">Pick your controller. FrameForge draws it, lights up every button you press, moves the sticks and triggers exactly as you do, and keeps the drawing still on screen. DualSense, DualShock 4, Switch Pro and Joy-Con motion sensors show tilt and turning speed in Live input. Set each stick's deadzone and aim curve below.</p>
+          <p class="muted">Pick your controller. FrameForge draws it, lights up every button you press, moves the sticks and triggers exactly as you do, and keeps the drawing still on screen. DualSense, DualShock 4, Switch Pro and Joy-Con motion sensors show tilt and turning speed in Live input. Set each stick's deadzone and aim curve, and each trigger's deadzone, below.</p>
         </div>
         <div class="tw-actions"><button class="ghost" id="padRefresh">Refresh</button></div>
       </div>
@@ -505,7 +505,7 @@
           <div class="pad-stage" id="padStage"></div>
           <p class="muted" id="padLive">Press any button on your controller to test it here.</p>
           <div class="pad-tune">
-            <h2 class="pad-h">Stick deadzone &amp; aim curve</h2>
+            <h2 class="pad-h">Deadzone &amp; aim curve</h2>
             <p class="muted pad-tune-note">The yellow shape on each stick is its deadzone. Choose a shape and drag a slider — the drawing changes right away. FrameForge applies the shape and size to the live input beside it, so you can feel the difference; enter the same numbers in your game or Steam Input for the same aim in-game.</p>
             <div class="pad-slider-row">
               <label for="padDzL">Left stick deadzone</label>
@@ -526,6 +526,17 @@
               </select>
             </div>
             <p class="muted pad-shape-hint" id="padDzShapeHint"><b>Circle</b> keeps the response even all the way round. <b>Cross</b> keeps near-straight presses on one axis. <b>Square</b> judges each axis separately, so diagonals keep their full range.</p>
+            <div class="pad-slider-row">
+              <label for="padTdzL">Left trigger deadzone</label>
+              <input type="range" id="padTdzL" min="0" max="40" step="1" value="0" />
+              <output id="padTdzLVal" for="padTdzL">0%</output>
+            </div>
+            <div class="pad-slider-row">
+              <label for="padTdzR">Right trigger deadzone</label>
+              <input type="range" id="padTdzR" min="0" max="40" step="1" value="0" />
+              <output id="padTdzRVal" for="padTdzR">0%</output>
+            </div>
+            <p class="muted pad-trigger-hint" id="padTdzHint">The trigger deadzones ignore the first part of each pull and rescale the rest, so a full pull still reaches 100%. They shape FrameForge's live input; games and Steam Input use their own trigger deadzone settings.</p>
             <div class="pad-slider-row">
               <label for="padCurveL">Left stick aim curve</label>
               <input type="range" id="padCurveL" min="0" max="100" step="5" value="60" />

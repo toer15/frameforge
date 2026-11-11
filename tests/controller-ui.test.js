@@ -104,6 +104,12 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     await delay(400);
     assert.equal((await evaluate('ff.settings()')).padDeadzoneShape, 'circle');
     assert.match(await dzPath(), /a/);
+    // Per-trigger deadzones save independently and show their value beside the slider.
+    assert.equal(await evaluate('document.querySelector("#padTdzL").value'), '0');
+    await evaluate('(() => { const s = document.querySelector("#padTdzL"); s.value = "20"; s.dispatchEvent(new Event("input", { bubbles: true })); })()');
+    await delay(400);
+    assert.equal((await evaluate('ff.settings()')).padTriggerDeadzoneL, 20);
+    assert.equal(await evaluate('document.querySelector("#padTdzLVal").textContent'), '20%');
     assert.equal(await evaluate('document.querySelectorAll("#padStage .pad-trig").length'), 2);
     assert.match(await evaluate('[...document.querySelectorAll("#padStage .pad-trig-text")].map((t) => t.textContent).join(",")'), /L2 0%/);
     // The animated graph exists for both sticks and follows each cubic slider separately.

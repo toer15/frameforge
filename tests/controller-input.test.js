@@ -238,6 +238,24 @@ test('analog triggers keep their exact partial value through the Gamepad API', (
   assert.equal(P.triggerLabel('ZL', 1.4), 'ZL 100%');
 });
 
+test('trigger deadzones: each back trigger ignores its first pull and keeps full travel', () => {
+  const P = load();
+  // Below the threshold the trigger is exactly released; above it the rest is rescaled to 0…1.
+  assert.equal(P.triggerShaped(0.05, 0.1), 0);
+  assert.equal(P.triggerShaped(0.1, 0.1), 0);
+  assert.ok(Math.abs(P.triggerShaped(0.55, 0.1) - 0.5) < 1e-12);
+  assert.equal(P.triggerShaped(1, 0.1), 1);
+  assert.equal(P.triggerShaped(-0.2, 0.1), 0);
+  assert.equal(P.triggerShaped(1.4, 0), 1);
+  // Saved values, defaults and clamping work per trigger.
+  assert.equal(P.triggerDeadzone('l'), 0);
+  const tuned = load({ padTriggerDeadzoneL: 20, padTriggerDeadzoneR: 40 });
+  assert.equal(tuned.triggerDeadzone('l'), 0.2);
+  assert.equal(tuned.triggerDeadzone('r'), 0.4);
+  const clamped = load({ padTriggerDeadzoneL: 999 });
+  assert.equal(clamped.triggerDeadzone('l'), 0.4);
+});
+
 test('every model in the dropdown has a drawing', () => {
   const P = load();
   const html = fs.readFileSync(path.join(__dirname, '../renderer/index.html'), 'utf8');
@@ -250,7 +268,7 @@ test('every model in the dropdown has a drawing', () => {
   }
   assert.equal(P.MODELS['joycon-pair'].parts().length, 2);
   // The deadzone, shape and both aim curve controls live in the same tab.
-  for (const id of ['padDzL', 'padDzR', 'padDzShape', 'padCurveL', 'padCurveR']) {
+  for (const id of ['padDzL', 'padDzR', 'padDzShape', 'padTdzL', 'padTdzR', 'padCurveL', 'padCurveR']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
     if (id !== 'padDzShape') assert.match(html, new RegExp(`id="${id}Val"`), id);
   }
@@ -259,5 +277,5 @@ test('every model in the dropdown has a drawing', () => {
   for (const id of ['padCurvePathL', 'padCurvePathR', 'padCurveDotL', 'padCurveDotR', 'padCurveCaption']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
-  assert.match(html, /Stick deadzone &amp; aim curve/);
+  assert.match(html, /Deadzone &amp; aim curve/);
 });

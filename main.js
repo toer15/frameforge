@@ -2332,7 +2332,7 @@ ipcMain.handle('settings:set', async (_e, patch) => {
     return { ...settings.get(), _error: 'Deadzone shape must be circle, cross or square.' };
   }
   // Controller tab sliders: keep stored values inside the range the UI can show.
-  for (const [key, max] of [['padDeadzoneL', 40], ['padDeadzoneR', 40], ['padCurveL', 100], ['padCurveR', 100]]) {
+  for (const [key, max] of [['padDeadzoneL', 40], ['padDeadzoneR', 40], ['padTriggerDeadzoneL', 40], ['padTriggerDeadzoneR', 40], ['padCurveL', 100], ['padCurveR', 100]]) {
     if (key in patch) patch[key] = Math.max(0, Math.min(max, Math.round(Number(patch[key]) || 0)));
   }
   if ('scanSchedule' in patch) patch.autoScan = true; // the old on/off switch is replaced by the schedule menu

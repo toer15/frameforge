@@ -1,8 +1,6 @@
-**Deadzone shapes: circle, cross and square**
+**Per-trigger deadzones**
 
-- The Controller tab has a new **Deadzone shape** dropdown under the two deadzone sliders.
-- **Circle** uses one radial deadzone, so the stick starts moving the same distance in every direction and diagonals keep their direction.
-- **Cross** adds a circular centre and straight cardinal arms. A near-straight press stays on that axis instead of leaking a little movement into the other one, which keeps menus and straight movement clean.
-- **Square** is the existing scaled per-axis deadzone: each axis is judged separately, and diagonals keep their full range.
-- The yellow deadzone graphic on each stick now changes to a circle, a plus or a square to match the choice, and still grows and shrinks with the deadzone slider.
-- Existing settings keep working and use **Square** until you pick another shape.
+- New **Left trigger deadzone** and **Right trigger deadzone** sliders beside the stick deadzone controls.
+- Each trigger ignores the first part of its pull and rescales the rest, so a full pull still reaches 100%. The trigger fill, marker, percentage and Live input all follow the shaped pull.
+- The two values save with your controller settings and come back after a restart; **0%** leaves the raw analog trigger untouched.
+- These deadzones shape FrameForge's live input. Games and Steam Input read your trigger directly and keep their own trigger deadzone settings, so enter the same values there for the same pull in-game.
