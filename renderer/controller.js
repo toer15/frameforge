@@ -418,15 +418,24 @@ const PADX = (() => {
     return (v === null ? 60 : v) / 100;
   };
   /**
-   * One stick axis, -1…1 in and out. Inside the deadzone there is no movement at all, so a stick that rests
-   * slightly off-centre cannot drift your aim. After it the rest of the travel is stretched back to the full
-   * range, and the cubic blend gives finer control near the centre — the usual "cubic" aim curve.
+   * Scaled square (axial) deadzone for one axis. X and Y are evaluated independently, so the deadzone is a
+   * square around the centre rather than a circle. Below the threshold the axis reads 0; above it the
+   * remaining travel is linearly rescaled from 0 at the threshold to 1 at full deflection, so no range is lost.
    */
-  function shapeAxis(v, dz, cubic) {
+  function axialDeadzone(v, dz) {
     const a = Math.min(1, Math.abs(Number(v) || 0));
     if (a <= dz) return 0;
-    const n = (a - dz) / (1 - dz);
-    return Math.sign(v) * ((1 - cubic) * n + cubic * n * n * n);
+    return Math.sign(v) * ((a - dz) / (1 - dz));
+  }
+  /**
+   * One stick axis, -1…1 in and out: the scaled square deadzone first, then the cubic aim curve on what is
+   * left. Full deflection still reaches 1, and the centre stays still so a resting stick cannot drift aim.
+   */
+  function shapeAxis(v, dz, cubic) {
+    const dead = axialDeadzone(v, dz);
+    if (!dead) return 0;
+    const a = Math.abs(dead);
+    return Math.sign(dead) * ((1 - cubic) * a + cubic * a * a * a);
   }
   // The yellow ring is drawn over the stick cap: it grows with the deadzone and is hidden at 0 %.
   const ringRadius = (dz) => (dz <= 0 ? 0 : Math.max(2.5, 62.5 * dz));
@@ -765,5 +774,5 @@ const PADX = (() => {
   bindTune('#padDzR', 'padDeadzoneR', DZ_MAX);
   bindTune('#padCurve', 'padCurve', CURVE_MAX);
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, shapeAxis, deadzone, curve, ringRadius };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, deadzone, curve, ringRadius };
 })();

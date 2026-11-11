@@ -117,6 +117,28 @@ test('motion: turning the pad 60° forward shows 60° forward tilt, and gravity 
   assert.ok(Math.abs(Math.abs(t.roll) - 30) < 3, `roll ${t.roll}`);
 });
 
+test('scaled square (axial) deadzone: each axis is independent and the range is linearly rescaled', () => {
+  const P = load();
+  // Below the threshold the axis is exactly zero.
+  assert.equal(P.axialDeadzone(0.05, 0.1), 0);
+  assert.equal(P.axialDeadzone(-0.1, 0.1), 0);
+  // Linear rescale from 0 at the threshold to 1 at full deflection.
+  assert.ok(Math.abs(P.axialDeadzone(0.1 + 0.45, 0.1) - 0.5) < 1e-12);
+  assert.equal(P.axialDeadzone(1, 0.1), 1);
+  assert.equal(P.axialDeadzone(-1, 0.1), -1);
+  // A circular deadzone of radius 0.2 would let this diagonal through (magnitude ≈ 0.212);
+  // the square deadzone keeps both axes at zero because each one is below the threshold.
+  assert.ok(Math.hypot(0.15, 0.15) > 0.2);
+  assert.equal(P.axialDeadzone(0.15, 0.2), 0);
+  assert.equal(P.shapeAxis(-0.15, 0.2, 0), 0);
+  // One axis can still move while the other stays centred.
+  assert.equal(P.shapeAxis(0.02, 0.2, 0), 0);
+  assert.ok(P.shapeAxis(0.8, 0.2, 0) > 0.7);
+  // The cubic curve comes after the deadzone, so full travel is still preserved.
+  assert.equal(P.shapeAxis(1, 0.2, 1), 1);
+  assert.equal(P.shapeAxis(-1, 0.2, 1), -1);
+});
+
 test('deadzone and cubic aim curve: centre stays still, edge reaches full, curve softens small moves', () => {
   const P = load();
   // Inside the deadzone the stick reads the centre; just outside, movement starts from zero.
