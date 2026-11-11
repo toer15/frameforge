@@ -3,7 +3,7 @@
 **Automatic gaming performance for Windows 10/11 — AMD, NVIDIA and Intel.**
 Made by TwicyTom.
 
-### ⬇️ [Download the latest version](https://github.com/toer15/frameforge/releases/latest)
+### ⬇️ [Download the latest version](https://github.com/toer15/frameforge/releases/latest) &nbsp;·&nbsp; 🌐 [Website](https://toer15.github.io/frameforge/)
 Click **FrameForge-Setup-x.x.x.exe** under *Assets*. Updates arrive inside the app after that.
 
 ![FrameForge tuning a PC](images/running.png)
@@ -27,6 +27,8 @@ Pick a goal — **Competitive**, **Best performance**, **Balanced** or **Best gr
 - **Virus scan** — Quick, Full and Custom scans with Microsoft Defender's engine, a time estimate and live file count, a **false-positive check** for every detection (real threats vs. false positives, with the reasons), and a results window where you pick Quarantine, Delete or Keep for each one. Plus checks for things malware switches off (real-time protection, exclusions, hosts file, firewall)
 - **Windows animations switch** — all Windows animations off for a snappier PC (or all on), kept that way even if another tool changes it
 - **AI chat** that knows your PC and what was changed — Claude (your own API key) or free models that run on your PC: pick one and press **Install**, FrameForge sets it up
+
+![FrameForge home — pick a goal, then flip Auto Mode on](images/home.png)
 
 Every change is listed with its exact before → after value, and **Undo all changes** puts your PC back.
 FrameForge makes a Windows restore point before it changes anything.

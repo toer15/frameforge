@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FrameForge — automatic gaming performance for Windows</title>
+<meta name="description" content="FrameForge tunes Windows 10 and 11 for gaming: pick a goal, flip Auto Mode on, and it applies only the tweaks your PC can take. Free download." />
+<meta name="theme-color" content="#0a0f1c" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="FrameForge — automatic gaming performance for Windows" />
+<meta property="og:description" content="Pick a goal, flip Auto Mode on. FrameForge scans your PC and applies only the tweaks that fit your hardware — every change undoable." />
+<meta property="og:image" content="images/running.png" />
+<link rel="icon" href="icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header" id="top">
+  <div class="wrap header-inner">
+    <a class="brand" href="#top" aria-label="FrameForge home">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M6 30 L20 6 L34 30 Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M13 30 L20 18 L27 30" fill="currentColor" opacity=".9"/>
+        <rect x="4" y="32" width="32" height="3" rx="1.5" fill="currentColor"/>
+      </svg>
+      <span class="brand-name">Frame<b>Forge</b></span>
+    </a>
+
+    <nav class="nav" id="nav" aria-label="Main">
+      <a href="#goals">Goals</a>
+      <a href="#features">Features</a>
+      <a href="#screens">Screens</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a class="btn btn-sm btn-primary nav-cta" href="https://github.com/toer15/frameforge/releases/latest">Download</a>
+    </nav>
+
+    <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false" aria-controls="nav">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ---------- Hero ---------- -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy reveal">
+        <p class="badge"><span class="dot"></span> v1.12.3 &middot; Windows 10 &amp; 11 &middot; AMD &middot; NVIDIA &middot; Intel</p>
+        <h1>Automatic PC best<br /><span class="grad">gaming performance.</span></h1>
+        <p class="lead">
+          Pick a goal — <b>Competitive</b>, <b>Best performance</b>, <b>Balanced</b> or <b>Best graphics</b> —
+          and flip <b>Auto Mode</b> on. FrameForge scans your PC and applies only the tweaks that fit your
+          hardware. Every change is listed, and one button puts it all back.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="https://github.com/toer15/frameforge/releases/latest">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            Download FrameForge
+          </a>
+          <a class="btn btn-ghost btn-lg" href="#features">See what it changes</a>
+        </div>
+        <ul class="hero-meta">
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg> Free, no account</li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg> Restore point before changes</li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg> Undo all changes</li>
+        </ul>
+      </div>
+
+      <div class="hero-visual reveal">
+        <div class="shot-frame">
+          <div class="shot-bar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="shot-title">FrameForge</span>
+            <span class="shot-tag">Auto Mode</span>
+          </div>
+          <img src="images/running.png" width="1240" height="800" alt="FrameForge applying an Auto Mode boost, with live progress and FPS, CPU and GPU readings." />
+        </div>
+        <div class="float-chip chip-on"><span class="pulse"></span> Boosting &middot; step 10 of 15</div>
+        <div class="float-chip chip-fps"><b>141</b> FPS <span>1% low 107</span></div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="stats reveal">
+        <div class="stat"><b>28</b><span>undoable tweaks</span></div>
+        <div class="stat"><b>5</b><span>performance goals</span></div>
+        <div class="stat"><b>3</b><span>virus scan modes</span></div>
+        <div class="stat"><b>1</b><span>button to undo it all</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Goals ---------- -->
+  <section class="section" id="goals">
+    <div class="wrap">
+      <header class="section-head reveal">
+        <p class="eyebrow">Your goal</p>
+        <h2>Tell it what you play for.</h2>
+        <p class="section-lead">Auto Mode tunes the whole PC for the goal you pick — and your own hardware can veto a boost that would hurt it, like battery-saving rules on a laptop.</p>
+      </header>
+
+      <div class="goals">
+        <article class="goal goal-hero reveal">
+          <div class="goal-top">
+            <span class="goal-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12z"/></svg>
+            </span>
+            <span class="tag">New in 1.12</span>
+          </div>
+          <h3>Extreme Performance</h3>
+          <p>Everything FrameForge can do for zero-lag gaming — every boost on, background tasks silenced, games first.</p>
+          <ul class="ticks">
+            <li>Every tweak from Competitive, all on</li>
+            <li>Search indexing, telemetry and delivery optimization off</li>
+            <li>SysMain and memory compression off — no background disk hitches</li>
+            <li>Real-time priority for detected game processes</li>
+          </ul>
+        </article>
+
+        <article class="goal reveal">
+          <div class="goal-top">
+            <span class="goal-icon goal-icon-bad">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+            </span>
+          </div>
+          <h3>Competitive</h3>
+          <p>Lowest input lag and the steadiest frame times, for shooters and ranked games.</p>
+          <ul class="ticks">
+            <li>Everything in Best performance</li>
+            <li>No pop-ups or Sticky Keys banners mid-match</li>
+            <li>Raw mouse aim, games on top CPU/GPU priority</li>
+            <li>Driver set to Reflex / Anti-Lag, V-Sync off</li>
+          </ul>
+        </article>
+
+        <article class="goal reveal">
+          <div class="goal-top">
+            <span class="goal-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 4 4-7 5 9"/><path d="M3 21h18"/></svg>
+            </span>
+          </div>
+          <h3>Best performance</h3>
+          <p>Highest FPS and lowest input lag. Windows itself looks plainer.</p>
+          <ul class="ticks">
+            <li>Ultimate Performance power plan</li>
+            <li>Animations and shadows off</li>
+            <li>Chris Titus tweaks: telemetry and services off</li>
+            <li>Games get the fastest graphics card</li>
+          </ul>
+        </article>
+
+        <article class="goal reveal">
+          <div class="goal-top">
+            <span class="goal-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M6 7h9M9 17h9"/></svg>
+            </span>
+          </div>
+          <h3>Balanced</h3>
+          <p>Most of the FPS gain, while Windows keeps looking and working like normal.</p>
+          <ul class="ticks">
+            <li>Ultimate Performance power plan</li>
+            <li>Game Mode on, background recording off</li>
+            <li>Windows visuals and services untouched</li>
+            <li>Low latency driver with quality upscaling</li>
+          </ul>
+        </article>
+
+        <article class="goal reveal">
+          <div class="goal-top">
+            <span class="goal-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><path d="M12 3a3 3 0 0 0 0 6 3 3 0 0 0 0-6zM12 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+            </span>
+          </div>
+          <h3>Best graphics</h3>
+          <p>The sharpest, richest picture your PC can hold at a smooth framerate.</p>
+          <ul class="ticks">
+            <li>Auto HDR on for HDR screens</li>
+            <li>Full clock speeds so high settings stay smooth</li>
+            <li>Windows visuals kept on</li>
+            <li>High-quality textures and sharpening</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Features ---------- -->
+  <section class="section section-alt" id="features">
+    <div class="wrap">
+      <header class="section-head reveal">
+        <p class="eyebrow">Inside the app</p>
+        <h2>More than a one-click optimizer.</h2>
+        <p class="section-lead">Tuning, fixing, cleaning, scanning and measuring — in one window, with the exact before &rarr; after value for every change.</p>
+      </header>
+
+      <div class="features">
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></span>
+          <h3>Auto Mode</h3>
+          <p>Fifteen steps that run in the background: power plan, Game Mode, GPU preference, priorities and the tweaks your hardware can actually take. Stop any time.</p>
+        </article>
+
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.7 18.6 13.4 10.3a5.5 5.5 0 0 0-7.1-7.1l3.5 3.5-2.8 2.8-3.5-3.5a5.5 5.5 0 0 0 7.1 7.1l8.3 8.3a1.4 1.4 0 0 0 2-1.9Z"/></svg></span>
+          <h3>Fix mode</h3>
+          <p>Fixes problems by itself, without a click — refresh rate, reverted tweaks, a hot graphics card, missing tools, a full drive. It restarts the PC when a fix needs it, and finishes after.</p>
+        </article>
+
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5Zm-1.2 13.6-3.5-3.5 1.4-1.4 2.1 2.1 4.9-4.9 1.4 1.4z"/></svg></span>
+          <h3>Virus scan</h3>
+          <p>Quick, Full and Custom scans with Microsoft Defender’s engine, a time estimate and live file count. Every detection gets a false-positive check, and nothing is touched until you choose.</p>
+        </article>
+
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M9 2h6l1 2h5v2H3V4h5Zm-4 6h14l-1.2 13.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9Zm4 3v8h2v-8Zm4 0v8h2v-8Z"/></svg></span>
+          <h3>Cleaner</h3>
+          <p>Finds and deletes the junk files that slow a PC down — temp files, caches and leftovers — with a safe list you can review first.</p>
+        </article>
+
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 4 4-7 5 9"/><path d="M3 21h18"/></svg></span>
+          <h3>FPS, 1% lows &amp; temps</h3>
+          <p>A real counter with 1% lows, real CPU and GPU temperatures, and an in-game overlay on <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>. It tells you when it is measuring a menu, not a match.</p>
+        </article>
+
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.2a3 3 0 0 0 5.6 0H20a1 1 0 1 0 0-2h-1.2a3 3 0 0 0-5.6 0H4a1 1 0 1 0 0 2Zm0 6h1.2a3 3 0 0 0 5.6 0H20a1 1 0 1 0 0-2h-9.2a3 3 0 0 0-5.6 0H4a1 1 0 1 0 0 2Zm0 6h9.2a3 3 0 0 0 5.6 0H20a1 1 0 1 0 0-2h-1.2a3 3 0 0 0-5.6 0H4a1 1 0 1 0 0 2Z"/></svg></span>
+          <h3>28 tweaks, explained</h3>
+          <p>Reduce input lag, use all CPU cores, keep USB awake, Nagle off and more. Each switch shows its real Windows state — not what it hopes is set — and every one is undoable.</p>
+        </article>
+
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10a5 5 0 0 1 4.9 6l-.8 4a2.5 2.5 0 0 1-4.3 1.2L15 16H9l-1.8 2.2A2.5 2.5 0 0 1 2.9 17l-.8-4A5 5 0 0 1 7 7Zm.5 2.5v1.2H6.3v1.6h1.2v1.2h1.6v-1.2h1.2v-1.6H9.1V9.5Zm8.5 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg></span>
+          <h3>Controller test</h3>
+          <p>Detects your pad, draws Xbox or PlayStation layouts, and shows live buttons, sticks, triggers and motion — so you know a dead input is the pad, not the game.</p>
+        </article>
+
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm4 6.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm4 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg></span>
+          <h3>AI chat that knows your PC</h3>
+          <p>Ask what changed and get the exact before &rarr; after values. Use Claude with your own key, or a free model that runs on your PC — pick one, press Install, FrameForge sets it up.</p>
+        </article>
+
+        <article class="feature reveal">
+          <span class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></span>
+          <h3>Undo everything</h3>
+          <p>A Windows restore point before the first change, a log of every value, and <b>Undo all changes</b> to put the PC back. Chris Titus tweaks undo with his own tool, linked in Fix mode.</p>
+        </article>
+      </div>
+
+      <div class="also reveal">
+        <p class="also-title">Also inside</p>
+        <ul class="chips">
+          <li>FPS limiter (RTSS-backed)</li>
+          <li>Windows animations switch</li>
+          <li>Windows performance mode — lighter sensor polling</li>
+          <li>Driver checklist for AMD Software / NVIDIA app</li>
+          <li>Steam &amp; Epic games pinned to the fastest GPU</li>
+          <li>Startup switches that really change Windows</li>
+          <li>BIOS steps for XMP / EXPO, with one-click restart</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Screens ---------- -->
+  <section class="section" id="screens">
+    <div class="wrap">
+      <header class="section-head reveal">
+        <p class="eyebrow">Screens</p>
+        <h2>What it looks like.</h2>
+        <p class="section-lead">No hidden tabs and no mystery switches — the app shows its work while it runs.</p>
+      </header>
+
+      <div class="gallery reveal">
+        <div class="gallery-tabs" role="tablist" aria-label="Screenshots">
+          <button class="g-tab active" role="tab" aria-selected="true" data-shot="home">Home</button>
+          <button class="g-tab" role="tab" aria-selected="false" data-shot="running">Auto Mode</button>
+          <button class="g-tab" role="tab" aria-selected="false" data-shot="fix">Fix mode</button>
+          <button class="g-tab" role="tab" aria-selected="false" data-shot="scan">Virus scan</button>
+        </div>
+        <figure class="gallery-figure">
+          <img id="galleryImage" src="images/home.png" width="1240" height="800" alt="FrameForge home screen with the goal slideshow and live FPS, CPU and GPU readings." />
+          <figcaption id="galleryCaption">Home — pick a goal, then flip Auto Mode on.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- How it works ---------- -->
+  <section class="section section-alt" id="how">
+    <div class="wrap">
+      <header class="section-head reveal">
+        <p class="eyebrow">How it works</p>
+        <h2>Three minutes, then it stays out of the way.</h2>
+      </header>
+
+      <ol class="steps">
+        <li class="step reveal">
+          <span class="step-num">01</span>
+          <h3>It reads your PC</h3>
+          <p>CPU, graphics card, drives, display and the Windows values that matter. Boosts that don’t fit the hardware are switched off with a reason.</p>
+        </li>
+        <li class="step reveal">
+          <span class="step-num">02</span>
+          <h3>You pick a goal</h3>
+          <p>Auto Mode applies that goal’s boosts — power plan, Game Mode, GPU preference, priorities, tweaks. You can watch every step and stop it.</p>
+        </li>
+        <li class="step reveal">
+          <span class="step-num">03</span>
+          <h3>You play</h3>
+          <p>Fix mode and the counters keep running quietly. Mid-game, Fix mode only does things you won’t notice; bigger fixes wait until you’re away.</p>
+        </li>
+      </ol>
+
+      <div class="safety reveal">
+        <div class="safety-copy">
+          <h3>Built to be undoable.</h3>
+          <p>FrameForge makes a Windows restore point called <em>“FrameForge - before optimizing”</em> before it changes anything. Every tweak is logged with its exact before &rarr; after value.</p>
+          <ul class="ticks">
+            <li><b>Undo all changes</b> restores the values it set</li>
+            <li>Chris Titus tweaks are undone with his tool’s own Undo button</li>
+            <li>Windows System Restore is there as the last line</li>
+          </ul>
+        </div>
+        <div class="safety-card">
+          <p class="sc-label">Change log</p>
+          <div class="sc-row"><span>Power plan</span><b>Balanced → Ultimate Performance</b></div>
+          <div class="sc-row"><span>Display refresh</span><b>60 Hz → 165 Hz</b></div>
+          <div class="sc-row"><span>GPU power limit</span><b>320 W → 288 W (90%)</b></div>
+          <div class="sc-row sc-ok"><span>Restore point</span><b>Created</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Install ---------- -->
+  <section class="section" id="install">
+    <div class="wrap install-grid">
+      <div class="install-copy reveal">
+        <p class="eyebrow">Install</p>
+        <h2>Download, run, say yes.</h2>
+        <p class="section-lead">The installer is a normal Windows setup. After that, updates arrive inside the app.</p>
+
+        <ol class="install-steps">
+          <li>
+            <span class="num">1</span>
+            <div><b>Download the setup file</b><p>Grab <code>FrameForge-Setup-x.x.x.exe</code> from the latest release.</p></div>
+          </li>
+          <li>
+            <span class="num">2</span>
+            <div><b>Run it anyway</b><p>Windows shows <em>“Windows protected your PC”</em> because the app isn’t code-signed yet — click <b>More info → Run anyway</b>.</p></div>
+          </li>
+          <li>
+            <span class="num">3</span>
+            <div><b>Say yes to the admin prompt</b><p>Power plans, GPU scheduling and restore points need it. Pick a goal, flip Auto Mode on.</p></div>
+          </li>
+        </ol>
+
+        <a class="btn btn-primary btn-lg" href="https://github.com/toer15/frameforge/releases/latest">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Get the latest version
+        </a>
+      </div>
+
+      <aside class="install-card reveal">
+        <p class="ic-label">Good to know</p>
+        <h3>Beta, and honest about it</h3>
+        <p>FrameForge has been tested in a sample setup, not on thousands of real PCs. If something goes wrong, use <b>Undo all changes</b> or Windows System Restore.</p>
+        <div class="ic-facts">
+          <div><span>OS</span><b>Windows 10 / 11, 64-bit</b></div>
+          <div><span>Admin</span><b>Required</b></div>
+          <div><span>Account</span><b>None</b></div>
+          <div><span>Price</span><b>Free</b></div>
+        </div>
+        <a class="link-arrow" href="https://github.com/toer15/frameforge/releases">See all releases
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg>
+        </a>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ---------- FAQ ---------- -->
+  <section class="section section-alt" id="faq">
+    <div class="wrap faq-wrap">
+      <header class="section-head reveal">
+        <p class="eyebrow">FAQ</p>
+        <h2>Questions people actually ask.</h2>
+      </header>
+
+      <div class="faq reveal">
+        <details>
+          <summary>Is FrameForge really free?</summary>
+          <p>Yes. The app, the tuning, Fix mode, the cleaner and the virus scan are free with no account. The AI chat is optional: Claude needs your own Anthropic API key (a few cents per conversation), or you can install a free local model that runs on your PC.</p>
+        </details>
+        <details>
+          <summary>Will it work with my graphics card?</summary>
+          <p>It’s built for AMD, NVIDIA and Intel systems. FrameForge reads your hardware first and switches off any boost that would hurt it — a laptop never gets the “no power saving” tweaks, an older card never gets GPU scheduling.</p>
+        </details>
+        <details>
+          <summary>Can it break my PC?</summary>
+          <p>Every change is a documented Windows setting with its before and after value, made after a restore point. <b>Undo all changes</b> puts things back, and Windows System Restore is there as well. The app is early beta, so it says so plainly.</p>
+        </details>
+        <details>
+          <summary>Why does Windows warn about the installer?</summary>
+          <p>The app isn’t code-signed yet, so SmartScreen shows “Windows protected your PC”. Click <b>More info → Run anyway</b>. Some antivirus engines also flag unsigned Electron apps — the installer only comes from this repository’s releases.</p>
+        </details>
+        <details>
+          <summary>Does it run while I’m playing?</summary>
+          <p>Yes, quietly. Mid-game, Fix mode only takes actions you won’t notice and holds bigger fixes until you’re away. If you want even less background load, turn on <b>Windows performance mode</b> in Settings — sensor polling drops from once a second to once every three seconds.</p>
+        </details>
+        <details>
+          <summary>Which games does it know about?</summary>
+          <p>Your Steam and Epic libraries. Every game it finds is set to run on your fastest graphics card, and the Competitive goal raises game CPU/GPU priority. Others can be tuned by hand from the Tweaks tab.</p>
+        </details>
+        <details>
+          <summary>How do I update it?</summary>
+          <p>Updates arrive inside the app after the first install. You can also grab the newest installer from the releases page and run it over the old version.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- CTA ---------- -->
+  <section class="cta">
+    <div class="wrap cta-inner reveal">
+      <div>
+        <h2>Stop guessing which Windows setting costs you frames.</h2>
+        <p>Pick a goal, flip Auto Mode on, and keep playing.</p>
+      </div>
+      <a class="btn btn-primary btn-lg" href="https://github.com/toer15/frameforge/releases/latest">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Download FrameForge
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M6 30 L20 6 L34 30 Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M13 30 L20 18 L27 30" fill="currentColor" opacity=".9"/>
+        <rect x="4" y="32" width="32" height="3" rx="1.5" fill="currentColor"/>
+      </svg>
+      <span>FrameForge <small>by TwicyTom</small></span>
+    </div>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="https://github.com/toer15/frameforge">GitHub</a>
+      <a href="https://github.com/toer15/frameforge/releases">Releases</a>
+      <a href="https://github.com/toer15/frameforge/issues">Report a bug</a>
+      <a href="https://github.com/toer15/frameforge/blob/main/DEVELOPING.md">Developers</a>
+    </nav>
+    <p class="footer-note">© <span id="year">2026</span> TwicyTom · Windows 10/11 · AMD, NVIDIA and Intel</p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
