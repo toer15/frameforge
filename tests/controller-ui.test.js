@@ -64,6 +64,8 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     await pick('switch-pro');
     assert.equal(await title(), 'Switch Pro Controller');
     assert.match(await keys(), /ZL.*ZR|ZR.*ZL/);
+    assert.equal(await evaluate('document.querySelector("#padTdzLLabel").textContent'), 'ZL');
+    assert.equal(await evaluate('document.querySelector("#padTdzRLabel").textContent'), 'ZR');
     assert.match(await keys(), /Home/);
     assert.equal(await evaluate('document.querySelector("#padRecenter").classList.contains("hidden")'), false);
     await pick('joycon-pair');
@@ -75,6 +77,8 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     assert.equal(await evaluate('document.querySelector("#padRecenter").classList.contains("hidden")'), true);
     assert.match(await evaluate('document.querySelector("#padKeys").textContent'), /RT/);
     await pick('dualshock4');
+    assert.equal(await evaluate('document.querySelector("#padTdzLLabel").textContent'), 'L2');
+    assert.equal(await evaluate('document.querySelector("#padTdzRLabel").textContent'), 'R2');
     assert.match(await keys(), /Share/);
     assert.match(await evaluate('document.querySelector("#padKeys").textContent'), /✕/);
     assert.equal((await evaluate('ff.settings()')).controllerType, 'dualshock4');

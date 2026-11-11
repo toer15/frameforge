@@ -111,6 +111,10 @@ const PADX = (() => {
   // Names that differ between models of one family.
   const LABEL_OVERRIDES = { dualshock4: { back: 'Share' }, 'xbox-360': { back: 'Back', start: 'Start', guide: 'Guide' } };
   const labelsFor = (id) => ({ ...LABELS[MODELS[id].family], ...(LABEL_OVERRIDES[id] || {}) });
+  const triggerNames = (id) => {
+    const labels = labelsFor(MODELS[id] ? id : 'xbox-series');
+    return { l: labels.lt, r: labels.rt };
+  };
 
   const ACTIONS = [
     ['Jump / Confirm', 's'], ['Dodge / Back', 'e'], ['Reload / Interact', 'w'], ['Switch weapon / Item', 'n'],
@@ -565,12 +569,29 @@ const PADX = (() => {
     }
   }
   function syncTriggerMap() {
+    const names = triggerNames(UI.model || chosenModel());
     for (const axis of ['l', 'r']) {
       const pct = Math.round(triggerDeadzone(axis) * 100);
       const fill = $(`.pad-trigger-dz[data-trigger-dz="${axis}"]`);
       if (fill) fill.style.width = `${pct}%`;
       const out = $(axis === 'l' ? '#padTdzLMap' : '#padTdzRMap');
       if (out) out.textContent = `${pct}%`;
+      const label = $(axis === 'l' ? '#padTdzLLabel' : '#padTdzRLabel');
+      if (label && label.textContent !== names[axis]) label.textContent = names[axis];
+    }
+  }
+  const TRIGGER_BARS = { l: null, r: null };
+  function syncTriggerPulls(pull) {
+    for (const axis of ['l', 'r']) {
+      if (!TRIGGER_BARS[axis]) TRIGGER_BARS[axis] = $(axis === 'l' ? '#padTdzLiveL' : '#padTdzLiveR');
+      const bar = TRIGGER_BARS[axis];
+      if (!bar) continue;
+      const pct = Math.round(Math.max(0, Math.min(1, Number(pull[axis]) || 0)) * 100);
+      const width = `${pct}%`;
+      if (bar.dataset.pull !== width) {
+        bar.style.width = width;
+        bar.dataset.pull = width;
+      }
     }
   }
 
@@ -779,6 +800,7 @@ const PADX = (() => {
       rings: [...stage.querySelectorAll('.pad-deadzone')],
     };
     syncDeadzoneRings();
+    syncTriggerMap();
     buildReadout(!!M.motion);
   }
   function chip(family, label, key) {
@@ -876,9 +898,13 @@ const PADX = (() => {
       for (const k of ['lx', 'ly', 'rx', 'ry']) if (Math.abs(s.axes[k]) > Math.abs(merged.axes[k])) merged.axes[k] = s.axes[k];
       s.touch.forEach((t, i) => { if (t) merged.touch[i] = t; });
     }
-    // Trigger deadzones apply to whichever controller/source is being shown, before anything is drawn.
-    merged.buttons.lt = triggerShaped(merged.buttons.lt, triggerDeadzone('l'));
-    merged.buttons.rt = triggerShaped(merged.buttons.rt, triggerDeadzone('r'));
+    // Keep the physical pull for the preview bars, then apply the trigger deadzones to the drawing.
+    const rawTriggers = {
+      l: Math.max(0, Math.min(1, merged.buttons.lt || 0)),
+      r: Math.max(0, Math.min(1, merged.buttons.rt || 0)),
+    };
+    merged.buttons.lt = triggerShaped(rawTriggers.l, triggerDeadzone('l'));
+    merged.buttons.rt = triggerShaped(rawTriggers.r, triggerDeadzone('r'));
     // Overlay the selected macro on the live preview. The physical pad is never changed.
     if (!macroOn()) resetMacro();
     else {
@@ -894,6 +920,7 @@ const PADX = (() => {
     const left = shapeStick(merged.axes.lx, merged.axes.ly, dzL, cubicL, shape);
     const right = shapeStick(merged.axes.rx, merged.axes.ry, dzR, cubicR, shape);
     const shown = { lx: left.x, ly: left.y, rx: right.x, ry: right.y };
+    syncTriggerPulls(rawTriggers);
     const stage = UI.stage || { keys: [], fills: [], trigs: [], trigTexts: [], sticks: [], touches: [] };
     for (const g of stage.keys) g.classList.toggle('pressed', (merged.buttons[g.dataset.k] || 0) > 0.5);
     for (const r of stage.fills) {
@@ -1059,5 +1086,5 @@ const PADX = (() => {
     saveTune({ macroPick: pick });
   });
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, triggerShaped, triggerDeadzone, macroStep, macroOn, macroPick, MACRO_PICKS, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, shapeStick, deadzonePath, deadzoneShape, triggerShaped, triggerDeadzone, triggerNames, macroStep, macroOn, macroPick, MACRO_PICKS, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
 })();

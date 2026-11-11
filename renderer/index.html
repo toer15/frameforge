@@ -538,15 +538,15 @@
             </div>
             <p class="muted pad-trigger-hint" id="padTdzHint">The trigger deadzones ignore the first part of each pull and rescale the rest, so a full pull still reaches 100%. They shape FrameForge's live input; games and Steam Input use their own trigger deadzone settings.</p>
             <div class="pad-trigger-box" id="padTriggerBox">
-              <div class="pad-trigger-boxhead"><b>Trigger deadzones</b><span>shaded part is ignored</span></div>
+              <div class="pad-trigger-boxhead"><b>Trigger deadzones</b><span>bar = live pull · shaded part ignored</span></div>
               <div class="pad-trigger-map-row">
-                <span>LT</span>
-                <div class="pad-trigger-scale" aria-hidden="true"><i class="pad-trigger-dz" data-trigger-dz="l"></i></div>
+                <span id="padTdzLLabel">LT</span>
+                <div class="pad-trigger-scale" aria-hidden="true"><i class="pad-trigger-live" id="padTdzLiveL" data-trigger-live="l"></i><i class="pad-trigger-dz" data-trigger-dz="l"></i></div>
                 <output id="padTdzLMap">0%</output>
               </div>
               <div class="pad-trigger-map-row">
-                <span>RT</span>
-                <div class="pad-trigger-scale" aria-hidden="true"><i class="pad-trigger-dz" data-trigger-dz="r"></i></div>
+                <span id="padTdzRLabel">RT</span>
+                <div class="pad-trigger-scale" aria-hidden="true"><i class="pad-trigger-live" id="padTdzLiveR" data-trigger-live="r"></i><i class="pad-trigger-dz" data-trigger-dz="r"></i></div>
                 <output id="padTdzRMap">0%</output>
               </div>
             </div>

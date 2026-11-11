@@ -256,6 +256,16 @@ test('trigger deadzones: each back trigger ignores its first pull and keeps full
   assert.equal(clamped.triggerDeadzone('l'), 0.4);
 });
 
+test('trigger preview labels follow the selected controller', () => {
+  const P = load();
+  assert.deepEqual({ ...P.triggerNames('dualsense') }, { l: 'L2', r: 'R2' });
+  assert.deepEqual({ ...P.triggerNames('dualshock4') }, { l: 'L2', r: 'R2' });
+  assert.deepEqual({ ...P.triggerNames('switch-pro') }, { l: 'ZL', r: 'ZR' });
+  assert.deepEqual({ ...P.triggerNames('joycon-pair') }, { l: 'ZL', r: 'ZR' });
+  assert.deepEqual({ ...P.triggerNames('xbox-series') }, { l: 'LT', r: 'RT' });
+  assert.deepEqual({ ...P.triggerNames('missing-model') }, { l: 'LT', r: 'RT' });
+});
+
 test('macros: rapid fire pulses and combos fire once on the rising edge', () => {
   const P = load();
   assert.equal(P.MACRO_PICKS.join(','), 'rapid-rt,rapid-lt,combo-ab,combo-ba');
@@ -301,7 +311,10 @@ test('every model in the dropdown has a drawing', () => {
   for (const shape of ['circle', 'cross', 'square']) assert.match(shapeSel, new RegExp(`value="${shape}"`), shape);
   for (const id of ['macroOn', 'macroPick', 'macroState']) assert.match(html, new RegExp(`id="${id}"`), id);
   for (const pick of ['rapid-rt', 'rapid-lt', 'combo-ab', 'combo-ba']) assert.match(html, new RegExp(`value="${pick}"`), pick);
-  for (const id of ['padTdzLMap', 'padTdzRMap']) assert.match(html, new RegExp(`id="${id}"`), id);
+  for (const id of ['padTdzLMap', 'padTdzRMap', 'padTdzLLabel', 'padTdzRLabel', 'padTdzLiveL', 'padTdzLiveR']) {
+    assert.match(html, new RegExp(`id="${id}"`), id);
+  }
+  for (const side of ['l', 'r']) assert.match(html, new RegExp(`data-trigger-live="${side}"`), side);
   assert.match(html, /Trigger deadzones/);
   for (const id of ['padCurvePathL', 'padCurvePathR', 'padCurveDotL', 'padCurveDotR', 'padCurveCaption']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
