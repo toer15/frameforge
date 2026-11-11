@@ -801,6 +801,7 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .pad-key rect.pad-fill { fill: var(--heat); stroke: none; opacity: .75; }
 .pad-trig { fill: var(--heat-hot); stroke: #1a0700; stroke-width: .8; opacity: .35; pointer-events: none; }
 .pad-trig.on { opacity: 1; filter: drop-shadow(0 0 4px rgba(255, 179, 71, 0.9)); }
+.pad-trig-text { font-variant-numeric: tabular-nums; }
 .pad-touch { fill: var(--coolant); opacity: 0; }
 .pad-touch.on { opacity: 1; }
 .pad-key.pressed rect:not(.pad-fill), .pad-key.pressed circle:not(.pad-stick):not(.pad-touch):not(.pad-deadzone):not(.pad-trig) { fill: var(--heat); stroke: var(--heat-hot); }

@@ -137,7 +137,7 @@ const PADX = (() => {
     if (part.light) s += '<rect class="pad-light" x="160" y="70" width="80" height="4" rx="2"/>';
     for (const it of part.items) {
       if (it.type === 'pill') s += g(it.k, `<rect x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="${it.w}" height="${it.h}" rx="${Math.min(8, it.h / 2)}"/>${it.t ? `<text x="${it.x}" y="${it.y + 4}" text-anchor="middle" font-size="${it.h < 14 ? 8 : 11}">${esc(it.t)}</text>` : ''}`);
-      else if (it.type === 'trig') s += g(it.k, `<rect x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="${it.w}" height="${it.h}" rx="6"/><rect class="pad-fill" data-fill="${it.k}" x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="0" height="${it.h}" rx="6"/><circle class="pad-trig" data-trig="${it.k}" data-x="${it.x - it.w / 2 + 4}" data-w="${it.w - 8}" cx="${it.x - it.w / 2 + 4}" cy="${it.y}" r="3.4" aria-hidden="true"/><text x="${it.x}" y="${it.y + 4}" text-anchor="middle" font-size="11">${esc(it.t)}</text>`);
+      else if (it.type === 'trig') s += g(it.k, `<rect x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="${it.w}" height="${it.h}" rx="6"/><rect class="pad-fill" data-fill="${it.k}" x="${it.x - it.w / 2}" y="${it.y - it.h / 2}" width="0" height="${it.h}" rx="6"/><circle class="pad-trig" data-trig="${it.k}" data-x="${it.x - it.w / 2 + 4}" data-w="${it.w - 8}" cx="${it.x - it.w / 2 + 4}" cy="${it.y + it.h / 2 - 2.5}" r="2.5" aria-hidden="true"/><text class="pad-trig-text" data-trig-text="${it.k}" data-label="${esc(it.t)}" x="${it.x}" y="${it.y + 4}" text-anchor="middle" font-size="11">${esc(it.t)} 0%</text>`);
       else if (it.type === 'round') s += g(it.k, `<circle cx="${it.x}" cy="${it.y}" r="${it.r}"/>${it.t ? `<text x="${it.x}" y="${it.y + it.r * 0.38}" text-anchor="middle" font-size="${Math.max(8, it.r)}">${esc(it.t)}</text>` : ''}`);
       else if (it.type === 'stick') s += g(it.k, `<circle cx="${it.x}" cy="${it.y}" r="25"/><line class="pad-cross" x1="${it.x - 25}" y1="${it.y}" x2="${it.x + 25}" y2="${it.y}"/><line class="pad-cross" x1="${it.x}" y1="${it.y - 25}" x2="${it.x}" y2="${it.y + 25}"/><circle class="pad-stick" data-stick="${it.ax}" data-cx="${it.x}" data-cy="${it.y}" cx="${it.x}" cy="${it.y}" r="12"/><circle class="pad-deadzone" data-dz="${it.ax}" cx="${it.x}" cy="${it.y}" r="0" aria-hidden="true"/>`);
       else if (it.type === 'dpad') {
@@ -622,6 +622,7 @@ const PADX = (() => {
       keys: [...stage.querySelectorAll('.pad-key')],
       fills: [...stage.querySelectorAll('.pad-fill')],
       trigs: [...stage.querySelectorAll('.pad-trig')],
+      trigTexts: [...stage.querySelectorAll('.pad-trig-text')],
       sticks: [...stage.querySelectorAll('.pad-stick')],
       touches: [...stage.querySelectorAll('.pad-touch')],
       rings: [...stage.querySelectorAll('.pad-deadzone')],
@@ -678,6 +679,9 @@ const PADX = (() => {
     UI.read = read;
   }
 
+  // Trigger label text: "LT 37%". Clamped so a noisy pad cannot print 101 %.
+  const triggerLabel = (label, v) => `${label} ${Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 100)}%`;
+
   // Gamepad API buttons: LT/RT keep their analog value; the rest are digital. Some pads report
   // `pressed` true for a partly pulled trigger, which used to snap the drawing to 100 %.
   function gamepadButton(k, b) {
@@ -730,7 +734,7 @@ const PADX = (() => {
       lx: shapeAxis(merged.axes.lx, dzL, cubicL), ly: shapeAxis(merged.axes.ly, dzL, cubicL),
       rx: shapeAxis(merged.axes.rx, dzR, cubicR), ry: shapeAxis(merged.axes.ry, dzR, cubicR),
     };
-    const stage = UI.stage || { keys: [], fills: [], trigs: [], sticks: [], touches: [] };
+    const stage = UI.stage || { keys: [], fills: [], trigs: [], trigTexts: [], sticks: [], touches: [] };
     for (const g of stage.keys) g.classList.toggle('pressed', (merged.buttons[g.dataset.k] || 0) > 0.5);
     for (const r of stage.fills) {
       const full = Number(r.previousElementSibling.getAttribute('width'));
@@ -741,6 +745,10 @@ const PADX = (() => {
       const v = Math.max(0, Math.min(1, merged.buttons[c.dataset.trig] || 0));
       setAttr(c, 'cx', (Number(c.dataset.x) + v * Number(c.dataset.w)).toFixed(2));
       c.classList.toggle('on', v > 0.01);
+    }
+    for (const t of stage.trigTexts) {
+      const v = Math.max(0, Math.min(1, merged.buttons[t.dataset.trigText] || 0));
+      setText(t, triggerLabel(t.dataset.label, v));
     }
     for (const c of stage.sticks) {
       const ax = c.dataset.stick;
@@ -873,5 +881,5 @@ const PADX = (() => {
   bindTune('#padCurveL', 'padCurveL', CURVE_MAX, (v) => previewCurve('l', v));
   bindTune('#padCurveR', 'padCurveR', CURVE_MAX, (v) => previewCurve('r', v));
 
-  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, curveOutput, gamepadButton, deadzone, curve, ringRadius };
+  return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, curveOutput, gamepadButton, triggerLabel, deadzone, curve, ringRadius };
 })();

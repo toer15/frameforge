@@ -193,6 +193,10 @@ test('analog triggers keep their exact partial value through the Gamepad API', (
   assert.equal(P.gamepadButton('s', { value: 1, pressed: true }), 1);
   assert.equal(P.gamepadButton('s', { value: 0, pressed: false }), 0);
   assert.equal(P.gamepadButton('lt', null), 0);
+  // The label on the drawing shows the same live value.
+  assert.equal(P.triggerLabel('LT', 0), 'LT 0%');
+  assert.equal(P.triggerLabel('RT', 0.375), 'RT 38%');
+  assert.equal(P.triggerLabel('ZL', 1.4), 'ZL 100%');
 });
 
 test('every model in the dropdown has a drawing', () => {

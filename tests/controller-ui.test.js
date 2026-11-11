@@ -90,6 +90,7 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     assert.equal(await evaluate('document.querySelector("#padDzLVal").textContent'), '20%');
     assert.match(await evaluate('document.querySelector("#padReadout").textContent'), /deadzone 20%/);
     assert.equal(await evaluate('document.querySelectorAll("#padStage .pad-trig").length'), 2);
+    assert.match(await evaluate('[...document.querySelectorAll("#padStage .pad-trig-text")].map((t) => t.textContent).join(",")'), /L2 0%/);
     // The animated graph exists for both sticks and follows each cubic slider separately.
     assert.ok(await evaluate('document.querySelector("#padCurvePathL").getAttribute("d").startsWith("M")'));
     assert.ok(await evaluate('document.querySelector("#padCurvePathR").getAttribute("d").startsWith("M")'));
