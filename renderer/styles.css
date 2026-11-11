@@ -830,9 +830,18 @@ button.stop:hover { border-color: var(--bad); color: #fff; background: rgba(255,
 .pad-curve-graph { flex: none; width: 260px; max-width: 100%; height: auto; }
 .pad-curve-axis { stroke: var(--line-2); stroke-width: 1; }
 .pad-curve-linear { stroke: var(--line-2); stroke-width: 1.5; stroke-dasharray: 5 5; }
-.pad-curve-line { fill: none; stroke: var(--brass); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(255, 209, 102, 0.35)); }
-.pad-curve-dot { fill: var(--brass); filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.9)); }
+.pad-curve-line { fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.pad-curve-line.left { stroke: var(--coolant); filter: drop-shadow(0 0 4px rgba(63, 216, 255, 0.35)); }
+.pad-curve-line.right { stroke: var(--brass); filter: drop-shadow(0 0 4px rgba(255, 209, 102, 0.35)); }
+.pad-curve-dot.left { fill: var(--coolant); filter: drop-shadow(0 0 6px rgba(63, 216, 255, 0.9)); }
+.pad-curve-dot.right { fill: var(--brass); filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.9)); }
 .pad-curve-label { fill: var(--muted); font: 600 10px var(--body); letter-spacing: 0.05em; text-transform: uppercase; }
+.pad-curve-side { display: flex; flex-direction: column; gap: 8px; }
+.pad-curve-legend { display: flex; gap: 14px; flex-wrap: wrap; }
+.pad-curve-key { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.pad-curve-key i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
+.pad-curve-key i.left { background: var(--coolant); box-shadow: 0 0 6px rgba(63, 216, 255, 0.6); }
+.pad-curve-key i.right { background: var(--brass); box-shadow: 0 0 6px rgba(255, 209, 102, 0.6); }
 .pad-curve-caption { margin: 0; color: var(--muted); font-size: 13px; max-width: 32ch; }
 @media (max-width: 760px) { .pad-curve-box { flex-direction: column; align-items: flex-start; } }
 @media (max-width: 700px) { .pad-slider-row { grid-template-columns: 1fr auto; } .pad-slider-row input { grid-column: 1 / -1; } }

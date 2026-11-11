@@ -403,9 +403,11 @@ const PADX = (() => {
     const v = clampPct(S && S[axis === 'r' ? 'padDeadzoneR' : 'padDeadzoneL'], DZ_MAX);
     return (v === null ? 8 : v) / 100;
   };
-  const curve = () => {
-    const v = clampPct(S && S.padCurve, CURVE_MAX);
-    return (v === null ? 60 : v) / 100;
+  const curve = (axis) => {
+    const key = axis === 'r' ? 'padCurveR' : 'padCurveL';
+    const legacy = clampPct(S && S.padCurve, CURVE_MAX); // one saved value from 1.13.2 and older
+    const v = clampPct(S && S[key], CURVE_MAX);
+    return (v === null ? (legacy === null ? 60 : legacy) : v) / 100;
   };
   /**
    * Scaled square (axial) deadzone for one axis. X and Y are evaluated independently, so the deadzone is a
@@ -439,14 +441,15 @@ const PADX = (() => {
     }
   }
 
-  const TUNE_SAVE = { timer: null };
+  const TUNE_SAVE = { timer: null, pending: {} };
   function syncTuneControls() {
     const v = {
       padDeadzoneL: Math.round(deadzone('l') * 100),
       padDeadzoneR: Math.round(deadzone('r') * 100),
-      padCurve: Math.round(curve() * 100),
+      padCurveL: Math.round(curve('l') * 100),
+      padCurveR: Math.round(curve('r') * 100),
     };
-    for (const [id, key] of [['#padDzL', 'padDeadzoneL'], ['#padDzR', 'padDeadzoneR'], ['#padCurve', 'padCurve']]) {
+    for (const [id, key] of [['#padDzL', 'padDeadzoneL'], ['#padDzR', 'padDeadzoneR'], ['#padCurveL', 'padCurveL'], ['#padCurveR', 'padCurveR']]) {
       const el = $(id);
       if (el && String(el.value) !== String(v[key])) el.value = String(v[key]);
       const out = $(`${id}Val`);
@@ -458,10 +461,13 @@ const PADX = (() => {
     // Show the change right away (the drawing and Live input follow the slider); save a moment later,
     // because a slider fires an input event for every pixel.
     S = { ...(S || {}), ...patch };
+    TUNE_SAVE.pending = { ...TUNE_SAVE.pending, ...patch };
     syncDeadzoneRings();
     clearTimeout(TUNE_SAVE.timer);
     TUNE_SAVE.timer = setTimeout(() => {
-      Promise.resolve(ff.setSettings(patch)).then((s) => { if (s && !s._error) S = s; }).catch(() => {});
+      const pending = TUNE_SAVE.pending;
+      TUNE_SAVE.pending = {};
+      Promise.resolve(ff.setSettings(pending)).then((s) => { if (s && !s._error) S = s; }).catch(() => {});
     }, 180);
   }
   function bindTune(id, key, max, onInput) {
@@ -481,8 +487,8 @@ const PADX = (() => {
   // A small graph of the response from the centre to the edge: dashed = linear, yellow = the current
   // cubic, dot = a sweep along the curve. It animates whenever the cubic slider changes.
   const CURVE_GRAPH = { x0: 20, y0: 112, x1: 240, y1: 16, samples: 56, sweep: 900 };
-  const curveAnim = { shown: 0.6, target: 0.6, active: false, start: 0 };
-  const curveNodes = { path: null, dot: null, caption: null };
+  const curveAnim = { shownL: 0.6, targetL: 0.6, shownR: 0.6, targetR: 0.6, active: false, start: 0 };
+  const curveNodes = { pathL: null, pathR: null, dotL: null, dotR: null, caption: null };
 
   function curveOutput(t, cubic) {
     return (1 - cubic) * t + cubic * t * t * t;
@@ -498,50 +504,70 @@ const PADX = (() => {
     }
     return d;
   }
-  function curveCaption(cubic) {
+  function curveWord(cubic) {
     const v = Math.round(cubic * 100);
-    if (v === 0) return 'Linear: the stick speeds up evenly from the centre to the edge.';
-    if (v < 50) return `Mostly linear at ${v}% cubic: a little extra precision near the centre.`;
-    if (v < 100) return `Cubic at ${v}%: fine control near the centre, full speed at the edge.`;
-    return 'Full cubic: the finest control near the centre, full speed at the edge.';
+    if (v === 0) return 'linear';
+    if (v === 100) return 'full cubic';
+    return `${v}% cubic`;
+  }
+  function curveCaption(left, right) {
+    return `Left: ${curveWord(left)} · Right: ${curveWord(right)}`;
+  }
+  function placeDot(dot, t, cubic) {
+    if (!dot) return;
+    const x = CURVE_GRAPH.x0 + t * (CURVE_GRAPH.x1 - CURVE_GRAPH.x0);
+    const y = CURVE_GRAPH.y0 - curveOutput(t, cubic) * (CURVE_GRAPH.y0 - CURVE_GRAPH.y1);
+    dot.setAttribute('cx', x.toFixed(2));
+    dot.setAttribute('cy', y.toFixed(2));
   }
   function drawCurve(dotT) {
-    if (!curveNodes.path) return;
-    const cubic = curveAnim.shown;
-    curveNodes.path.setAttribute('d', curvePath(cubic));
-    if (curveNodes.dot) {
-      const t = Math.max(0, Math.min(1, dotT));
-      const out = curveOutput(t, cubic);
-      curveNodes.dot.setAttribute('cx', (CURVE_GRAPH.x0 + t * (CURVE_GRAPH.x1 - CURVE_GRAPH.x0)).toFixed(2));
-      curveNodes.dot.setAttribute('cy', (CURVE_GRAPH.y0 - out * (CURVE_GRAPH.y0 - CURVE_GRAPH.y1)).toFixed(2));
-    }
+    if (!curveNodes.pathL) return;
+    const left = curveAnim.shownL;
+    const right = curveAnim.shownR;
+    curveNodes.pathL.setAttribute('d', curvePath(left));
+    if (curveNodes.pathR) curveNodes.pathR.setAttribute('d', curvePath(right));
+    const t = Math.max(0, Math.min(1, dotT));
+    placeDot(curveNodes.dotL, t, left);
+    placeDot(curveNodes.dotR, t, right);
     if (curveNodes.caption) {
-      const text = curveCaption(cubic);
+      const text = curveCaption(left, right);
       if (curveNodes.caption.textContent !== text) curveNodes.caption.textContent = text;
     }
   }
   function buildCurvePreview() {
-    curveNodes.path = $('#padCurvePath');
-    curveNodes.dot = $('#padCurveDot');
+    curveNodes.pathL = $('#padCurvePathL');
+    curveNodes.pathR = $('#padCurvePathR');
+    curveNodes.dotL = $('#padCurveDotL');
+    curveNodes.dotR = $('#padCurveDotR');
     curveNodes.caption = $('#padCurveCaption');
-    curveAnim.shown = curve();
-    curveAnim.target = curveAnim.shown;
+    curveAnim.shownL = curve('l');
+    curveAnim.shownR = curve('r');
+    curveAnim.targetL = curveAnim.shownL;
+    curveAnim.targetR = curveAnim.shownR;
     curveAnim.active = false;
     drawCurve(0.55);
   }
-  function previewCurve(v) {
+  function previewCurve(axis, v) {
     const now = performance.now();
     if (!curveAnim.active) curveAnim.start = now;
     curveAnim.active = true;
-    curveAnim.target = clampPct(v, CURVE_MAX) / 100;
+    const target = clampPct(v, CURVE_MAX) / 100;
+    if (axis === 'r') curveAnim.targetR = target;
+    else curveAnim.targetL = target;
+  }
+  function easeCurve(shown, target) {
+    const diff = target - shown;
+    return Math.abs(diff) < 0.001 ? target : shown + diff * 0.18;
   }
   function animateCurve(now) {
     if (!curveAnim.active) return;
-    const diff = curveAnim.target - curveAnim.shown;
-    curveAnim.shown = Math.abs(diff) < 0.001 ? curveAnim.target : curveAnim.shown + diff * 0.18;
+    curveAnim.shownL = easeCurve(curveAnim.shownL, curveAnim.targetL);
+    curveAnim.shownR = easeCurve(curveAnim.shownR, curveAnim.targetR);
     const t = Math.min(1, Math.max(0, (now - curveAnim.start) / CURVE_GRAPH.sweep));
     drawCurve(t);
-    if (t >= 1 && Math.abs(curveAnim.target - curveAnim.shown) < 0.001) curveAnim.active = false;
+    if (t >= 1 && Math.abs(curveAnim.targetL - curveAnim.shownL) < 0.001 && Math.abs(curveAnim.targetR - curveAnim.shownR) < 0.001) {
+      curveAnim.active = false;
+    }
   }
 
   /* ---------- Rendering ---------- */
@@ -639,7 +665,7 @@ const PADX = (() => {
       host.appendChild(r);
       return { row: r, fill, value: v };
     };
-    const read = { ls: row('Left stick'), rs: row('Right stick'), tune: row('Deadzone · curve'), lt: barRow(labels.lt), rt: barRow(labels.rt), pressed: row('Pressed') };
+    const read = { ls: row('Left stick'), rs: row('Right stick'), tuneL: row('Left tuning'), tuneR: row('Right tuning'), lt: barRow(labels.lt), rt: barRow(labels.rt), pressed: row('Pressed') };
     if (motion) {
       read.motion = row('Motion');
       read.motion.value.className = 'muted';
@@ -685,13 +711,14 @@ const PADX = (() => {
       for (const k of ['lx', 'ly', 'rx', 'ry']) if (Math.abs(s.axes[k]) > Math.abs(merged.axes[k])) merged.axes[k] = s.axes[k];
       s.touch.forEach((t, i) => { if (t) merged.touch[i] = t; });
     }
-    // Apply the saved deadzone and cubic curve: this is what the sticks and the Live input show.
-    const cubic = curve();
+    // Apply the saved deadzone and per-stick cubic curve: this is what the sticks and the Live input show.
+    const cubicL = curve('l');
+    const cubicR = curve('r');
     const dzL = deadzone('l');
     const dzR = deadzone('r');
     const shown = {
-      lx: shapeAxis(merged.axes.lx, dzL, cubic), ly: shapeAxis(merged.axes.ly, dzL, cubic),
-      rx: shapeAxis(merged.axes.rx, dzR, cubic), ry: shapeAxis(merged.axes.ry, dzR, cubic),
+      lx: shapeAxis(merged.axes.lx, dzL, cubicL), ly: shapeAxis(merged.axes.ly, dzL, cubicL),
+      rx: shapeAxis(merged.axes.rx, dzR, cubicR), ry: shapeAxis(merged.axes.ry, dzR, cubicR),
     };
     const stage = UI.stage || { keys: [], fills: [], sticks: [], touches: [] };
     for (const g of stage.keys) g.classList.toggle('pressed', (merged.buttons[g.dataset.k] || 0) > 0.5);
@@ -730,7 +757,8 @@ const PADX = (() => {
     const dirs = ['up', 'down', 'left', 'right'].filter((k) => m.buttons[k] > 0.5).map((k) => `D-pad ${k}`);
     setText(R.ls.value, `X ${num(shown.lx)} · Y ${num(shown.ly)}`);
     setText(R.rs.value, `X ${num(shown.rx)} · Y ${num(shown.ry)}`);
-    if (R.tune) setText(R.tune.value, `L ${Math.round(deadzone('l') * 100)}% · R ${Math.round(deadzone('r') * 100)}% · cubic ${Math.round(curve() * 100)}%`);
+    if (R.tuneL) setText(R.tuneL.value, `deadzone ${Math.round(deadzone('l') * 100)}% · curve ${Math.round(curve('l') * 100)}%`);
+    if (R.tuneR) setText(R.tuneR.value, `deadzone ${Math.round(deadzone('r') * 100)}% · curve ${Math.round(curve('r') * 100)}%`);
     const lt = pct(m.buttons.lt || 0);
     const rt = pct(m.buttons.rt || 0);
     setWidth(R.lt.fill, lt);
@@ -826,7 +854,8 @@ const PADX = (() => {
   window.addEventListener('gamepaddisconnected', () => { if (UI.raf) refresh(); });
   bindTune('#padDzL', 'padDeadzoneL', DZ_MAX);
   bindTune('#padDzR', 'padDeadzoneR', DZ_MAX);
-  bindTune('#padCurve', 'padCurve', CURVE_MAX, previewCurve);
+  bindTune('#padCurveL', 'padCurveL', CURVE_MAX, (v) => previewCurve('l', v));
+  bindTune('#padCurveR', 'padCurveR', CURVE_MAX, (v) => previewCurve('r', v));
 
   return { MODELS, hid, chosenModel, parseDualSense, parseDualShock4, parseSwitch, newState, fuse, tiltAngles, axialDeadzone, shapeAxis, curveOutput, deadzone, curve, ringRadius };
 })();

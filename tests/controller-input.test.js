@@ -159,17 +159,24 @@ test('deadzone and cubic aim curve: centre stays still, edge reaches full, curve
   assert.ok(P.ringRadius(0.2) > P.ringRadius(0.08));
   assert.equal(P.ringRadius(0), 0);
   // Saved sliders drive it, clamped to the ranges the UI offers.
-  const tuned = load({ padDeadzoneL: 20, padDeadzoneR: 40, padCurve: 100 });
+  const tuned = load({ padDeadzoneL: 20, padDeadzoneR: 40, padCurveL: 100, padCurveR: 25 });
   assert.equal(tuned.deadzone('l'), 0.2);
   assert.equal(tuned.deadzone('r'), 0.4);
-  assert.equal(tuned.curve(), 1);
-  const clamped = load({ padDeadzoneL: 999, padCurve: -5 });
+  assert.equal(tuned.curve('l'), 1);
+  assert.equal(tuned.curve('r'), 0.25);
+  const clamped = load({ padDeadzoneL: 999, padCurveL: -5, padCurveR: 999 });
   assert.equal(clamped.deadzone('l'), 0.4);
-  assert.equal(clamped.curve(), 0);
+  assert.equal(clamped.curve('l'), 0);
+  assert.equal(clamped.curve('r'), 1);
+  // Files from 1.13.2 and older saved one curve for both sticks.
+  const legacy = load({ padCurve: 35 });
+  assert.equal(legacy.curve('l'), 0.35);
+  assert.equal(legacy.curve('r'), 0.35);
   // Defaults match the values in index.html.
   assert.equal(P.deadzone('l'), 0.08);
   assert.equal(P.deadzone('r'), 0.08);
-  assert.equal(P.curve(), 0.6);
+  assert.equal(P.curve('l'), 0.6);
+  assert.equal(P.curve('r'), 0.6);
 });
 
 test('every model in the dropdown has a drawing', () => {
@@ -183,10 +190,13 @@ test('every model in the dropdown has a drawing', () => {
     assert.ok(P.MODELS[id].parts().length >= 1);
   }
   assert.equal(P.MODELS['joycon-pair'].parts().length, 2);
-  // The deadzone and aim curve controls live in the same tab.
-  for (const id of ['padDzL', 'padDzR', 'padCurve']) {
+  // The deadzone and both aim curve controls live in the same tab.
+  for (const id of ['padDzL', 'padDzR', 'padCurveL', 'padCurveR']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
     assert.match(html, new RegExp(`id="${id}Val"`), id);
+  }
+  for (const id of ['padCurvePathL', 'padCurvePathR', 'padCurveDotL', 'padCurveDotR', 'padCurveCaption']) {
+    assert.match(html, new RegExp(`id="${id}"`), id);
   }
   assert.match(html, /Stick deadzone &amp; aim curve/);
 });

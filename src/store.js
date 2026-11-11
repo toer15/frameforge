@@ -37,7 +37,8 @@ const DEFAULT_SETTINGS = {
   controllerType: 'auto', // Controller tab: auto | xbox | playstation
   padDeadzoneL: 8, // Controller tab: left stick deadzone in % of full travel (0-40)
   padDeadzoneR: 8, // Controller tab: right stick deadzone in % of full travel (0-40)
-  padCurve: 60, // Controller tab: aim curve after the deadzone, 0 = linear, 100 = full cubic
+  padCurveL: 60, // Controller tab: left stick cubic aim curve, 0 = linear, 100 = full cubic
+  padCurveR: 60, // Controller tab: right stick cubic aim curve
   fpsLimitOn: false, // Settings > FPS limiter: cap games at fpsLimit through RTSS
   fpsLimit: 60,
   tempMonitor: true,
@@ -96,6 +97,12 @@ const settings = {
   get() {
     if (!settingsCache) {
       const saved = readJson('settings.json', {});
+      // The single cubic curve from 1.13.2 and older becomes one value per stick.
+      if (saved.padCurve !== undefined) {
+        if (saved.padCurveL === undefined) saved.padCurveL = saved.padCurve;
+        if (saved.padCurveR === undefined) saved.padCurveR = saved.padCurve;
+        delete saved.padCurve;
+      }
       settingsCache = {
         ...DEFAULT_SETTINGS,
         ...saved,
