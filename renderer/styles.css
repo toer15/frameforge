@@ -1290,3 +1290,7 @@ button.stop:hover:not(:disabled) { background: rgba(255, 77, 109, 0.15); }
   .limiter-hero { align-items: flex-start; flex-direction: column; }
   .limiter-control { width: 100%; justify-content: space-between; }
 }
+
+.limiter-notice { margin: 4px 4px 0; padding: 10px 12px; border-left: 3px solid var(--muted); background: #15181e; color: #c5cbd6; max-width: 92ch; }
+.limiter-notice.bad { border-color: #ff8ca1; color: #ffd0d8; background: rgba(255, 92, 122, 0.08); }
+.limiter-notice.ok { border-color: #35e08f; color: #bfffe0; background: rgba(53, 224, 143, 0.07); }

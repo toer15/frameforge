@@ -57,6 +57,11 @@ test('FPS limiter setting installs RTSS in demo, clamps the number and keeps it 
     await waitFor('document.querySelector("#limiterInstalled").textContent === "Not installed"');
     assert.equal(await evaluate('document.querySelector("[data-key=fpsLimitOn]").checked'), false);
     assert.equal(await evaluate('ff.limiter.status().then((s) => s.installed)'), false);
+    assert.equal(await evaluate('document.querySelector("#limiterInstallBtn").classList.contains("hidden")'), false);
+    await evaluate('document.querySelector("#limiterInstallBtn").click()');
+    await waitFor('document.querySelector("#limiterInstalled").textContent === "Installed"');
+    assert.equal(await evaluate('ff.limiter.status().then((s) => s.on)'), false);
+    assert.equal(await evaluate('document.querySelector("#limiterInstallBtn").classList.contains("hidden")'), true);
     await evaluate('(() => { const n = document.querySelector("[data-key=fpsLimit]"); n.value = "144"; n.dispatchEvent(new Event("change", { bubbles: true })); })()');
     await waitFor('S.fpsLimit === 144');
     await evaluate('(() => { const c = document.querySelector("[data-key=fpsLimitOn]"); c.checked = true; c.dispatchEvent(new Event("change", { bubbles: true })); })()');

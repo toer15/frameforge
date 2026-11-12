@@ -2084,17 +2084,17 @@ async function animWatch() {
   }
 }
 /** Cap games at the number chosen in Settings (or remove the cap). Returns { ok, limit, message }. */
+async function installRtss() {
+  if (!(await tools.hasWinget())) {
+    return { ok: false, message: 'Microsoft’s app installer (winget) is missing, so RTSS can’t be installed automatically. Install “App Installer” from Microsoft Store, then press Install RTSS again.' };
+  }
+  return tools.wingetInstall(fplimit.WINGET_ID);
+}
 async function applyLimiter() {
   const s = settings.get();
   const want = s.fpsLimitOn ? fplimit.clamp(s.fpsLimit) : 0;
-  const install = async () => {
-    if (!(await tools.hasWinget())) {
-      return { ok: false, message: 'Microsoft’s app installer (winget) is missing, so RTSS can’t be installed automatically. Install “App Installer” from Microsoft Store, then press Set up and apply again.' };
-    }
-    return tools.wingetInstall(fplimit.WINGET_ID);
-  };
   const r = await fplimit.apply(want, {
-    install,
+    install: installRtss,
     // Turning the cap off puts back exactly the app profiles it capped, leaving the user's own RTSS caps alone.
     previous: s.fpsLimitProfiles || [],
   });
@@ -2143,6 +2143,11 @@ async function limiterWatch() {
 }
 ipcMain.handle('controllers:detect', () => controllers.detect());
 ipcMain.handle('limiter:status', async () => ({ on: settings.get().fpsLimitOn, fps: settings.get().fpsLimit, ...(await fplimit.status()) }));
+ipcMain.handle('limiter:install', async () => {
+  const r = await fplimit.apply(0, { install: installRtss, installOnly: true });
+  const st = await fplimit.status();
+  return { ...st, ok: r.ok, message: r.message || (r.ok ? 'RTSS is installed.' : 'RTSS could not be installed.'), on: settings.get().fpsLimitOn, fps: settings.get().fpsLimit };
+});
 ipcMain.handle('limiter:apply', async () => {
   limiterFails = 0;
   limiterNextTry = 0;

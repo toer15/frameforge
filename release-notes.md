@@ -1,5 +1,9 @@
-**The FPS limiter has its own tab, Fix mode only promises what it will really do, and scan results stay current**
+**Install RTSS straight from the FPS limiter tab, with the rest of 1.15.0's fixes**
 
+- **There is now an Install RTSS automatically button.** It works even while the limiter switch is off, so anyone can
+  set up the one thing the limiter needs from inside FrameForge. Download progress and any failure stay on the tab,
+  with the real error from Microsoft's winget store and a button to try again. Once RTSS is installed, turn the
+  limiter on and FrameForge starts it and applies the cap.
 - **FPS limiter is now its own tab.** It moved out of Settings. The tab shows whether RTSS is installed, whether
   its background helper is running, the cap RTSS is actually applying and how many game profiles are covered.
   **Set up and apply** retries the whole setup; **Check again** refreshes the status.

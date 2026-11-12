@@ -244,16 +244,18 @@ async function startRtss(dir) {
  * limit on the global profile and on every app profile that has no own limit, and reads it back — so the answer is
  * only ok when RTSS really holds the number.
  *
- *   install  – called when RTSS is missing; must return { ok, message }
- *   previous – profile names capped last time, uncapped again when the limiter is switched off
+ *   install     – called when RTSS is missing; must return { ok, message }
+ *   previous    – profile names capped last time, uncapped again when the limiter is switched off
+ *   installOnly – install and report, without starting RTSS or changing any cap
  */
-async function apply(fps, { install = null, previous = [] } = {}) {
+async function apply(fps, { install = null, previous = [], installOnly = false } = {}) {
   const want = fps ? clamp(fps) : 0;
   if (DEMO) {
-    if (want && !demo.installed) {
+    if ((want || installOnly) && !demo.installed) {
       if (install) await install();
       demo.installed = true;
     }
+    if (installOnly) return { ok: true, installed: true, limit: demo.limit, enabled: demo.enabled, capped: [] };
     demo.running = demo.installed;
     demo.limit = want;
     demo.enabled = !!want;
@@ -262,7 +264,7 @@ async function apply(fps, { install = null, previous = [] } = {}) {
   }
   let dir = await installDir();
   if (!dir) {
-    if (!want) return { ok: true, limit: 0, enabled: false, capped: [] };
+    if (!want && !installOnly) return { ok: true, limit: 0, enabled: false, capped: [] };
     if (!install) return { ok: false, message: 'RivaTuner Statistics Server (RTSS) is not installed.' };
     const r = await install();
     if (!r || !r.ok) return { ok: false, message: `RivaTuner Statistics Server (RTSS) could not be installed: ${(r && r.message) || 'no reason given'}` };
@@ -278,8 +280,10 @@ async function apply(fps, { install = null, previous = [] } = {}) {
       await sleep(500);
       dir = (await installDir()) || dir;
     }
-    if (!hasDll(dir)) return { ok: false, message: 'RTSS installed, but its hook DLL is not there yet. Open RTSS once, then press Set up and apply.' };
+    if (!hasDll(dir)) return { ok: false, message: 'RTSS installed, but its hook DLL is not there yet. Open RTSS once, then press Install RTSS again.' };
   }
+  // The tab's own Install button uses this path: install only, never change the user's cap or start RTSS.
+  if (installOnly) return { ok: true, installed: true, limit: 0, enabled: false, capped: [] };
   if (want && !(await startRtss(dir))) return { ok: false, message: 'RTSS is installed, but its background helper would not start.' };
   const cap = want ? profileNames(dir) : [];
   const uncap = want ? [] : previous;

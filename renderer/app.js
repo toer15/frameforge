@@ -1520,6 +1520,13 @@ function limiterState(sel, text, cls = '') {
   el.textContent = text;
   el.className = `limiter-state ${cls}`.trim();
 }
+function limiterNotice(text, kind = '') {
+  const el = $('#limiterNotice');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = `limiter-notice ${kind}`.trim();
+  el.classList.toggle('hidden', !text);
+}
 
 async function refreshLimiter() {
   if (!ff.limiter || !ff.limiter.status) return;
@@ -1531,6 +1538,7 @@ async function refreshLimiter() {
     limiterState('#limiterRunning', 'Unknown', 'bad');
     limiterState('#limiterCap', 'Unknown', 'bad');
     limiterState('#limiterProfiles', 'Unknown', 'bad');
+    limiterNotice('FrameForge couldn’t read the limiter status. Press Check again.', 'bad');
     const summary = $('#limiterSummary');
     if (summary) summary.textContent = 'FrameForge couldn’t read the limiter status. Press Check again.';
     return;
@@ -1548,6 +1556,12 @@ async function refreshLimiter() {
 
   limiterState('#limiterInstalled', installed ? 'Installed' : 'Not installed', installed ? 'ok' : 'bad');
   limiterState('#limiterRunning', installed ? (running ? 'Running' : 'Not running') : 'Not running', running ? 'ok' : 'bad');
+  const installBtn = $('#limiterInstallBtn');
+  if (installBtn) {
+    installBtn.classList.toggle('hidden', installed);
+    installBtn.disabled = LIMITER_BUSY;
+    installBtn.textContent = LIMITER_BUSY ? 'Installing RTSS…' : 'Install RTSS automatically';
+  }
 
   let capText = 'Not applied';
   let capCls = 'bad';
@@ -1584,7 +1598,7 @@ async function refreshLimiter() {
     : !on
       ? 'Choose a target, then turn the limiter on. Everything RTSS can hook is capped — not just one game.'
       : !installed
-        ? 'RTSS isn’t installed yet. Turning the limiter on installs it automatically; if that didn’t finish, press Set up and apply.'
+        ? 'RTSS isn’t installed yet. Press Install RTSS automatically below, or just turn the limiter on and FrameForge installs it for you.'
         : !running
           ? 'RTSS is installed but its background helper isn’t running. Press Set up and apply to start it.'
           : st.enabled === false
@@ -1593,7 +1607,7 @@ async function refreshLimiter() {
               ? `Your saved target is ${wanted} FPS. Press Set up and apply to put it back.`
               : 'The cap is saved but not active yet. Press Set up and apply to start it.';
   const hint = $('#limiterHint');
-  if (hint) hint.textContent = on ? (installed ? 'FrameForge checks this again every minute.' : 'The first setup installs RTSS from Microsoft’s winget store.') : 'Turn the limiter on to get started.';
+  if (hint) hint.textContent = !installed ? 'Install RTSS first, then turn the limiter on. It downloads from Microsoft’s winget store.' : on ? 'FrameForge checks this again every minute.' : 'Turn the limiter on to get started.';
   const apply = $('#limiterApplyBtn');
   if (apply) {
     apply.disabled = !on || LIMITER_BUSY;
@@ -1621,6 +1635,28 @@ $('#limiterApplyBtn').onclick = async () => {
     toast(r.ok ? (r.warning ? `${done} ${r.warning}` : done) : r.message || 'The FPS cap could not be applied.', r.ok && !r.warning ? 4000 : 10000);
   } catch (e) {
     toast(`The FPS cap could not be applied: ${e.message}`, 10000);
+  } finally {
+    LIMITER_BUSY = false;
+    await refreshLimiter();
+  }
+};
+$('#limiterInstallBtn').onclick = async () => {
+  if (LIMITER_BUSY) return;
+  LIMITER_BUSY = true;
+  limiterNotice('Downloading and installing RivaTuner Statistics Server (RTSS) — this can take a minute.', '');
+  await refreshLimiter();
+  try {
+    const r = await ff.limiter.install();
+    if (r.ok && r.installed !== false) {
+      limiterNotice('RTSS is installed. Turn the limiter on, or press Set up and apply, to start the cap.', 'ok');
+      toast('RTSS installed. Turn on the FPS limiter to use it.', 6000);
+    } else {
+      limiterNotice(r.message || 'RTSS could not be installed.', 'bad');
+      toast(r.message || 'RTSS could not be installed.', 10000);
+    }
+  } catch (e) {
+    limiterNotice(`RTSS could not be installed: ${e.message}`, 'bad');
+    toast(`RTSS could not be installed: ${e.message}`, 10000);
   } finally {
     LIMITER_BUSY = false;
     await refreshLimiter();
@@ -1687,7 +1723,10 @@ document.addEventListener('change', async (e) => {
     toast(warning ? `${message} ${warning}` : message, warning ? 8000 : 3500);
   }
   if (k === 'fpsLimitOn' || k === 'fpsLimit') {
-    if (S && !S._error) toast(S.fpsLimitOn ? `Games, menus and lobbies are now capped at ${S.fpsLimit} FPS.` : 'FPS limiter off.');
+    if (S && !S._error) {
+      limiterNotice('');
+      toast(S.fpsLimitOn ? `Games, menus and lobbies are now capped at ${S.fpsLimit} FPS.` : 'FPS limiter off.');
+    }
     await refreshLimiter();
   }
   if (k === 'autoCheckUpdates') {
@@ -1696,6 +1735,7 @@ document.addEventListener('change', async (e) => {
   }
   if (S && S._error) {
     // The change didn't fully work (Windows refused it, or the shortcut is taken): say so, and show the real state.
+    if (k === 'fpsLimitOn' || k === 'fpsLimit') limiterNotice(S._error, 'bad');
     toast(S._error, 8000);
     delete S._error;
     renderSettings();
