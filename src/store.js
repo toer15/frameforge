@@ -46,6 +46,8 @@ const DEFAULT_SETTINGS = {
   padCurveR: 60, // Controller tab: right stick cubic aim curve
   fpsLimitOn: false, // Settings > FPS limiter: cap games at fpsLimit through RTSS
   fpsLimit: 60,
+  fpsLimitProfiles: [], // RTSS app profiles FrameForge capped, so switching the limiter off restores exactly those
+  setAside: {}, // Fix mode problems tried 3+ times and still there: { id: { n, at, message } } for honest wording
   tempMonitor: true,
   overlayPosition: 'top-left',
   overlayHotkey: 'Ctrl+Shift+F',

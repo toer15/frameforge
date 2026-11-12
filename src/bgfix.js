@@ -50,7 +50,7 @@ const span = (ms) => {
 /**
  * One sentence per problem. kind: 'soon' (about to fix it), 'wait' (will, later), 'you' (needs a click or hands).
  * @param {object} it   a Fix mode item
- * @param {object} c    { autoFix, autoRestart, mayRestart, admin, game, idleMin, attempt, now }
+ * @param {object} c    { autoFix, autoRestart, mayRestart, admin, game, idleMin, attempt, stuck, now }
  */
 function whenFixed(it, c) {
   const now = c.now || Date.now();
@@ -69,6 +69,14 @@ function whenFixed(it, c) {
   if (it.bg !== 'game' && c.game) return { kind: 'wait', text: 'Waiting until your game is closed, so nothing flickers or stutters while you play.' };
   if (it.bg === 'idle' && c.idleMin < IDLE_MIN) {
     return { kind: 'wait', text: `This keeps the processor busy for a few minutes, so FrameForge does it by itself once you’ve been away for ${IDLE_MIN} minutes — or press Fix it to do it now.` };
+  }
+  if (c.stuck) {
+    const n = Math.max(c.stuck.n || 1, 1);
+    const said = String(c.stuck.message || '').trim();
+    return {
+      kind: 'wait',
+      text: `FrameForge tried ${n === 1 ? 'once' : `${n} times`} and this is still here${said ? ` — Windows said: “${said.replace(/[.。]+$/, '')}”` : ''}. It keeps trying by itself every few hours; press Fix it to try again right now.`,
+    };
   }
   const t = c.attempt;
   if (t) {

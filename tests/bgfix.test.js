@@ -66,6 +66,13 @@ test('every problem says what it is waiting for', () => {
   assert.match(whenFixed(item(), ctx({ attempt: { n: 3, at: 1000000 - 60 * MIN } })).text, /tried 3 times .* in 5 hours/);
   assert.equal(whenFixed(item(), ctx({ attempt: { n: 1, at: 1000000 - 6 * MIN } })).kind, 'soon', 'the wait is over');
 
+  // Tried often and still there: the list repeats the reason Windows gave instead of promising a fix forever.
+  const stuck = whenFixed(item(), ctx({ stuck: { n: 4, message: 'ERROR: Access is denied.' } }));
+  assert.equal(stuck.kind, 'wait');
+  assert.match(stuck.text, /tried 4 times and this is still here/);
+  assert.match(stuck.text, /Access is denied/);
+  assert.match(stuck.text, /press Fix it to try again/);
+
   const restart = { id: 'restart', restartItem: true, strategies: [] };
   assert.match(whenFixed(restart, ctx()).text, /away for 20 minutes/);
   assert.equal(whenFixed(restart, ctx({ autoRestart: false })).kind, 'you');

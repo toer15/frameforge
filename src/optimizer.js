@@ -41,13 +41,19 @@ function registryTweak(values) {
     values,
     what: values.map((v) => `${v.key} › ${v.name} = ${showData(v)}`),
     async isOn() {
-      for (const v of values) if (!sameValue(v, await reg.get(v.key, v.name))) return false;
+      // A value marked optional is written when Windows allows it, but never decides the tweak's state:
+      // otherwise a policy key the user's Windows keeps locked would make an applied tweak look off forever.
+      for (const v of values) if (!v.optional && !sameValue(v, await reg.get(v.key, v.name))) return false;
       return true;
     },
     async forceOff() {
       for (const v of values) {
-        if ('def' in v) await reg.set(v.key, v.name, v.type, v.def);
-        else await reg.del(v.key, v.name);
+        try {
+          if ('def' in v) await reg.set(v.key, v.name, v.type, v.def);
+          else await reg.del(v.key, v.name);
+        } catch (e) {
+          if (!v.optional) throw e;
+        }
       }
       if (this.after) await this.after(false);
       return { ok: true };
@@ -57,20 +63,33 @@ function registryTweak(values) {
         const entries = [];
         for (const v of values) {
           const prev = await reg.get(v.key, v.name);
-          entries.push({ key: v.key, name: v.name, ...prev });
+          entries.push({ key: v.key, name: v.name, optional: !!v.optional, ...prev });
         }
         backup.put(this.id, { entries });
       }
-      for (const v of values) await reg.set(v.key, v.name, v.type, v.data);
+      const notes = [];
+      for (const v of values) {
+        try {
+          await reg.set(v.key, v.name, v.type, v.data);
+        } catch (e) {
+          if (!v.optional) throw e;
+          // Windows protects some policy keys even from administrators. Say so, and keep the rest working.
+          notes.push(`${v.key} › ${v.name}: Windows refused this value (${String(e.message || e).trim()}) — the rest of this tweak still applies.`);
+        }
+      }
       if (this.after) await this.after(true);
-      return { ok: true, details: regDetails(values, backup.get(this.id).entries) };
+      return { ok: true, details: [...regDetails(values, backup.get(this.id).entries), ...notes] };
     },
     async revert() {
       const b = backup.get(this.id);
       if (!b) return { ok: true, skipped: true };
       for (const e of b.entries) {
-        if (e.exists) await reg.set(e.key, e.name, e.type, e.data);
-        else await reg.del(e.key, e.name);
+        try {
+          if (e.exists) await reg.set(e.key, e.name, e.type, e.data);
+          else await reg.del(e.key, e.name);
+        } catch (err) {
+          if (!e.optional) throw err;
+        }
       }
       if (this.after) await this.after(false);
       backup.remove(this.id);

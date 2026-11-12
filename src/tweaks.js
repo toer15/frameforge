@@ -668,7 +668,14 @@ const NEW = [
     desc: 'The Widgets board (weather and news on the taskbar) keeps several web processes running all day. This switches Widgets off and removes its taskbar button. Takes effect the next time you sign in.',
     admin: true,
     reboot: false, // signing out is enough: never ask for (or do) a PC restart over this
-    ...registryTweak([{ key: `${HKLM}\\SOFTWARE\\Policies\\Microsoft\\Dsh`, name: 'AllowNewsAndInterests', type: 'REG_DWORD', data: 0 }]),
+    // The machine policy is the real switch, but Windows protects that key on some PCs ("Access is denied"
+    // even for administrators). The per-user values do the same job for this account, so the tweak works
+    // either way and the machine policy is simply the first choice.
+    ...registryTweak([
+      { key: `${HKLM}\\SOFTWARE\\Policies\\Microsoft\\Dsh`, name: 'AllowNewsAndInterests', type: 'REG_DWORD', data: 0, optional: true },
+      { key: `${HKCU}\\Software\\Policies\\Microsoft\\Dsh`, name: 'AllowNewsAndInterests', type: 'REG_DWORD', data: 0 },
+      { key: `${HKCU}\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced`, name: 'TaskbarDa', type: 'REG_DWORD', data: 0 },
+    ]),
   },
   {
     id: 'suggestions_off',

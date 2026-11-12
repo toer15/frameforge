@@ -1132,10 +1132,11 @@ function fixList() {
   if (extra.disk && (extra.disk.usePct >= 92 || extra.disk.freeGB < 15)) {
     add({ id: 'disk', level: 'medium', title: `Drive C: is almost full (${extra.disk.freeGB} GB free)`, body: 'A nearly full system drive makes Windows and game updates slow, and can cause stutter.', actions: [A('free_space', 'Free up space'), A('goto:clean', 'Open Cleaner')], strategies: [A('free_space', 'Clear temp files and old Windows update leftovers')], manual: guides.diskFull(extra.disk), bg: 'idle' });
   }
-  // "Download performance tools" (Settings): with it off FrameForge never fetches a tool by itself — not even from
-  // Fix mode in the background. The item stays, with the button, and says why it's waiting.
+  // "Download performance tools" (Settings): with it off FrameForge never fetches a tool by itself — except when
+  // "Fix problems by itself" is on, because then the owner's rule is that a listed problem gets fixed, and a tool
+  // that is missing is part of the fix.
   const tl = tools.status();
-  const dlOk = !!s.autoDownloadTools;
+  const dlOk = !!s.autoDownloadTools || !!s.autoFix;
   const dlManual = ['Downloads are off in Settings (“Download performance tools”), so FrameForge won’t fetch it by itself.', 'Press “Download it” here, or turn that setting on.'];
   if (s.fpsCounter && !tl.presentmon)
     add({ id: 'tool_presentmon', level: 'medium', title: 'The FPS counter needs PresentMon', body: 'A free tool from Intel that reads real in-game FPS.', actions: [A('install:presentmon', 'Download it')], strategies: dlOk ? [A('install:presentmon', 'Download PresentMon from Intel’s GitHub'), A('install:presentmon', 'Try the download again')] : [], manual: dlOk ? null : dlManual, bg: 'quiet' });
@@ -1204,10 +1205,19 @@ function fixList() {
     return false;
   });
   // A problem is fixable automatically when it has strategies. A restart counts too: FrameForge does it.
+  const aside = s.setAside || {};
   for (const it of shown) {
     it.auto = it.strategies.length > 0 || (it.restartItem && settings.get().autoRestart);
     it.fixedTitle = fixedTitleFor(it);
+    it.stuck = aside[it.id] || null; // tried several times and still there: say what Windows said
     it.when = whenFixed(it);
+  }
+  // Problems that are gone don't need their note any more (a new one starts clean).
+  const gone = Object.keys(aside).filter((id) => !shown.some((it) => it.id === id));
+  if (gone.length) {
+    const next = { ...aside };
+    for (const id of gone) delete next[id];
+    settings.set({ setAside: next });
   }
   return shown;
 }
@@ -1215,7 +1225,7 @@ function fixList() {
 /** One sentence per problem: will FrameForge fix this by itself, and what is it waiting for? (src/bgfix.js) */
 function whenFixed(it) {
   const s = settings.get();
-  return bgfix.whenFixed(it, { autoFix: s.autoFix, autoRestart: s.autoRestart, mayRestart: mayAutoRestart(), admin: admin || DEMO || !IS_WIN, game: gameRunning(), idleMin: idleMinutes(), attempt: bgTried.get(it.id) });
+  return bgfix.whenFixed(it, { autoFix: s.autoFix, autoRestart: s.autoRestart, mayRestart: mayAutoRestart(), admin: admin || DEMO || !IS_WIN, game: gameRunning(), idleMin: idleMinutes(), attempt: bgTried.get(it.id), stuck: it.stuck });
 }
 const held = new Map(); // problem id -> { until }: fixed, but the condition can't be checked until it changes
 
@@ -1783,6 +1793,15 @@ async function backgroundFix(why = 'check', tries = 0) {
           await markUnavailable(tw, `FrameForge tried ${tried.n} times and Windows kept refusing: ${String(e.message || prob.message || 'no reason given').slice(0, 200)}`);
           bgTried.record(it.id, true);
           bgLog.unshift({ at: Date.now(), title: `Set aside: ${tw.name}`, ok: true, message: 'It doesn’t work on this PC, so it’s no longer listed as a problem. You can try it again from the Tweaks tab.' });
+        } else if (!fixed && tried && tried.n >= 3 && !tw) {
+          // Everything else keeps being retried (every 6 hours). The list says so with the reason Windows gave,
+          // instead of repeating “it fixes itself” forever with no visible progress.
+          const said = String(e.message || prob?.message || it.body || 'no reason given').slice(0, 200);
+          const prevNote = (settings.get().setAside || {})[it.id];
+          if (!prevNote || prevNote.n !== tried.n) {
+            settings.set({ setAside: { ...(settings.get().setAside || {}), [it.id]: { n: tried.n, at: Date.now(), message: said } } });
+            bgLog.unshift({ at: Date.now(), title: `Still working on: ${it.title}`, ok: false, message: said });
+          }
         }
       }
       bgLog.length = Math.min(bgLog.length, 30);
@@ -2062,7 +2081,13 @@ async function animWatch() {
 async function applyLimiter() {
   const s = settings.get();
   const want = s.fpsLimitOn ? fplimit.clamp(s.fpsLimit) : 0;
-  const r = await fplimit.apply(want, { install: () => tools.wingetInstall(fplimit.WINGET_ID) });
+  const r = await fplimit.apply(want, {
+    install: () => tools.wingetInstall(fplimit.WINGET_ID),
+    // Turning the cap off puts back exactly the app profiles it capped, leaving the user's own RTSS caps alone.
+    previous: s.fpsLimitProfiles || [],
+  });
+  // Remember which game profiles FrameForge capped, so switching the limiter off leaves no cap behind.
+  if (r.ok) settings.set({ fpsLimitProfiles: want ? r.capped || [] : [] });
   if (!want) changes.remove('fps_limiter');
   else {
     changes.put('fps_limiter', r.ok
@@ -2074,15 +2099,29 @@ async function applyLimiter() {
 }
 let limiterBusy = false;
 let limiterFails = 0;
+let limiterNextTry = 0;
+// A limiter that cannot be applied right now (RTSS mid-install, winget busy, a game holding it) is tried again
+// later instead of being abandoned: 2, 4, 8, 16, then every 30 minutes, so the cap always ends up in place.
+const LIMITER_BACKOFF = [2, 4, 8, 16, 30];
 async function limiterWatch() {
   const s = settings.get();
-  if (!s.fpsLimitOn || limiterBusy || busy || limiterFails >= 3) return;
+  if (!s.fpsLimitOn || limiterBusy || busy || Date.now() < limiterNextTry) return;
   limiterBusy = true;
   try {
     if (await fplimit.drifted(s.fpsLimit)) {
       const r = await applyLimiter();
-      limiterFails = r.ok ? 0 : limiterFails + 1; // give up after 3 failed tries instead of looping
-    } else limiterFails = 0;
+      if (r.ok) {
+        limiterFails = 0;
+        limiterNextTry = 0;
+      } else {
+        limiterFails += 1;
+        const wait = LIMITER_BACKOFF[Math.min(limiterFails, LIMITER_BACKOFF.length) - 1];
+        limiterNextTry = Date.now() + wait * 60 * 1000;
+      }
+    } else {
+      limiterFails = 0;
+      limiterNextTry = 0;
+    }
   } catch {
   } finally {
     limiterBusy = false;
@@ -2431,6 +2470,7 @@ ipcMain.handle('settings:set', async (_e, patch) => {
   let limiterError = null;
   if ('fpsLimitOn' in patch || 'fpsLimit' in patch) {
     limiterFails = 0;
+    limiterNextTry = 0;
     const r = await applyLimiter();
     if (!r.ok) {
       limiterError = r.message || 'The FPS limit could not be applied.';

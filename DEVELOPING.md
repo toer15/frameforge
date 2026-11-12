@@ -131,11 +131,20 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
 ## FPS limiter
 
 - Settings > Overlay > **FPS limiter** (`fpsLimitOn`, `fpsLimit`, 20–1000). A game can only be capped from inside
-  its own process, so `src/fplimit.js` drives RivaTuner Statistics Server (RTSS): it writes `FramerateLimit` to
-  RTSS's *Global* profile through `RTSSHooks64.dll` (LoadProfile / SetProfileProperty / SaveProfile / UpdateProfiles),
-  reads the value back, and starts RTSS. RTSS is installed from winget (`Guru3D.RTSS`) the first time.
-- `limiterWatch()` (main.js) re-checks every minute and after start; if RTSS was closed or the number changed it
-  puts the cap back (gives up after 3 failed tries). If applying fails the switch turns back off and says why.
+  its own process, so `src/fplimit.js` drives RivaTuner Statistics Server (RTSS): it writes `FramerateLimit` through
+  `RTSSHooks64.dll` (LoadProfile / SetProfileProperty / SaveProfile / UpdateProfiles), reads the value back, and
+  starts RTSS. RTSS is installed from winget (`Guru3D.RTSS`) the first time.
+- **Works in every game (1.14.4).** RTSS's *Global* profile is only the template for apps that have no profile of
+  their own; a game RTSS has seen before keeps its own profile (often “no limit”), which beat the Global value. The
+  cap is now written to Global **and** to every existing profile in `<RTSS>\Profiles\*.cfg` that has no limit of its
+  own — a cap the user set inside RTSS is never overwritten. The capped profile names come back in
+  `settings.fpsLimitProfiles`, so switching the limiter off puts back exactly those and nothing else.
+- `limiterWatch()` (main.js) re-checks every minute and after start; if RTSS was closed or the number changed it puts
+  the cap back. A failure is retried after 2, 4, 8, 16, then every 30 minutes — it is never abandoned. If applying
+  fails when the user flips the switch, the switch turns back off and says why.
+- `tools.resolveWinget()` finds `winget.exe` at `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe` when it is not on
+  the PATH an elevated process inherits (measured on the owner's PC: `Get-Command winget` empty, the alias present),
+  and every winget install goes through it.
 - Demo mode simulates RTSS in memory. Not yet run against a real RTSS install.
 
 ## FPS counter and temperatures
@@ -257,6 +266,25 @@ over your mouse or keyboard — so you can keep using your PC while it works.
   the result) and `game` (what it is holding back for).
 - A Tweaks-tab tweak that still fails on the third background attempt is set aside with `markUnavailable()`.
 
+## Fix mode that really fixes (1.14.4)
+
+- `isAdmin()` (`src/util.js`) asked `net session`, which also fails when the Server (LanmanServer) service is not
+  running — common on gaming PCs. The app then believed it had no rights, so `backgroundFix()` returned before
+  trying anything and the Fix list never went down. It now reads the process token
+  (`WindowsPrincipal.IsInRole(Administrator)`), falling back to `net session` only if PowerShell itself is unusable.
+- A registry tweak value may be marked `optional: true` (`registryTweak` in `src/optimizer.js`): it is written
+  best-effort, never decides `isOn()` and never fails `apply`/`revert`. `widgets_off` uses it for the machine policy
+  (`HKLM\SOFTWARE\Policies\Microsoft\Dsh` — Windows can refuse it even to administrators) and adds the per-user
+  values `HKCU\Software\Policies\Microsoft\Dsh\AllowNewsAndInterests` and `...\Explorer\Advanced\TaskbarDa`, so the
+  tweak really turns Widgets off either way. This is what the owner's PC had stuck as “Access is denied.”
+- With “Fix problems by itself” on, Fix mode may download the tools a fix needs even when “Download performance
+  tools” is off: a missing tool is part of the fix (`dlOk = autoDownloadTools || autoFix` in `fixList()`).
+- A problem other than a tweak that failed three times now records `settings.setAside[id] = { n, at, message }`; the
+  Fix tab repeats Windows' own reason (“Windows said: …”) and keeps retrying at the 6-hour cadence instead of
+  promising a fix forever with no visible progress (`whenFixed()` in `src/bgfix.js`). Entries vanish when the
+  problem does.
+- New tests: `tests/fplimit.test.js` (profile discovery), `tests/bgfix.test.js` (the “still here” wording).
+
 ## Tweaks tab
 
 42 tweaks in five groups (input lag, CPU, graphics & games, network, Windows & background), each a switch
@@ -310,7 +338,11 @@ under `ProgramData\Microsoft\Windows Defender\Platform\<version>`):
 - **False-positive check** (`verdict`): signature (Get-AuthenticodeSignature), CIRCL hashlookup of the SHA-256
   (NSRL + Windows builds; setting `scanHashLookup`), detection name (named family vs generic/`!ml`), file location.
   Verdicts: real, unsure, pua (unwanted), fp (false positive), test (EICAR).
-- Results include Defender's history (`Get-MpThreatDetection`). The results window lets the user pick per item:
+- Results include Defender's history (`Get-MpThreatDetection`) — but only what is **new** (1.14.4). A detection the
+  user already handled (quarantine, delete, keep & allow, leave in quarantine, restore) is remembered in
+  `scan-seen.json` (`markHandled()`), and `onlyNew()` drops it — and anything this scan found itself — from the
+  history, so the results popup never shows last week's handled threats as if they were new. A file that is
+  genuinely back on disk is still found by the scan itself. The results window lets the user pick per item:
   quarantine (FrameForge's own: XOR-encoded in `ProgramData\FrameForge\Quarantine`, SYSTEM/Admins only), delete
   (running copies stopped first; locked files via `PendingFileRenameOperations`), keep, keep & allow (Defender
   exclusion for that exact file), or for Defender-quarantined items leave/restore.

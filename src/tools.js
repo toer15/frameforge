@@ -290,14 +290,46 @@ const WINGET_APPS = {
   intel: [{ id: 'Intel.IntelDriverAndSupportAssistant', name: 'Intel Driver & Support Assistant' }],
 };
 
+/**
+ * Where winget.exe actually is.
+ *
+ * Winget ships as an App Execution Alias in %LOCALAPPDATA%\Microsoft\WindowsApps. That folder is in the user's
+ * PATH but not always in the PATH an elevated process inherits, so "winget" could not be found from FrameForge
+ * and every install looked impossible. The known locations are tried in order; the first that answers --version
+ * wins, and plain "winget" stays last so a normal PATH keeps working.
+ */
+let wingetExe = null;
+async function resolveWinget({ refresh = false } = {}) {
+  if (DEMO) return 'winget';
+  if (wingetExe && !refresh) return wingetExe;
+  const local = process.env.LOCALAPPDATA;
+  const candidates = [
+    local && path.join(local, 'Microsoft', 'WindowsApps', 'winget.exe'),
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'WindowsApps', 'winget.exe'),
+    'winget',
+  ].filter(Boolean);
+  for (const exe of candidates) {
+    if (exe !== 'winget' && !fs.existsSync(exe)) continue;
+    const r = await run(exe, ['--version'], { timeout: 20000 });
+    if (r.code === 0) {
+      wingetExe = exe;
+      return exe;
+    }
+  }
+  wingetExe = null;
+  return null;
+}
+
 async function hasWinget() {
   if (DEMO) return true;
-  return (await run('winget', ['--version'], { timeout: 15000 })).code === 0;
+  return !!(await resolveWinget());
 }
 
 async function wingetKnows(id) {
   if (DEMO) return true;
-  const r = await run('winget', ['show', '--id', id, '--exact', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity'], { timeout: 90000 });
+  const exe = await resolveWinget();
+  if (!exe) return false;
+  const r = await run(exe, ['show', '--id', id, '--exact', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity'], { timeout: 90000 });
   return r.code === 0;
 }
 
@@ -307,8 +339,10 @@ async function wingetInstall(id) {
     await new Promise((r) => setTimeout(r, 400));
     return { ok: true };
   }
+  const exe = await resolveWinget();
+  if (!exe) return { ok: false, message: 'Microsoft’s package manager (winget) is not available on this PC.' };
   const r = await run(
-    'winget',
+    exe,
     ['install', '--id', id, '--exact', '--source', 'winget', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'],
     { timeout: 20 * 60 * 1000 }
   );

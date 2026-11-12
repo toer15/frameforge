@@ -349,11 +349,44 @@ function countsOf(items) {
 }
 
 /** Everything FrameForge and Defender have ever found on this PC, by verdict. */
+function keyOf(it) {
+  return `${(it.file || '').toLowerCase()}|${it.threat}`;
+}
 function remember(items) {
   const seen = readJson('scan-seen.json', {});
-  for (const it of items) seen[`${(it.file || '').toLowerCase()}|${it.threat}`] = { verdict: it.verdict, threat: it.threat, file: it.file, at: it.detectedAt };
+  for (const it of items) {
+    const k = keyOf(it);
+    // Keep what is already known about this one (above all, that the user dealt with it), so a detection
+    // handled in an earlier scan never comes back as if it were new.
+    seen[k] = { ...(seen[k] || {}), verdict: it.verdict, threat: it.threat, file: it.file, at: it.detectedAt };
+  }
   writeJson('scan-seen.json', seen);
   return seen;
+}
+/** Detections the user already dealt with (quarantined, deleted, kept & allowed, left in quarantine). */
+function handledKeys() {
+  const seen = readJson('scan-seen.json', {});
+  return new Set(Object.entries(seen).filter(([, v]) => v && v.handled).map(([k]) => k));
+}
+/**
+ * Defender's history, minus what this scan already found (no duplicates) and minus everything the user already
+ * dealt with — so a scan's results only ever list new things, never last week's handled ones again.
+ */
+function onlyNew(history, foundNow, handled) {
+  return history.filter((h) => !foundNow.has(keyOf(h)) && !handled.has(keyOf(h)));
+}
+/** Remember the user's choice for one detection, so the next scan shows only what is new. */
+function markHandled(it) {
+  if (!it || !it.done) return;
+  const seen = readJson('scan-seen.json', {});
+  const k = keyOf(it);
+  seen[k] = {
+    ...(seen[k] || { verdict: it.verdict, threat: it.threat, file: it.file, at: it.detectedAt }),
+    handled: it.done,
+    handledAt: Date.now(),
+    status: it.status,
+  };
+  writeJson('scan-seen.json', seen);
 }
 function totals() {
   const c = { real: 0, fp: 0, pua: 0, unsure: 0, test: 0, all: 0 };
@@ -386,12 +419,9 @@ async function start(type, { folder = null, background = false } = {}) {
       }
       setPhase('analyze', 'Checking every detection: real threat or false positive?');
       const scanItems = await analyze([...job.detections.values()]);
-      // Everything Defender found before, too — so the results show all threats this PC has had.
-      const hist = [];
-      for (const h of await scanner.history().catch(() => [])) {
-        if (job.detections.has(`${(h.file || '').toLowerCase()}|${h.threat}`)) continue;
-        hist.push({ ...h, source: 'defender' });
-      }
+      // Everything Defender found before, too — but only what is still news. A detection the user already
+      // quarantined, deleted or allowed stays out, so the results only ever list new things.
+      const hist = onlyNew(await scanner.history().catch(() => []), job.detections, handledKeys()).map((h) => ({ ...h, source: 'defender' }));
       const histItems = await analyze(hist);
       const items = [...scanItems, ...histItems];
       remember(items);
@@ -569,6 +599,7 @@ async function apply(choices) {
       }
     }
     it.doneMessage = res.message;
+    if (it.done) markHandled(it);
     results.push({ id: it.id, action: a, ok: !!res.ok, message: res.message });
     send('scan:applied', { id: it.id, action: a, ok: !!res.ok, message: res.message, status: it.status });
   }
@@ -589,4 +620,4 @@ async function apply(choices) {
   return { ok: results.every((x) => x.ok), results, reboot, summary: summary(r) };
 }
 
-module.exports = { init, start, cancel, pause: () => pause(false), resume: () => resume(false), autoPause, background: () => !!(job && job.background), history, report, snapshot: () => snapshot(), running: () => !!job, last, summary, estimates, totals, remember, apply, analyze };
+module.exports = { init, start, cancel, pause: () => pause(false), resume: () => resume(false), autoPause, background: () => !!(job && job.background), history, report, snapshot: () => snapshot(), running: () => !!job, last, summary, estimates, totals, remember, apply, analyze, _keyOf: keyOf, _onlyNew: onlyNew };

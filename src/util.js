@@ -34,11 +34,23 @@ function ps(script, opts = {}) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** True when this process is running elevated (admin). */
+/**
+ * True when this process is running elevated (admin).
+ *
+ * This used to ask `net session`, which fails for two different reasons: no admin rights, or the
+ * Server (LanmanServer) service not running — very common on gaming PCs. A false answer there made
+ * FrameForge believe it had no rights, so Fix mode skipped every problem and the list never went
+ * down. The token itself is the only honest answer.
+ */
 async function isAdmin() {
   if (!IS_WIN) return true;
-  const r = await run('net', ['session']);
-  return r.code === 0;
+  const r = await ps(
+    '([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)',
+    { timeout: 20000 }
+  );
+  if (r.code === 0 && /true|false/i.test(r.stdout)) return /true/i.test(r.stdout);
+  // PowerShell itself is unusable on a broken install: fall back to the old check rather than guessing.
+  return (await run('net', ['session'])).code === 0;
 }
 
 module.exports = { run, ps, sleep, isAdmin, IS_WIN, DEMO };
