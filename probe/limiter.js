@@ -53,18 +53,45 @@ async function measure(label) {
   for (const d of ['C:\\Program Files (x86)\\RivaTuner Statistics Server', 'C:\\Program Files\\RivaTuner Statistics Server']) log(d, fs.existsSync(d) ? fs.readdirSync(d).slice(0, 40).join(', ') : '(missing)');
   if (!st.installed) return log('RESULT: RTSS not installed — nothing more to test');
 
-  const base = await measure('no limit, RTSS not started');
-  const a = await fplimit.apply(30);
-  log('--- apply(30):', JSON.stringify(a), 'status:', JSON.stringify(await fplimit.status()));
   const prof = path.join(st.dir, 'Profiles', 'Global');
-  log('Global profile:', fs.existsSync(prof) ? fs.readFileSync(prof, 'utf8').split(/\r?\n/).filter((l) => /Limit|\[/.test(l)).join(' | ') : '(missing)');
-  await delay(4000);
-  const tl = await run('tasklist', ['/FI', 'IMAGENAME eq RTSS.exe', '/FO', 'CSV', '/NH']);
-  log('RTSS process:', tl.stdout.trim());
-  const capped = await measure('limit 30');
+  const showProf = (label) => log(label, fs.existsSync(prof) ? fs.readFileSync(prof, 'utf8').split(/\r?\n/).filter((l) => /^\[|Limit|Detection|Enable/i.test(l)).join(' | ') : '(missing)');
+  log('ProfileTemplates:', fs.readdirSync(path.join(st.dir, 'ProfileTemplates')).filter((n) => /electron|chrome|global|^\./i.test(n)).join(', '), '| count', fs.readdirSync(path.join(st.dir, 'ProfileTemplates')).length);
+  log('Profiles dir before start:', fs.existsSync(path.join(st.dir, 'Profiles')) ? fs.readdirSync(path.join(st.dir, 'Profiles')).join(', ') : '(missing)');
+  // 1. start RTSS first, so it creates its profiles
+  await ps(`Start-Process -FilePath '${path.join(st.dir, 'RTSS.exe')}' -WorkingDirectory '${st.dir}'`, { timeout: 20000 });
+  for (let i = 0; i < 40 && !fs.existsSync(prof); i++) await delay(500);
+  await delay(3000);
+  log('RTSS process:', (await run('tasklist', ['/FI', 'IMAGENAME eq RTSS*', '/FO', 'CSV', '/NH'])).stdout.trim().replace(/\r?\n/g, ' ; '));
+  log('Profiles dir after start:', fs.existsSync(path.join(st.dir, 'Profiles')) ? fs.readdirSync(path.join(st.dir, 'Profiles')).join(', ') : '(missing)');
+  showProf('Global after first start:');
+  const base = await measure('RTSS running, no limit');
+  // 2. the hooks API, now that the profile exists
+  const a = await fplimit.apply(30);
+  log('--- apply(30) via hooks:', JSON.stringify(a), 'status:', JSON.stringify(await fplimit.status()));
+  showProf('Global after hooks set:');
+  await delay(3000);
+  let capped = await measure('limit 30 (hooks API)');
+  // 3. if that did not cap: write the profile file directly and restart RTSS
+  if (!(capped.slice(3).every((f) => f <= 40))) {
+    log('--- hooks API did not cap; writing the profile file directly');
+    let txt = fs.existsSync(prof) ? fs.readFileSync(prof, 'utf8') : '';
+    if (/^\[Framerate\]/m.test(txt)) {
+      txt = /^Limit=.*$/m.test(txt) ? txt.replace(/^Limit=.*$/m, 'Limit=30') : txt.replace(/^\[Framerate\]\r?\n/m, '[Framerate]\r\nLimit=30\r\n');
+    } else txt += '\r\n[Framerate]\r\nLimit=30\r\nLimitDenominator=1\r\n';
+    await ps("Get-Process RTSS,RTSSHooksLoader64,RTSSHooksLoader,EncoderServer,EncoderServer64 -ErrorAction SilentlyContinue | Stop-Process -Force");
+    await delay(1500);
+    fs.mkdirSync(path.dirname(prof), { recursive: true });
+    fs.writeFileSync(prof, txt);
+    await ps(`Start-Process -FilePath '${path.join(st.dir, 'RTSS.exe')}' -WorkingDirectory '${st.dir}'`, { timeout: 20000 });
+    await delay(6000);
+    showProf('Global after direct write + restart:');
+    log('status:', JSON.stringify(await fplimit.status()));
+    capped = await measure('limit 30 (profile file)');
+  }
   const b = await fplimit.apply(0);
   log('--- apply(0):', JSON.stringify(b));
-  await delay(2000);
+  showProf('Global after apply(0):');
+  await delay(3000);
   const free = await measure('limit removed');
   const mid = (xs) => xs.slice().sort((p, q) => p - q)[Math.floor(xs.length / 2)] || 0;
   log(`RESULT: base ${mid(base)} FPS, capped ${mid(capped)} FPS, after removing ${mid(free)} FPS`);
