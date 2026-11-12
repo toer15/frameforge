@@ -57,6 +57,9 @@ async function measure(label, secs = 10, at = {}) {
   showProf('after apply(30):');
   log('RTSS processes:', (await run('tasklist', ['/FI', 'IMAGENAME eq RTSS*', '/FO', 'CSV', '/NH'])).stdout.trim().replace(/\r?\n/g, ' ; '));
   await delay(5000);
+  log('RTSS window:', (await ps("Get-Process RTSS | ForEach-Object { 'handle=' + $_.MainWindowHandle + ' title=[' + $_.MainWindowTitle + ']' }")).stdout.trim());
+  log('Config file:', fs.readFileSync(path.join(pdir, 'Config'), 'utf8').replace(/\r?\n/g, ' | ').slice(0, 1500));
+  log('Run keys:', (await run('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'])).stdout.replace(/\r?\n/g, ' ').slice(0, 400), '| tasks:', (await run('schtasks', ['/Query', '/FO', 'CSV', '/NH'])).stdout.split(/\r?\n/).filter((l) => /rtss|riva/i.test(l)).join(' ; ') || '(none)');
   const capped = await measure('limit 30, game started after');
   // Change the number while a game is running (lobby → match): does the running game follow?
   const live = await measure('limit 30 → 60 at second 6 → off at second 12', 18, { 6: () => fplimit.apply(60).then((r) => log('  live apply(60):', JSON.stringify(r))), 12: () => fplimit.apply(0).then((r) => log('  live apply(0):', JSON.stringify(r))) });
