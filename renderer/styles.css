@@ -1249,3 +1249,19 @@ button.stop:hover:not(:disabled) { background: rgba(255, 77, 109, 0.15); }
 .fix-item p.fix-when.soon { color: var(--good); }
 .fix-item p.fix-when.wait { color: var(--coolant); }
 .fix-item p.fix-when.you { color: var(--warn); }
+
+/* Fix mode: groups and activity */
+.fix-list .fix-sub { margin: 18px 0 0; }
+.fix-sub-you { border-bottom-color: #2f3540; color: #c5cbd6; }
+.fix-aside { margin-top: 6px; }
+.fix-aside > summary { cursor: pointer; color: var(--muted); font-weight: 700; padding: 8px 2px; }
+.fix-aside[open] > summary { margin-bottom: 8px; }
+.fix-aside .fix-item { margin-bottom: 8px; opacity: 0.85; }
+.fix-game { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--coolant); background: rgba(63, 216, 255, 0.06); font-weight: 700; color: #bfe9ff; }
+.fix-activity { margin-bottom: 26px; }
+.fix-activity-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.fix-activity-list li { display: grid; grid-template-columns: 54px 1fr; gap: 2px 12px; padding: 8px 14px; background: #15181d; border-left: 3px solid var(--good); }
+.fix-activity-list li.no { border-left-color: var(--warn); }
+.fix-activity-list small { color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+.fix-activity-list b { font-weight: 700; }
+.fix-activity-list span { grid-column: 2; color: #b7bec9; font-size: 15px; }

@@ -245,6 +245,18 @@ over your mouse or keyboard — so you can keep using your PC while it works.
 - `restartNeededFor()` asks the tweak's current definition, so a tweak marked `reboot: false` stops asking for a
   restart even if an older version recorded one.
 
+## Game detection (1.14.3)
+
+- `src/gamewatch.js` — `gameRunning()` used to be true whenever the FPS reader saw any frame, and with the FPS
+  counter on something always draws (browser, Discord, Spotify), so every `quiet`/`idle` background fix, the
+  scheduled scans and auto-restart waited forever. `GameWatch` counts a game only when an app that is not a known
+  desktop app presents 20+ FPS for 10 s in a row, or — with no FPS data — the GPU is at 70 %+ for 20 s; it stays
+  “running” for 60 s after it was last seen. The Game Booster only gets an app name that passes the same test.
+- Fix tab: items are grouped (handled by FrameForge / “Only you can do these” / “Not available on this PC”), the
+  nav badge counts only the first group, and `fix:list` returns `activity` (what the background fixer tried, with
+  the result) and `game` (what it is holding back for).
+- A Tweaks-tab tweak that still fails on the third background attempt is set aside with `markUnavailable()`.
+
 ## Tweaks tab
 
 42 tweaks in five groups (input lag, CPU, graphics & games, network, Windows & background), each a switch

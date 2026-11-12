@@ -858,23 +858,23 @@ async function refreshFixOnce() {
   lastFixIds = ids;
   renderFixedNow();
   // A pending restart is a follow-up step, not a problem: it doesn't count toward the open problems.
-  const open = items.filter((i) => i.id !== 'restart');
+  const open = items.filter((i) => i.id !== 'restart' && i.auto);
+  const onlyYou = items.filter((i) => i.id !== 'restart' && !i.auto && (i.manual || (i.actions || []).length)).length;
   // "Fixes itself" is only said about problems the background really works on; the rest that FrameForge can do
   // are one click away, and are counted as that.
   const selfFix = (i) => i.auto && (!i.when || i.when.kind !== 'you');
   const auto = open.filter(selfFix).length;
   const click = open.filter((i) => i.auto && !selfFix(i)).length;
-  const you = open.filter((i) => !i.auto).length;
+  const you = onlyYou;
   const restart = items.some((i) => i.id === 'restart');
   $('#fixCounts').innerHTML =
-    (open.length ? cnt(open.length, 'open', 'warn') + cnt(auto, auto === 1 ? 'fixes itself' : 'fix themselves', 'on') + (click ? cnt(click, click === 1 ? 'needs one click' : 'need one click') : '') + cnt(you, you === 1 ? 'needs you' : 'need you') : '<span class="cnt on"><b>0</b>open — all good</span>') +
+    (open.length ? cnt(open.length, 'open', 'warn') + cnt(auto, auto === 1 ? 'fixes itself' : 'fix themselves', 'on') + (click ? cnt(click, click === 1 ? 'needs one click' : 'need one click') : '') + (you ? cnt(you, you === 1 ? 'only you can do' : 'only you can do') : '') : `<span class="cnt on"><b>0</b>open — all good</span>${you ? cnt(you, 'only you can do') : ''}`) +
     (restart ? '<span class="cnt"><b>1</b>restart pending</span>' : '');
   const badge = $('#fixBadge');
   badge.textContent = open.length;
   badge.classList.toggle('hidden', !open.length);
   $('#fixAllBtn').disabled = fixAllRunning || !items.length;
-  $('#fixList').innerHTML = items.length
-    ? items.map((it) => `<div class="fix-item ${it.level}" data-fix="${esc(it.id)}">
+  const card = (it) => `<div class="fix-item ${it.level}" data-fix="${esc(it.id)}">
         <h3>${esc(it.title)}${it.auto ? `<span class="tag rec">${it.when && it.when.kind === 'you' ? 'One click fixes it' : 'Fixes itself'}</span>` : ''}${it.bios ? '<span class="tag bios">Fixed in the BIOS</span>' : ''}</h3>
         <p>${esc(it.body || '')}</p>
         ${it.when ? `<p class="fix-when ${esc(it.when.kind)}">${esc(it.when.text)}</p>` : ''}
@@ -885,8 +885,27 @@ async function refreshFixOnce() {
           ${it.actions.filter((a) => !(it.strategies || []).some((st) => st.id === a.id) || a.id.startsWith('goto')).map((a) => `<button class="${/^(retry|install|repair)/.test(a.id) ? 'primary' : 'ghost'} small" data-fixact="${esc(a.id)}">${esc(a.label)}</button>`).join('')}
           ${aiReady() ? `<button class="ghost small" data-fixask="${esc(it.id)}">Ask AI to explain</button>` : ''}
         </div>
-      </div>`).join('')
-    : '<div class="fix-ok">Nothing to fix right now. If something feels off — stutter, crashes, lag — try a repair tool below or ask the AI.</div>';
+      </div>`;
+  // Three groups, so the list reads the way it works: what FrameForge handles, what only you can do (a BIOS
+  // setting, hardware, a choice), and tweaks that are simply not available on this PC.
+  const nothing = (i) => !i.auto && !i.manual && !(i.actions || []).length;
+  const mine = items.filter((i) => i.auto);
+  const yours = items.filter((i) => !i.auto && !nothing(i));
+  const aside = items.filter(nothing);
+  $('#fixList').innerHTML =
+    (mine.length
+      ? mine.map(card).join('')
+      : `<div class="fix-ok">${yours.length ? 'FrameForge has fixed everything it can. What’s left below can only be done by you.' : 'Nothing to fix right now. If something feels off — stutter, crashes, lag — try a repair tool below or ask the AI.'}</div>`) +
+    (yours.length ? `<h2 class="fix-sub fix-sub-you">Only you can do these <span class="counts">${cnt(yours.length, 'not possible from Windows')}</span></h2>${yours.map(card).join('')}` : '') +
+    (aside.length ? `<details class="fix-aside"><summary>Not available on this PC (${aside.length}) — nothing to do</summary>${aside.map(card).join('')}</details>` : '');
+  const act = (FIX && FIX.activity) || [];
+  $('#fixActivity').classList.toggle('hidden', !act.length);
+  $('#fixActivityList').innerHTML = act
+    .map((a) => `<li class="${a.ok ? 'ok' : 'no'}"><small>${new Date(a.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small><b>${a.ok ? 'Fixed' : 'Tried'}: ${esc(a.title)}</b>${a.message ? `<span>${esc(a.message)}</span>` : ''}</li>`)
+    .join('');
+  const game = FIX && FIX.game;
+  $('#fixGame').classList.toggle('hidden', !game);
+  if (game) $('#fixGame').textContent = `FrameForge sees ${game} running, so fixes that could make the screen blink or the game stutter wait until you close it.`;
   $('#repairGrid').innerHTML = FIX.repairs
     .map((r) => `<div class="repair"><h3>${esc(r.name)}</h3><p>${esc(r.desc)}</p><div class="fix-actions"><button class="primary small" data-fixact="repair:${r.id}">Run it</button>${aiReady() ? `<button class="ghost small" data-repairask="${esc(r.id)}">Ask AI if I need this</button>` : ''}</div></div>`)
     .join('');

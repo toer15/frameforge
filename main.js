@@ -29,6 +29,7 @@ const startupApps = require('./src/startup');
 const drives = require('./src/drives');
 const { Booster } = require('./src/booster');
 const bgfix = require('./src/bgfix');
+const { GameWatch, isDesktopApp } = require('./src/gamewatch');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -470,7 +471,7 @@ function telemetryTick() {
   stats.boost = { ...booster.status(), enabled: boosterEnabled() };
   lastStats = stats;
   booster
-    .tick({ enabled: boosterEnabled(), app: f && f.fps > 0 ? f.app : null, gaming: gameRunning() })
+    .tick({ enabled: boosterEnabled(), app: f && f.fps > 0 && !isDesktopApp(f.app) && gameRunning() ? f.app : null, gaming: gameRunning() })
     .then((changed) => changed && send('boost', { ...booster.status(), enabled: boosterEnabled() }))
     .catch(() => {});
   // Nobody is looking at a hidden or minimized window: update it every 5 seconds instead of every second.
@@ -492,8 +493,7 @@ function cpuHotLimit() {
 }
 const GPU_HOT = 87;
 const heat = { cpu: { since: 0, last: 0, peak: 0 }, gpu: { since: 0, last: 0, peak: 0 } };
-let gpuBusySince = 0;
-let lastGameSeen = 0;
+const gameWatch = new GameWatch(); // src/gamewatch.js: a browser or Discord drawing frames is not a game
 function trackOne(h, temp, limit) {
   const now = Date.now();
   if (temp != null && temp >= limit) {
@@ -510,12 +510,7 @@ function trackOne(h, temp, limit) {
 function trackLoad(st) {
   trackOne(heat.cpu, st.cpuTemp, cpuHotLimit());
   trackOne(heat.gpu, st.gpuTemp, GPU_HOT);
-  const now = Date.now();
-  if (st.fps && st.fps.fps > 0) lastGameSeen = now;
-  if (!DEMO && st.gpuLoad != null && st.gpuLoad >= 70) {
-    if (!gpuBusySince) gpuBusySince = now;
-    if (now - gpuBusySince > 20000) lastGameSeen = now;
-  } else gpuBusySince = 0;
+  gameWatch.update({ fps: st.fps, gpuLoad: DEMO ? null : st.gpuLoad });
 }
 /** Hot for 30 s in a row within the last 5 minutes → { temp } */
 function hotNow(kind) {
@@ -526,7 +521,7 @@ function hotNow(kind) {
 function gameRunning() {
   if (process.env.FRAMEFORGE_FAKE_GAME === '1') return true;
   if (DEMO) return false;
-  return Date.now() - lastGameSeen < 60000;
+  return gameWatch.running();
 }
 /** Minutes since the last mouse or keyboard input. */
 function idleMinutes() {
@@ -1632,11 +1627,14 @@ async function fixOne(id) {
   if (fixed) return { ok: true, fixed: true, title: it.fixedTitle || it.title, message: (last && last.message) || it.fixedTitle || 'Fixed.' };
   return { ok: false, fixed: false, message: (last && last.message) || 'It didn’t work after trying every fix FrameForge knows.', steps: it.manual || [] };
 }
-async function fixEverything({ silent = false, only = null, resumed = false } = {}) {
+async function fixEverything({ silent = false, only = null, resumed = false, onItem = null } = {}) {
   if (fixAllRunning) return { busy: true };
   if (busy) return { busy: true, message: 'Auto Mode is running — wait for it to finish.' };
   fixAllRunning = true;
-  const ev = (e) => send('fixall', { ...e, background: silent });
+  const ev = (e) => {
+    send('fixall', { ...e, background: silent });
+    if (onItem && e.type === 'item') onItem(e);
+  };
   const tally = { fixed: 0, you: 0, failed: 0, fixedTitles: [] };
   try {
     ev({ type: 'start', resumed });
@@ -1730,6 +1728,7 @@ async function fixEverything({ silent = false, only = null, resumed = false } = 
  * later starts fresh. An attempt only counts when something was actually tried.
  */
 const bgTried = new bgfix.Attempts();
+const bgLog = []; // newest first: { at, title, ok, message }
 let bgRunning = false;
 let bgSoon = null;
 let bgRetry = null;
@@ -1765,10 +1764,28 @@ async function backgroundFix(why = 'check', tries = 0) {
     bgTried.keepOnly(list.map((it) => it.id)); // gone: next time starts fresh
     const todo = list.filter((it) => bgfix.momentOk(it, { game, idleMin: idle }) && bgTried.due(it.id));
     if (todo.length) {
-      const r = await fixEverything({ silent: true, only: todo.map((i) => i.id) });
+      const said = new Map();
+      const r = await fixEverything({ silent: true, only: todo.map((i) => i.id), onItem: (e) => said.set(e.id, e) });
       if (r && r.busy) return null; // nothing was tried: don't count it
       const after = fixList();
-      for (const it of todo) bgTried.record(it.id, !after.some((x) => x.id === it.id));
+      for (const it of todo) {
+        const fixed = !after.some((x) => x.id === it.id);
+        bgTried.record(it.id, fixed);
+        const e = said.get(it.id) || {};
+        // What Fix mode did by itself, shown on the Fix tab: without it, background work is invisible.
+        bgLog.unshift({ at: Date.now(), title: fixed ? it.fixedTitle || it.title : it.title, ok: fixed, message: String(e.message || (fixed ? '' : 'It didn’t stick.')).slice(0, 300) });
+        // A tweak Windows has refused three times is not going to work on this PC. Stop listing it as a problem:
+        // set it aside with the reason (the Tweaks tab shows it, with “Try again”), so the list can reach zero.
+        const tried = bgTried.get(it.id);
+        const tw = it.id.startsWith('step_') ? tweaksTab.tabTweaks().find((x) => x.id === it.id.slice(5)) : null;
+        const prob = tw ? problems.all()[tw.id] : null;
+        if (!fixed && tried && tried.n >= 3 && tw && prob && !prob.adminSkipped) {
+          await markUnavailable(tw, `FrameForge tried ${tried.n} times and Windows kept refusing: ${String(e.message || prob.message || 'no reason given').slice(0, 200)}`);
+          bgTried.record(it.id, true);
+          bgLog.unshift({ at: Date.now(), title: `Set aside: ${tw.name}`, ok: true, message: 'It doesn’t work on this PC, so it’s no longer listed as a problem. You can try it again from the Tweaks tab.' });
+        }
+      }
+      bgLog.length = Math.min(bgLog.length, 30);
       if (r && r.fixed) {
         const n = r.fixedTitles.length;
         if (Notification.isSupported() && windowHidden()) {
@@ -2088,7 +2105,7 @@ ipcMain.handle('fix:list', async () => {
   if (Date.now() - extra.at > 30000) await detectExtra();
   const s = settings.get();
   backgroundFixSoon('opened', 1500); // looking at the list is a good moment to work through it
-  return { items: fixList(), repairs: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, desc: r.desc, reboot: !!r.reboot })), busy: fixBusy || fixAllRunning, autoFix: s.autoFix, autoRestart: s.autoRestart, restart: restartInfo };
+  return { items: fixList(), repairs: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, desc: r.desc, reboot: !!r.reboot })), busy: fixBusy || fixAllRunning, autoFix: s.autoFix, autoRestart: s.autoRestart, restart: restartInfo, activity: bgLog.slice(0, 12), game: gameRunning() ? gameWatch.name || 'a game' : null };
 });
 ipcMain.handle('fix:action', (_e, action) => runFixAction(action));
 ipcMain.handle('fix:one', (_e, id) => fixOne(String(id)));
