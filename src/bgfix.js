@@ -63,7 +63,7 @@ function whenFixed(it, c) {
   if (!it.strategies || !it.strategies.length) {
     return { kind: 'you', text: it.manual ? 'Needs you: this can’t be changed from inside Windows. The steps are under “How to fix it”.' : 'Nothing FrameForge can change here — this one is for your information.' };
   }
-  if (!it.bg) return { kind: 'you', text: 'Waiting for you: FrameForge doesn’t change this one without asking. Press Fix it.' };
+  if (!it.bg) return { kind: 'you', text: 'Waiting for you: this one starts a large download or needs administrator rights, so FrameForge asks first. Press Fix it.' };
   if (!c.autoFix) return { kind: 'you', text: 'Waiting for you: “Fix problems by itself” is switched off. Press Fix it, or switch it on above.' };
   if (!c.admin) return { kind: 'you', text: 'Waiting for administrator rights — see “FrameForge isn’t running as administrator” in this list.' };
   if (it.bg !== 'game' && c.game) return { kind: 'wait', text: 'Waiting until your game is closed, so nothing flickers or stutters while you play.' };

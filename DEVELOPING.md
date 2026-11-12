@@ -236,9 +236,12 @@ over your mouse or keyboard — so you can keep using your PC while it works.
   something else was busy, and the immediate retry of a failed tweak also started it.
 - It runs at start (8 s), every 2 minutes, 6 s after Auto Mode finishes and when the Fix tab asks for its list. If
   Auto Mode, a repair or another fix is running it comes back every 15 s (up to 20 times).
-- `whenFixed()` gives every item `when: { kind: 'soon' | 'wait' | 'you', text }`, shown under the problem. Items
-  with strategies but no `bg` (Windows protection, laptop on battery, threats, AMD driver app) are never changed
-  without a click, by design; the tab calls them “One click fixes it”, not “Fixes itself”.
+- `whenFixed()` gives every item `when: { kind: 'soon' | 'wait' | 'you', text }`, shown under the problem.
+- Since 1.14.2 (the owner's decision: everything in the list is done for the user) these have a `bg` too:
+  `security` and `threats` (`quiet`; only verdict `real` is quarantined, and it can be restored), `insight_laptop`
+  (`game`), and `vendor_app` for AMD (`idle`, only with “Download performance tools” on). What stays without `bg`:
+  steps skipped for missing admin rights, and AMD's driver app when downloads are off — the tab calls those
+  “One click fixes it”, not “Fixes itself”.
 - `restartNeededFor()` asks the tweak's current definition, so a tweak marked `reboot: false` stops asking for a
   restart even if an older version recorded one.
 

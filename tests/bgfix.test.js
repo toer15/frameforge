@@ -55,7 +55,7 @@ test('every problem says what it is waiting for', () => {
   assert.equal(whenFixed(item({ bg: 'idle' }), ctx({ idleMin: 6 })).kind, 'soon');
   assert.match(whenFixed(item(), ctx({ autoFix: false })).text, /switched off/);
   assert.match(whenFixed(item(), ctx({ admin: false })).text, /administrator rights/);
-  assert.match(whenFixed(item({ bg: undefined }), ctx()).text, /without asking/);
+  assert.match(whenFixed(item({ bg: undefined }), ctx()).text, /asks first/);
   assert.match(whenFixed(item({ strategies: [], manual: ['a'] }), ctx()).text, /Needs you/);
   assert.match(whenFixed(item({ strategies: [] }), ctx()).text, /for your information/);
   assert.match(whenFixed({ id: 'not_admin', strategies: [{ id: 'admin' }] }, ctx()).text, /Restart as administrator/);

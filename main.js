@@ -1159,7 +1159,7 @@ function fixList() {
       manual: amd ? guides.amdDriverApp(false) : null,
       manualAfter: amd ? guides.amdDriverApp(true) : null, // when AMD's installer was started: only its Install click is left
       manualAction: amd ? 'vendor' : null,
-      bg: amd ? false : 'idle',
+      bg: amd ? (amdAuto && dlOk ? 'idle' : false) : 'idle', // AMD: a large download, so only with “Download performance tools” on
     });
   }
   const hc = hotNow('cpu');
@@ -1182,7 +1182,7 @@ function fixList() {
       if (ins.level === 'info') continue;
       if (ins.id === 'laptop') {
         if (!extra.onBattery) continue; // plugged in: nothing to fix
-        add({ id: 'insight_laptop', level: 'medium', title: 'Your laptop is running on battery', body: 'Most laptops cut graphics power by half or more on battery.', actions: [A('laptop_power', 'Set Best performance mode')], strategies: [A('laptop_power', 'Set Windows power mode to Best performance')], manual: guides.laptop() });
+        add({ id: 'insight_laptop', level: 'medium', title: 'Your laptop is running on battery', body: 'Most laptops cut graphics power by half or more on battery.', actions: [A('laptop_power', 'Set Best performance mode')], strategies: [A('laptop_power', 'Set Windows power mode to Best performance')], manual: guides.laptop(), bg: 'game' });
         continue;
       }
       const manual = ins.id === 'ram_speed' ? guides.ramSpeed(rig) : ins.id === 'single_stick' ? guides.singleStick(rig) : null;
@@ -1191,10 +1191,10 @@ function fixList() {
   }
   // Windows protection (from the Virus scan tab's checks) and threats the user hasn't handled yet.
   const sec = (secChecks || []).filter((c) => ['big', 'medium'].includes(c.level) && c.fix && c.id !== 'proxy' && c.fix !== 'open_defender');
-  if (sec.length) add({ id: 'security', level: 'big', title: `Windows protection: ${sec.length} problem${sec.length === 1 ? '' : 's'}`, body: sec.map((c) => c.title).join(' · '), details: sec.flatMap((c) => c.details || []), actions: [A('sec_fix', 'Fix them'), A('goto:scan', 'Open Virus scan')], strategies: [A('sec_fix', 'Fix Windows protection settings')] });
+  if (sec.length) add({ id: 'security', level: 'big', title: `Windows protection: ${sec.length} problem${sec.length === 1 ? '' : 's'}`, body: sec.map((c) => c.title).join(' · '), details: sec.flatMap((c) => c.details || []), actions: [A('sec_fix', 'Fix them'), A('goto:scan', 'Open Virus scan')], strategies: [A('sec_fix', 'Fix Windows protection settings')], bg: 'quiet' });
   const lr = scanjob.last();
   const openThreats = lr ? lr.items.filter((i) => i.status === 'active' && ['real', 'unsure', 'pua', 'test'].includes(i.verdict) && !i.done) : [];
-  if (openThreats.length) add({ id: 'threats', level: 'big', title: `${openThreats.length} detection${openThreats.length === 1 ? '' : 's'} from the virus scan ${openThreats.length === 1 ? 'is' : 'are'} waiting for your choice`, body: openThreats.map((i) => `${i.threat} — ${i.file}`).slice(0, 3).join(' · '), actions: [A('scan_results', 'Choose what to do')], strategies: openThreats.some((i) => i.verdict === 'real') ? [A('quarantine_real', 'Quarantine the clear-cut threats (they can be restored from the Virus scan tab)')] : [], manual: ['Open the scan results and pick Quarantine, Delete or Keep for each one — FrameForge does the rest.'], manualAction: null });
+  if (openThreats.length) add({ id: 'threats', level: 'big', title: `${openThreats.length} detection${openThreats.length === 1 ? '' : 's'} from the virus scan ${openThreats.length === 1 ? 'is' : 'are'} waiting for your choice`, body: openThreats.map((i) => `${i.threat} — ${i.file}`).slice(0, 3).join(' · '), actions: [A('scan_results', 'Choose what to do')], strategies: openThreats.some((i) => i.verdict === 'real') ? [A('quarantine_real', 'Quarantine the clear-cut threats (they can be restored from the Virus scan tab)')] : [], bg: 'quiet', manual: ['Open the scan results and pick Quarantine, Delete or Keep for each one — FrameForge does the rest.'], manualAction: null });
   const pending = restartNeededFor();
   if (extra.rebootPending || pending.length) add({ id: 'restart', level: 'info', title: 'A restart is needed', body: pending.length ? `To finish: ${pending.join(', ')}.` : 'Windows has updates waiting for a restart.', actions: [A('restart', 'Restart now')], manual: guides.restartPending(), manualAction: null, restartItem: true });
   if (app.isPackaged && updates && updates.state.status === 'unconfigured') add({ id: 'updates', level: 'info', title: 'In-app updates aren’t set up', body: 'FrameForge can’t find where new versions come from.', actions: [A('set_update_source', 'Fix it')], strategies: [A('set_update_source', 'Use the official FrameForge update source')], bg: 'game' });
