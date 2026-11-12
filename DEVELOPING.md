@@ -134,7 +134,9 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
   gone. The tab shows whether RTSS is installed, whether its background helper is running, the cap RTSS is actually
   applying and how many game profiles are covered, plus **Set up and apply** for a retry. **Install RTSS automatically**
   (`limiter:install`) installs through winget without changing the cap, so the required program can be installed before
-  the switch is turned on; its error stays visible on the tab for a retry.
+  the switch is turned on; its error stays visible on the tab for a retry. **Recommended for your PC** comes from
+  `src/fpsrec.js` using the detected GPU class and display refresh rate, with **Use recommended** filling the editable
+  target; slower cards get a lower target instead of the display maximum.
 - A game can only be capped from inside its own process, so `src/fplimit.js` drives RivaTuner Statistics Server
   (RTSS): it writes `FramerateLimit` through `RTSSHooks64.dll` (LoadProfile / SetProfileProperty / SaveProfile /
   UpdateProfiles), reads the value back and starts RTSS. RTSS is installed from winget (`Guru3D.RTSS`) the first

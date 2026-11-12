@@ -23,6 +23,7 @@ const scanner = require('./src/scanner');
 const scanjob = require('./src/scanjob');
 const animations = require('./src/animations');
 const fplimit = require('./src/fplimit');
+const fpsrec = require('./src/fpsrec');
 const controllers = require('./src/controllers');
 const cleaner = require('./src/cleaner');
 const startupApps = require('./src/startup');
@@ -2142,7 +2143,7 @@ async function limiterWatch() {
   }
 }
 ipcMain.handle('controllers:detect', () => controllers.detect());
-ipcMain.handle('limiter:status', async () => ({ on: settings.get().fpsLimitOn, fps: settings.get().fpsLimit, ...(await fplimit.status()) }));
+ipcMain.handle('limiter:status', async () => ({ on: settings.get().fpsLimitOn, fps: settings.get().fpsLimit, recommendation: fpsrec.recommend(rig), ...(await fplimit.status()) }));
 ipcMain.handle('limiter:install', async () => {
   const r = await fplimit.apply(0, { install: installRtss, installOnly: true });
   const st = await fplimit.status();

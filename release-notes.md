@@ -1,5 +1,9 @@
-**Install RTSS straight from the FPS limiter tab, with the rest of 1.15.0's fixes**
+**A recommended FPS target for your exact PC, plus one-click RTSS setup**
 
+- **The FPS limiter now recommends a target for your hardware.** It reads your graphics card and display refresh rate
+  automatically, then shows the best starting cap with a plain-English reason. High-refresh displays recommend a few
+  frames below their maximum, 60 and 75 Hz screens stay at their native rate, and slower or integrated graphics get a
+  target they can actually hold. Press **Use recommended**, or type any number from 20 to 1000 yourself.
 - **There is now an Install RTSS automatically button.** It works even while the limiter switch is off, so anyone can
   set up the one thing the limiter needs from inside FrameForge. Download progress and any failure stay on the tab,
   with the real error from Microsoft's winget store and a button to try again. Once RTSS is installed, turn the

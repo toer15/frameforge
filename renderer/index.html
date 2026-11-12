@@ -663,7 +663,7 @@
     <section class="view hidden" id="view-limiter">
       <div class="settings-wrap">
         <h1 class="page-title">FPS limiter</h1>
-        <p class="limiter-lead muted">One steady frame rate for games, menus, launchers and lobbies. FrameForge uses RivaTuner Statistics Server (RTSS), installs it automatically the first time, keeps it running and restores your cap if another tool changes it.</p>
+        <p class="limiter-lead muted">One steady frame rate for games, menus, launchers and lobbies. FrameForge recommends a target for your exact graphics card and display, uses RivaTuner Statistics Server (RTSS), keeps it running and restores your cap if another tool changes it.</p>
 
         <div class="limiter-hero panel">
           <div class="set-text">
@@ -674,6 +674,7 @@
           <div class="limiter-control">
             <label class="limiter-fps" for="limiterFps">Target FPS
               <input class="select" id="limiterFps" type="number" min="20" max="1000" step="1" data-key="fpsLimit" />
+              <small>Type any number, 20–1000</small>
             </label>
             <label class="switch big" title="FPS limiter">
               <input type="checkbox" id="limiterOn" data-key="fpsLimitOn" aria-label="FPS limiter" /><span></span>
@@ -681,10 +682,19 @@
           </div>
         </div>
 
+        <div class="limiter-rec panel" id="limiterRecCard">
+          <div class="limiter-rec-copy">
+            <span class="limiter-rec-kicker">Recommended for your PC</span>
+            <div class="limiter-rec-line"><b id="limiterRecFps">Checking…</b><span id="limiterRecHardware"></span></div>
+            <p id="limiterRecReason">FrameForge checks your graphics card and display when this tab opens.</p>
+          </div>
+          <button class="ghost" id="limiterUseRecBtn" disabled>Use recommended</button>
+        </div>
+
         <section class="set-group">
           <div class="set-head"><h2>Status</h2><button class="ghost small" id="limiterRefreshBtn">Check again</button></div>
           <div class="set-row">
-            <div class="set-text"><h3>RivaTuner Statistics Server</h3><p>Installed automatically through Microsoft’s winget package manager when you turn the cap on.</p></div>
+            <div class="set-text"><h3>RivaTuner Statistics Server</h3><p>Installed from this tab through Microsoft’s winget package manager — use the button below, or just turn the cap on.</p></div>
             <b class="limiter-state" id="limiterInstalled" aria-live="polite">Checking…</b>
           </div>
           <div class="set-row">

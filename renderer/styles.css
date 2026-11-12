@@ -1278,6 +1278,15 @@ button.stop:hover:not(:disabled) { background: rgba(255, 77, 109, 0.15); }
 .limiter-control { flex: none; display: flex; align-items: center; gap: 16px; }
 .limiter-fps { display: grid; gap: 4px; font-weight: 700; color: var(--muted); font-size: 14px; }
 .limiter-fps input { width: 96px; }
+.limiter-fps small { font-weight: 500; font-size: 12px; color: var(--muted); }
+.limiter-rec { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin-bottom: 26px; border-left: 3px solid var(--coolant); background: linear-gradient(115deg, rgba(63, 216, 255, 0.07), transparent 65%), #15181e; }
+.limiter-rec-copy { min-width: 0; }
+.limiter-rec-kicker { display: block; font: 700 11px var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--coolant); }
+.limiter-rec-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; margin: 3px 0 2px; }
+.limiter-rec-line b { font: 700 27px/1.1 var(--display); }
+.limiter-rec-line span { color: var(--muted); font-size: 13px; }
+.limiter-rec p { margin: 0; color: #c5cbd6; max-width: 82ch; }
+.limiter-rec button { flex: none; }
 .limiter-state { flex: none; font: 700 15px var(--display); color: var(--muted); text-align: right; }
 .limiter-state.ok { color: #66f0b1; }
 .limiter-state.warn { color: var(--warn); }
@@ -1289,6 +1298,7 @@ button.stop:hover:not(:disabled) { background: rgba(255, 77, 109, 0.15); }
 @media (max-width: 900px) {
   .limiter-hero { align-items: flex-start; flex-direction: column; }
   .limiter-control { width: 100%; justify-content: space-between; }
+  .limiter-rec { align-items: flex-start; flex-direction: column; }
 }
 
 .limiter-notice { margin: 4px 4px 0; padding: 10px 12px; border-left: 3px solid var(--muted); background: #15181e; color: #c5cbd6; max-width: 92ch; }

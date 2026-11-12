@@ -62,6 +62,14 @@ test('FPS limiter setting installs RTSS in demo, clamps the number and keeps it 
     await waitFor('document.querySelector("#limiterInstalled").textContent === "Installed"');
     assert.equal(await evaluate('ff.limiter.status().then((s) => s.on)'), false);
     assert.equal(await evaluate('document.querySelector("#limiterInstallBtn").classList.contains("hidden")'), true);
+    await waitFor('document.querySelector("#limiterRecFps").textContent === "162 FPS"');
+    assert.match(await evaluate('document.querySelector("#limiterRecReason").textContent'), /RX 7900 XT/);
+    assert.match(await evaluate('document.querySelector("#limiterRecHardware").textContent'), /165 Hz display/);
+    await evaluate('document.querySelector("#limiterUseRecBtn").click()');
+    await waitFor('S.fpsLimit === 162');
+    assert.equal(await evaluate('document.querySelector("#limiterFps").value'), '162');
+    assert.equal(await evaluate('document.querySelector("#limiterRecFps").textContent'), '162 FPS');
+    assert.equal(await evaluate('document.querySelector("#limiterUseRecBtn").disabled'), true);
     await evaluate('(() => { const n = document.querySelector("[data-key=fpsLimit]"); n.value = "144"; n.dispatchEvent(new Event("change", { bubbles: true })); })()');
     await waitFor('S.fpsLimit === 144');
     await evaluate('(() => { const c = document.querySelector("[data-key=fpsLimitOn]"); c.checked = true; c.dispatchEvent(new Event("change", { bubbles: true })); })()');

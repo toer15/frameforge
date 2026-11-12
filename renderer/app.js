@@ -235,6 +235,7 @@ function renderRig(r) {
   $('#vendorBtn').textContent = va ? (va.installed ? `Open ${va.name.split(':')[0]}` : `Get ${va.name.split(':')[0]}`) : 'Open driver app';
   $('#vendorBtn').classList.toggle('hidden', !va);
   renderAuto(lever.getAttribute('aria-checked') === 'true', INFO && INFO.active);
+  if (!$('#view-limiter').classList.contains('hidden')) refreshLimiter();
 }
 
 ff.onRig((r) => {
@@ -1527,6 +1528,22 @@ function limiterNotice(text, kind = '') {
   el.className = `limiter-notice ${kind}`.trim();
   el.classList.toggle('hidden', !text);
 }
+function renderLimiterRecommendation(rec, wanted) {
+  const card = $('#limiterRecCard');
+  if (!card) return;
+  if (!rec || !rec.fps) {
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+  $('#limiterRecFps').textContent = `${rec.fps} FPS`;
+  $('#limiterRecHardware').textContent = [rec.refreshHz ? `${rec.refreshHz} Hz display` : 'Display refresh unknown', rec.gpu].filter(Boolean).join(' · ');
+  $('#limiterRecReason').textContent = rec.reason;
+  const use = $('#limiterUseRecBtn');
+  use.dataset.fps = rec.fps;
+  use.disabled = Number(wanted) === Number(rec.fps);
+  use.textContent = use.disabled ? 'Recommended in use' : 'Use recommended';
+}
 
 async function refreshLimiter() {
   if (!ff.limiter || !ff.limiter.status) return;
@@ -1538,6 +1555,7 @@ async function refreshLimiter() {
     limiterState('#limiterRunning', 'Unknown', 'bad');
     limiterState('#limiterCap', 'Unknown', 'bad');
     limiterState('#limiterProfiles', 'Unknown', 'bad');
+    $('#limiterRecCard')?.classList.add('hidden');
     limiterNotice('FrameForge couldn’t read the limiter status. Press Check again.', 'bad');
     const summary = $('#limiterSummary');
     if (summary) summary.textContent = 'FrameForge couldn’t read the limiter status. Press Check again.';
@@ -1545,6 +1563,7 @@ async function refreshLimiter() {
   }
   const on = !!(st.on ?? (S && S.fpsLimitOn));
   const wanted = Number(st.fps || (S && S.fpsLimit) || 0);
+  renderLimiterRecommendation(st.recommendation, wanted);
   const fpsInput = $('#limiterFps');
   if (fpsInput && document.activeElement !== fpsInput) fpsInput.value = wanted;
   const toggle = $('#limiterOn');
@@ -1596,7 +1615,7 @@ async function refreshLimiter() {
   if (summary) summary.textContent = active
     ? `RTSS is applying a ${cap} FPS cap. ${profiles ? `${profiles} game profile${profiles === 1 ? ' is' : 's are'} known and covered unless ${profiles === 1 ? 'it has' : 'they have'} a limit of ${profiles === 1 ? 'its' : 'their'} own.` : 'Every game it can hook is covered.'} Games, menus, launchers and lobbies are covered.`
     : !on
-      ? 'Choose a target, then turn the limiter on. Everything RTSS can hook is capped — not just one game.'
+      ? 'Choose the recommended target or type your own, then turn the limiter on. Everything RTSS can hook is capped — not just one game.'
       : !installed
         ? 'RTSS isn’t installed yet. Press Install RTSS automatically below, or just turn the limiter on and FrameForge installs it for you.'
         : !running
@@ -1639,6 +1658,13 @@ $('#limiterApplyBtn').onclick = async () => {
     LIMITER_BUSY = false;
     await refreshLimiter();
   }
+};
+$('#limiterUseRecBtn').onclick = () => {
+  const fps = Number($('#limiterUseRecBtn').dataset.fps);
+  if (!fps) return;
+  const input = $('#limiterFps');
+  input.value = fps;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
 };
 $('#limiterInstallBtn').onclick = async () => {
   if (LIMITER_BUSY) return;
@@ -1725,7 +1751,8 @@ document.addEventListener('change', async (e) => {
   if (k === 'fpsLimitOn' || k === 'fpsLimit') {
     if (S && !S._error) {
       limiterNotice('');
-      toast(S.fpsLimitOn ? `Games, menus and lobbies are now capped at ${S.fpsLimit} FPS.` : 'FPS limiter off.');
+      if (k === 'fpsLimitOn') toast(S.fpsLimitOn ? `Games, menus and lobbies are now capped at ${S.fpsLimit} FPS.` : 'FPS limiter off.');
+      else toast(S.fpsLimitOn ? `FPS cap changed to ${S.fpsLimit}.` : `Target set to ${S.fpsLimit} FPS. Turn the limiter on to use it.`);
     }
     await refreshLimiter();
   }
