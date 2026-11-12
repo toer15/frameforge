@@ -53,11 +53,13 @@ public static class FFRtss {
     var get = Fn<Prop>(h, "GetProfileProperty"); var set = Fn<Prop>(h, "SetProfileProperty");
     var upd = Fn<Upd>(h, "UpdateProfiles");
     uint v = (uint)(limit < 0 ? 0 : limit);
-    load("Global");
+    // The global profile's name is the empty string. ("Global" is a profile for a program called Global.exe:
+    // RTSS accepts it, saves it, and it never applies to any game.)
+    load("");
     if (limit >= 0) {
       if (set("FramerateLimit", ref v, 4) == 0) throw new Exception("RTSS refused the FPS limit");
-      save("Global"); upd();
-      load("Global");
+      save(""); upd();
+      load("");
     }
     uint back = 0;
     if (get("FramerateLimit", ref back, 4) == 0) throw new Exception("Could not read the FPS limit back from RTSS");
