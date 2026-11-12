@@ -130,22 +130,30 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
 
 ## FPS limiter
 
-- Settings > Overlay > **FPS limiter** (`fpsLimitOn`, `fpsLimit`, 20–1000). A game can only be capped from inside
-  its own process, so `src/fplimit.js` drives RivaTuner Statistics Server (RTSS): it writes `FramerateLimit` through
-  `RTSSHooks64.dll` (LoadProfile / SetProfileProperty / SaveProfile / UpdateProfiles), reads the value back, and
-  starts RTSS. RTSS is installed from winget (`Guru3D.RTSS`) the first time.
-- **Works in every game (1.14.4).** RTSS's *Global* profile is only the template for apps that have no profile of
-  their own; a game RTSS has seen before keeps its own profile (often “no limit”), which beat the Global value. The
-  cap is now written to Global **and** to every existing profile in `<RTSS>\Profiles\*.cfg` that has no limit of its
-  own — a cap the user set inside RTSS is never overwritten. The capped profile names come back in
+- **FPS limiter tab** (`fpsLimitOn`, `fpsLimit`, 20–1000). It has its own nav item; the old Settings > Overlay row is
+  gone. The tab shows whether RTSS is installed, whether its background helper is running, the cap RTSS is actually
+  applying and how many game profiles are covered, plus **Set up and apply** for a retry.
+- A game can only be capped from inside its own process, so `src/fplimit.js` drives RivaTuner Statistics Server
+  (RTSS): it writes `FramerateLimit` through `RTSSHooks64.dll` (LoadProfile / SetProfileProperty / SaveProfile /
+  UpdateProfiles), reads the value back and starts RTSS. RTSS is installed from winget (`Guru3D.RTSS`) the first
+  time, automatically. Missing winget is reported with the fix (install App Installer) instead of a generic failure.
+- **Global and every game (1.15.0).** The RTSS SDK's global profile is the unnamed profile, so the bridge uses
+  `LoadProfile("")` / `SaveProfile("")`; the `"Global"` profile is only a template and changing it did not affect
+  games. The cap is also written to every existing profile in `<RTSS>\Profiles\*.cfg` that has no limit of its own —
+  a cap the user set inside RTSS is never overwritten. The capped profile names come back in
   `settings.fpsLimitProfiles`, so switching the limiter off puts back exactly those and nothing else.
+- **RTSS's own limiter is switched back on (1.15.0).** Some installs/tools set `RTSSHOOKSFLAG_LIMITER_DISABLED`
+  (`4`) in RTSS's hooks flags, which makes `FramerateLimit` do nothing. The bridge clears only that bit
+  (`SetFlags(0xFFFFFFFB, 0)`), reads it back with `GetFlags`, and notifies the RTSS GUI. It repeats this through the
+  32-bit `RTSSHooks.dll` as well, because the flag lives per hook context.
 - `limiterWatch()` (main.js) re-checks every minute and after start; if RTSS was closed or the number changed it puts
   the cap back. A failure is retried after 2, 4, 8, 16, then every 30 minutes — it is never abandoned. If applying
   fails when the user flips the switch, the switch turns back off and says why.
 - `tools.resolveWinget()` finds `winget.exe` at `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe` when it is not on
   the PATH an elevated process inherits (measured on the owner's PC: `Get-Command winget` empty, the alias present),
   and every winget install goes through it.
-- Demo mode simulates RTSS in memory. Not yet run against a real RTSS install.
+- Demo mode simulates RTSS in memory. The bridge's 64-bit and 32-bit PowerShell compilation and missing-DLL paths are
+  tested; hooking a real game and a lobby has not been run against a physical RTSS install.
 
 ## FPS counter and temperatures
 
@@ -285,6 +293,19 @@ over your mouse or keyboard — so you can keep using your PC while it works.
   problem does.
 - New tests: `tests/fplimit.test.js` (profile discovery), `tests/bgfix.test.js` (the “still here” wording).
 
+## The “it fixes itself” label, and current-only scan results (1.15.0)
+
+- **The Fix tab only says “Fixes itself” when the background fixer really gets a turn.** `bgfix.autoFixable()`
+  requires a fix strategy **and** a `bg` level; `not_admin` is now `bg:false` because it needs a click. A restart is
+  automatic only when `autoRestart` is on **and** FrameForge has pending restart changes of its own — a Windows-update
+  restart stays manual. Before this, `strategies.length > 0` or merely having the restart setting on marked manual
+  problems as automatic, so they sat in the list forever.
+- **The results popup lists only this scan.** `scanjob` no longer merges Defender's history, and `unseen()` removes a
+  current detection that was handled before. `markHandled()` records quarantine/delete/keep/allow; restoring a file
+  clears its handled mark so it appears again. Kept and allowed detections stay out of later scans.
+- Tests: `tests/bgfix.test.js` covers the auto-fix policy, `tests/fix-recovery.test.js` proves the background run
+  retries a failed step, and `tests/scan-new.test.js` covers the handled/restored filter.
+
 ## Tweaks tab
 
 42 tweaks in five groups (input lag, CPU, graphics & games, network, Windows & background), each a switch
@@ -338,11 +359,11 @@ under `ProgramData\Microsoft\Windows Defender\Platform\<version>`):
 - **False-positive check** (`verdict`): signature (Get-AuthenticodeSignature), CIRCL hashlookup of the SHA-256
   (NSRL + Windows builds; setting `scanHashLookup`), detection name (named family vs generic/`!ml`), file location.
   Verdicts: real, unsure, pua (unwanted), fp (false positive), test (EICAR).
-- Results include Defender's history (`Get-MpThreatDetection`) — but only what is **new** (1.14.4). A detection the
-  user already handled (quarantine, delete, keep & allow, leave in quarantine, restore) is remembered in
-  `scan-seen.json` (`markHandled()`), and `onlyNew()` drops it — and anything this scan found itself — from the
-  history, so the results popup never shows last week's handled threats as if they were new. A file that is
-  genuinely back on disk is still found by the scan itself. The results window lets the user pick per item:
+- **Results are only this scan (1.15.0).** Defender's history is no longer merged, so a detection that has already gone
+  or was handled cannot come back on every run. A detection the user already handled (quarantine, delete, keep &
+  allow, leave in quarantine) is remembered in `scan-seen.json` (`markHandled()`), and `unseen()` drops it from the
+  current scan too. Restoring a file clears the handled mark. A quarantined or deleted file that is active on disk
+  again is shown again. The results window lets the user pick per item:
   quarantine (FrameForge's own: XOR-encoded in `ProgramData\FrameForge\Quarantine`, SYSTEM/Admins only), delete
   (running copies stopped first; locked files via `PendingFileRenameOperations`), keep, keep & allow (Defender
   exclusion for that exact file), or for Defender-quarantined items leave/restore.

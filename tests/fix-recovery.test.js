@@ -40,6 +40,7 @@ function testMain({ autoFix = true, hasAdmin = true, outcomes = [failure, succes
     electron: {
       app: { setAppUserModelId() {}, requestSingleInstanceLock: () => false, quit() {}, on() {} },
       ipcMain: { handle: (name, fn) => handlers.set(name, fn), on() {} },
+      Notification: { isSupported: () => false },
     },
     path,
     fs,
@@ -70,6 +71,8 @@ function testMain({ autoFix = true, hasAdmin = true, outcomes = [failure, succes
       },
     },
     './src/tweaks': { tabTweaks: () => [t], stateOf: () => t.isOn() },
+    './src/tools': { status: () => ({ presentmon: true, lhm: true }) },
+    './src/scanjob': { last: () => null },
   };
   const context = vm.createContext({
     require: (name) => deps[name] || {},
@@ -170,6 +173,19 @@ test('Fix Mode’s own retry action makes only its explicit attempt', async () =
   assert.equal(h.recorded.length, 1);
   assert.ok(h.problems.get(h.t.id));
   assert.deepEqual(recoveries(h), []);
+});
+
+test('the background fixer really retries a problem the Fix tab calls automatic', async () => {
+  // Automatic fixes are off for the first failure, so it does not already count as a background attempt.
+  const h = testMain({ autoFix: false, outcomes: [failure, success] });
+  const first = await h.call('tweaks:set', h.t.id, true);
+  assert.equal(first.ok, false);
+  assert.ok(h.problems.get(h.t.id), 'the failed step is still listed');
+
+  await h.call('settings:set', { autoFix: true });
+  await h.call('fix:background');
+  assert.equal(h.recorded.length, 2, 'the background run made the retry');
+  assert.equal(h.problems.get(h.t.id), undefined, 'the problem left the list after the retry worked');
 });
 
 function testOptimizer() {

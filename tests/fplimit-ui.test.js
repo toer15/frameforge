@@ -51,6 +51,10 @@ test('FPS limiter setting installs RTSS in demo, clamps the number and keeps it 
     };
     await command('Runtime.enable');
     await waitFor('typeof S !== "undefined" && !!S');
+    assert.equal(await evaluate('!!document.querySelector("#view-settings [data-key=fpsLimitOn]")'), false);
+    await evaluate('document.querySelector("[data-view=limiter]").click()');
+    await waitFor('!document.querySelector("#view-limiter").classList.contains("hidden")');
+    await waitFor('document.querySelector("#limiterInstalled").textContent === "Not installed"');
     assert.equal(await evaluate('document.querySelector("[data-key=fpsLimitOn]").checked'), false);
     assert.equal(await evaluate('ff.limiter.status().then((s) => s.installed)'), false);
     await evaluate('(() => { const n = document.querySelector("[data-key=fpsLimit]"); n.value = "144"; n.dispatchEvent(new Event("change", { bubbles: true })); })()');
@@ -59,12 +63,18 @@ test('FPS limiter setting installs RTSS in demo, clamps the number and keeps it 
     await waitFor('S.fpsLimitOn === true');
     const on = await evaluate('ff.limiter.status()');
     assert.deepEqual([on.installed, on.running, on.limit, on.on, on.fps], [true, true, 144, true, 144]);
+    await waitFor('document.querySelector("#limiterCap").textContent === "144 FPS"');
+    await waitFor('document.querySelector("#limiterProfiles").textContent === "1 profile"');
+    assert.equal(await evaluate('document.querySelector("#limiterApplyBtn").disabled'), false);
+    const applied = await evaluate('ff.limiter.apply()');
+    assert.deepEqual([applied.ok, applied.limit, applied.on, applied.fps], [true, 144, true, 144]);
     await evaluate('(() => { const n = document.querySelector("[data-key=fpsLimit]"); n.value = "5"; n.dispatchEvent(new Event("change", { bubbles: true })); })()');
     await waitFor('S.fpsLimit === 20');
     assert.equal((await evaluate('ff.limiter.status()')).limit, 20);
     await evaluate('(() => { const c = document.querySelector("[data-key=fpsLimitOn]"); c.checked = false; c.dispatchEvent(new Event("change", { bubbles: true })); })()');
     await waitFor('S.fpsLimitOn === false');
     assert.equal((await evaluate('ff.limiter.status()')).limit, 0);
+    await waitFor('document.querySelector("#limiterCap").textContent === "Off"');
     assert.deepEqual(exceptions, []);
   } finally {
     if (socket) socket.close();

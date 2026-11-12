@@ -1076,7 +1076,7 @@ function fixList() {
   const items = [];
   const add = (it) => items.push({ actions: [], strategies: [], manual: null, ...it });
   if (IS_WIN && !DEMO && !admin) {
-    add({ id: 'not_admin', level: 'big', title: 'FrameForge isn’t running as administrator', body: 'Most boosts and all repairs need admin rights, so they were skipped.', actions: [A('admin', 'Restart as administrator')], strategies: [A('admin', 'Restart FrameForge as administrator')] });
+    add({ id: 'not_admin', level: 'big', title: 'FrameForge isn’t running as administrator', body: 'Most boosts and all repairs need admin rights, so they were skipped.', actions: [A('admin', 'Restart as administrator')], strategies: [A('admin', 'Restart FrameForge as administrator')], bg: false });
   }
   for (const p of Object.values(problems.all())) {
     const t = tweakById(p.id);
@@ -1204,13 +1204,17 @@ function fixList() {
     }
     return false;
   });
-  // A problem is fixable automatically when it has strategies. A restart counts too: FrameForge does it.
+  // “Fixes itself” must mean the background fixer really gets a turn. A problem marked bg:false needs a click,
+  // and a Windows-update restart is not one FrameForge performs on its own.
   const aside = s.setAside || {};
   for (const it of shown) {
-    it.auto = it.strategies.length > 0 || (it.restartItem && settings.get().autoRestart);
+    it.auto = bgfix.autoFixable(it, { autoRestart: s.autoRestart, pending: pending.length, admin: admin || DEMO || !IS_WIN });
     it.fixedTitle = fixedTitleFor(it);
     it.stuck = aside[it.id] || null; // tried several times and still there: say what Windows said
     it.when = whenFixed(it);
+    // If it is waiting for the user (auto-fix off, no admin, a click-only fix), it is not “fixed by itself” — the
+    // card belongs with the one-click fixes so the tag never promises something the background will not do.
+    if (it.when.kind === 'you') it.auto = false;
   }
   // Problems that are gone don't need their note any more (a new one starts clean).
   const gone = Object.keys(aside).filter((id) => !shown.some((it) => it.id === id));
@@ -1772,7 +1776,9 @@ async function backgroundFix(why = 'check', tries = 0) {
     const idle = idleMinutes();
     const list = fixList();
     bgTried.keepOnly(list.map((it) => it.id)); // gone: next time starts fresh
-    const todo = list.filter((it) => bgfix.momentOk(it, { game, idleMin: idle }) && bgTried.due(it.id));
+    // Process exactly what the Fix tab calls automatic, and nothing else: a click-only problem or a Windows-update
+    // restart must not be “tried” here and recorded as a failure.
+    const todo = list.filter((it) => !it.restartItem && bgfix.autoFixable(it, {}) && bgfix.momentOk(it, { game, idleMin: idle }) && bgTried.due(it.id));
     if (todo.length) {
       const said = new Map();
       const r = await fixEverything({ silent: true, only: todo.map((i) => i.id), onItem: (e) => said.set(e.id, e) });
@@ -2081,17 +2087,25 @@ async function animWatch() {
 async function applyLimiter() {
   const s = settings.get();
   const want = s.fpsLimitOn ? fplimit.clamp(s.fpsLimit) : 0;
+  const install = async () => {
+    if (!(await tools.hasWinget())) {
+      return { ok: false, message: 'Microsoft’s app installer (winget) is missing, so RTSS can’t be installed automatically. Install “App Installer” from Microsoft Store, then press Set up and apply again.' };
+    }
+    return tools.wingetInstall(fplimit.WINGET_ID);
+  };
   const r = await fplimit.apply(want, {
-    install: () => tools.wingetInstall(fplimit.WINGET_ID),
+    install,
     // Turning the cap off puts back exactly the app profiles it capped, leaving the user's own RTSS caps alone.
     previous: s.fpsLimitProfiles || [],
   });
-  // Remember which game profiles FrameForge capped, so switching the limiter off leaves no cap behind.
-  if (r.ok) settings.set({ fpsLimitProfiles: want ? r.capped || [] : [] });
+  // Remember which game profiles FrameForge capped, so switching the limiter off leaves no cap behind. Keep the
+  // profiles from earlier applies too: when the number changes they already hold a cap, so RTSS reports them as
+  // skipped and changing the limit would otherwise forget to restore them later.
+  if (r.ok) settings.set({ fpsLimitProfiles: want ? [...new Set([...(s.fpsLimitProfiles || []), ...(r.capped || [])])] : [] });
   if (!want) changes.remove('fps_limiter');
   else {
     changes.put('fps_limiter', r.ok
-      ? { name: `FPS limit ${want}`, summary: `Games are capped at ${want} FPS by RivaTuner Statistics Server (RTSS). FrameForge keeps the cap in place.`, details: [], at: Date.now(), preset: s.preset, undoable: false, reboot: false }
+      ? { name: `FPS limit ${want}`, summary: `Games, menus and lobbies are capped at ${want} FPS by RivaTuner Statistics Server (RTSS). FrameForge keeps the cap in place.`, details: r.warning ? [r.warning] : [], at: Date.now(), preset: s.preset, undoable: false, reboot: false }
       : { name: 'FPS limit needs attention', summary: r.message || 'The FPS limit was not applied.', details: [], at: Date.now(), preset: s.preset, undoable: false, reboot: false });
   }
   send('changes', changeList());
@@ -2129,6 +2143,23 @@ async function limiterWatch() {
 }
 ipcMain.handle('controllers:detect', () => controllers.detect());
 ipcMain.handle('limiter:status', async () => ({ on: settings.get().fpsLimitOn, fps: settings.get().fpsLimit, ...(await fplimit.status()) }));
+ipcMain.handle('limiter:apply', async () => {
+  limiterFails = 0;
+  limiterNextTry = 0;
+  const r = await applyLimiter();
+  const st = await fplimit.status();
+  return {
+    ...st,
+    ok: r.ok,
+    message: r.message,
+    warning: r.warning || null,
+    // Keep the number apply() just verified even if the follow-up read is slow or fails.
+    limit: r.ok ? (r.limit ?? st.limit) : st.limit,
+    enabled: r.enabled ?? st.enabled,
+    on: settings.get().fpsLimitOn,
+    fps: settings.get().fpsLimit,
+  };
+});
 ipcMain.handle('anim:get', async () => ({ want: settings.get().animations, ...(await animations.get()) }));
 ipcMain.handle('anim:set', async (_e, on) => {
   settings.set({ animations: on ? 'on' : 'off' });
@@ -2466,6 +2497,8 @@ ipcMain.handle('settings:set', async (_e, patch) => {
   const before = settings.get();
   const s = settings.set(patch);
   if ('autoCheckUpdates' in patch && updates) updates.settingsChanged();
+  // Switching automatic fixes on should start fixing at once, not at the next two-minute check.
+  if ('autoFix' in patch && s.autoFix) backgroundFixSoon('auto-fix-on', 1500);
   if ('fpsLimit' in patch) settings.set({ fpsLimit: fplimit.clamp(patch.fpsLimit) });
   let limiterError = null;
   if ('fpsLimitOn' in patch || 'fpsLimit' in patch) {
@@ -2474,7 +2507,7 @@ ipcMain.handle('settings:set', async (_e, patch) => {
     const r = await applyLimiter();
     if (!r.ok) {
       limiterError = r.message || 'The FPS limit could not be applied.';
-      if (patch.fpsLimitOn) settings.set({ fpsLimitOn: false }); // the switch must not claim a cap that is not there
+      if (settings.get().fpsLimitOn) settings.set({ fpsLimitOn: false }); // the switch must not claim a cap that is not there
     }
   }
   if ('startWithWindows' in patch && IS_WIN && !DEMO) {

@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { Attempts, whenFixed, momentOk, delayAfter, IDLE_MIN } = require('../src/bgfix');
+const { Attempts, whenFixed, momentOk, autoFixable, delayAfter, IDLE_MIN } = require('../src/bgfix');
 
 const MIN = 60 * 1000;
 const item = (o = {}) => ({ id: 'step_x', strategies: [{ id: 'retry:x' }], bg: 'quiet', ...o });
@@ -45,6 +45,16 @@ test('the right moment: any time, not during a game, or only while away', () => 
   assert.equal(momentOk(item({ bg: 'idle' }), { game: true, idleMin: 60 }), false);
   assert.equal(momentOk(item({ bg: false }), { game: false, idleMin: 60 }), false, 'never without asking');
   assert.equal(momentOk(item({ strategies: [] }), { game: false, idleMin: 60 }), false, 'nothing FrameForge can do');
+});
+
+test('only a problem the background fixer can really reach is marked as automatic', () => {
+  assert.equal(autoFixable(item()), true);
+  assert.equal(autoFixable(item({ bg: false })), false, 'a click-only fix is not automatic');
+  assert.equal(autoFixable(item(), { admin: false }), false, 'without admin rights the background cannot run it');
+  assert.equal(autoFixable(item({ strategies: [] })), false, 'no fix to run');
+  assert.equal(autoFixable({ id: 'restart', restartItem: true, strategies: [] }, { autoRestart: true, pending: 1 }), true);
+  assert.equal(autoFixable({ id: 'restart', restartItem: true, strategies: [] }, { autoRestart: true, pending: 0 }), false, 'Windows-update restart stays manual');
+  assert.equal(autoFixable({ id: 'restart', restartItem: true, strategies: [] }, { autoRestart: false, pending: 1 }), false);
 });
 
 test('every problem says what it is waiting for', () => {

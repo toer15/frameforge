@@ -93,6 +93,8 @@ test('Controller tab: dropdown of controllers, each drawn with its own buttons, 
     assert.equal((await evaluate('ff.settings()')).padDeadzoneL, 20);
     assert.ok((await ring('l')) > leftBefore + 2, `left shape ${await ring('l')} vs ${leftBefore}`);
     assert.equal(await evaluate('document.querySelector("#padDzLVal").textContent'), '20%');
+    // The Live input is painted on the next animation frame, which a hidden demo window can throttle.
+    await waitFor('document.querySelector("#padReadout").textContent.includes("deadzone 20%")');
     assert.match(await evaluate('document.querySelector("#padReadout").textContent'), /deadzone 20%/);
     // The deadzone shape dropdown controls both the saved shape and the yellow graphic on the stick.
     assert.equal(await evaluate('document.querySelector("#padDzShape").value'), 'square');

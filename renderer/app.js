@@ -36,6 +36,7 @@ $$('.nav-item').forEach((b) =>
     $$('.view').forEach((v) => v.classList.toggle('hidden', v.id !== `view-${b.dataset.view}`));
     if (b.dataset.view === 'fix' && typeof refreshFix === 'function') refreshFix();
     if (b.dataset.view === 'tweaks') refreshTweaks();
+    if (b.dataset.view === 'limiter') refreshLimiter();
     if (b.dataset.view === 'scan') refreshScan(true);
     if (b.dataset.view === 'clean') refreshClean(true);
   })
@@ -798,6 +799,7 @@ const FIX_ASK = (it) => `Help me fix this problem on my PC: “${it.title}”. $
 function showView(name) {
   $$('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === name));
   $$('.view').forEach((v) => v.classList.toggle('hidden', v.id !== `view-${name}`));
+  if (name === 'limiter') refreshLimiter();
   if (name === 'scan') refreshScan(true);
   if (name === 'clean') refreshClean(true);
 }
@@ -1510,6 +1512,121 @@ ff.onPresetChanged(async (st) => {
   renderAuto(S.autoMode, INFO && INFO.active);
 });
 
+/* ---------- FPS limiter ---------- */
+let LIMITER_BUSY = false;
+function limiterState(sel, text, cls = '') {
+  const el = $(sel);
+  if (!el) return;
+  el.textContent = text;
+  el.className = `limiter-state ${cls}`.trim();
+}
+
+async function refreshLimiter() {
+  if (!ff.limiter || !ff.limiter.status) return;
+  let st;
+  try {
+    st = await ff.limiter.status();
+  } catch {
+    limiterState('#limiterInstalled', 'Unknown', 'bad');
+    limiterState('#limiterRunning', 'Unknown', 'bad');
+    limiterState('#limiterCap', 'Unknown', 'bad');
+    limiterState('#limiterProfiles', 'Unknown', 'bad');
+    const summary = $('#limiterSummary');
+    if (summary) summary.textContent = 'FrameForge couldn’t read the limiter status. Press Check again.';
+    return;
+  }
+  const on = !!(st.on ?? (S && S.fpsLimitOn));
+  const wanted = Number(st.fps || (S && S.fpsLimit) || 0);
+  const fpsInput = $('#limiterFps');
+  if (fpsInput && document.activeElement !== fpsInput) fpsInput.value = wanted;
+  const toggle = $('#limiterOn');
+  if (toggle && document.activeElement !== toggle) toggle.checked = on;
+  const installed = !!st.installed;
+  const running = !!st.running;
+  const cap = Number(st.limit || 0);
+  const active = installed && running && st.enabled === true && cap > 0;
+
+  limiterState('#limiterInstalled', installed ? 'Installed' : 'Not installed', installed ? 'ok' : 'bad');
+  limiterState('#limiterRunning', installed ? (running ? 'Running' : 'Not running') : 'Not running', running ? 'ok' : 'bad');
+
+  let capText = 'Not applied';
+  let capCls = 'bad';
+  if (!on) {
+    capText = 'Off';
+    capCls = '';
+  } else if (active) {
+    capText = `${cap} FPS`;
+    capCls = 'ok';
+  } else if (installed && cap > 0 && st.enabled === false) {
+    capText = `${cap} FPS saved — limiter disabled`;
+    capCls = 'warn';
+  } else if (installed && cap > 0) {
+    capText = `${cap} FPS saved — not active`;
+    capCls = 'warn';
+  } else if (installed) {
+    capText = 'No frame cap set';
+    capCls = 'warn';
+  }
+  limiterState('#limiterCap', capText, capCls);
+  const profiles = Number(st.profiles || 0);
+  limiterState('#limiterProfiles', !installed ? '—' : profiles ? `${profiles} profile${profiles === 1 ? '' : 's'}` : 'None yet', profiles ? 'ok' : '');
+
+  const badge = $('#limiterBadge');
+  if (badge) {
+    badge.textContent = active ? 'Active' : on ? 'Setup needed' : 'Off';
+    badge.className = `limiter-badge${active ? ' on' : on ? ' warn' : ''}`;
+  }
+  const title = $('#limiterTitle');
+  if (title) title.textContent = active ? `Capped at ${cap} FPS` : on ? 'One cap for everything' : 'A steady frame rate, everywhere';
+  const summary = $('#limiterSummary');
+  if (summary) summary.textContent = active
+    ? `RTSS is applying a ${cap} FPS cap. ${profiles ? `${profiles} game profile${profiles === 1 ? ' is' : 's are'} known and covered unless ${profiles === 1 ? 'it has' : 'they have'} a limit of ${profiles === 1 ? 'its' : 'their'} own.` : 'Every game it can hook is covered.'} Games, menus, launchers and lobbies are covered.`
+    : !on
+      ? 'Choose a target, then turn the limiter on. Everything RTSS can hook is capped — not just one game.'
+      : !installed
+        ? 'RTSS isn’t installed yet. Turning the limiter on installs it automatically; if that didn’t finish, press Set up and apply.'
+        : !running
+          ? 'RTSS is installed but its background helper isn’t running. Press Set up and apply to start it.'
+          : st.enabled === false
+            ? 'RTSS has its own frame limiter switched off. Press Set up and apply to switch it back on.'
+            : cap !== wanted
+              ? `Your saved target is ${wanted} FPS. Press Set up and apply to put it back.`
+              : 'The cap is saved but not active yet. Press Set up and apply to start it.';
+  const hint = $('#limiterHint');
+  if (hint) hint.textContent = on ? (installed ? 'FrameForge checks this again every minute.' : 'The first setup installs RTSS from Microsoft’s winget store.') : 'Turn the limiter on to get started.';
+  const apply = $('#limiterApplyBtn');
+  if (apply) {
+    apply.disabled = !on || LIMITER_BUSY;
+    apply.textContent = LIMITER_BUSY ? 'Applying…' : active ? 'Apply again' : 'Set up and apply';
+  }
+}
+
+$('#limiterRefreshBtn').onclick = async () => {
+  const b = $('#limiterRefreshBtn');
+  b.disabled = true;
+  b.textContent = 'Checking…';
+  await refreshLimiter();
+  b.disabled = false;
+  b.textContent = 'Check again';
+};
+$('#limiterApplyBtn').onclick = async () => {
+  if (LIMITER_BUSY) return;
+  LIMITER_BUSY = true;
+  await refreshLimiter();
+  try {
+    const r = await ff.limiter.apply();
+    S = await ff.settings();
+    renderSettings();
+    const done = `FPS cap applied at ${r.limit} FPS.`;
+    toast(r.ok ? (r.warning ? `${done} ${r.warning}` : done) : r.message || 'The FPS cap could not be applied.', r.ok && !r.warning ? 4000 : 10000);
+  } catch (e) {
+    toast(`The FPS cap could not be applied: ${e.message}`, 10000);
+  } finally {
+    LIMITER_BUSY = false;
+    await refreshLimiter();
+  }
+};
+
 /* ---------- Settings ---------- */
 function renderSettings() {
   if (!S) return;
@@ -1569,8 +1686,10 @@ document.addEventListener('change', async (e) => {
     const message = S.windowsPerformanceMode ? 'Windows performance mode is on. Sensor readings refresh every 3 seconds with less background work.' : 'Windows performance mode is off. Sensor readings refresh every second.';
     toast(warning ? `${message} ${warning}` : message, warning ? 8000 : 3500);
   }
-  if ((k === 'fpsLimitOn' || k === 'fpsLimit') && S && !S._error && S.fpsLimitOn) toast(`Games are now capped at ${S.fpsLimit} FPS.`);
-  else if (k === 'fpsLimitOn' && S && !S._error) toast('FPS limit removed.');
+  if (k === 'fpsLimitOn' || k === 'fpsLimit') {
+    if (S && !S._error) toast(S.fpsLimitOn ? `Games, menus and lobbies are now capped at ${S.fpsLimit} FPS.` : 'FPS limiter off.');
+    await refreshLimiter();
+  }
   if (k === 'autoCheckUpdates') {
     if (S.autoCheckUpdates) maybeShowUpdate(await ff.updateState());
     toast(S.autoCheckUpdates ? 'Auto update is on. New versions will show a popup while you use FrameForge.' : 'Auto update is off. You can still check for updates manually.');
@@ -1739,7 +1858,6 @@ const RES_FILTERS = [
   ['threats', 'Threats', (i) => ['real', 'unsure'].includes(i.verdict)],
   ['unwanted', 'Unwanted programs', (i) => i.verdict === 'pua'],
   ['fp', 'False positives', (i) => i.verdict === 'fp'],
-  ['history', 'Found by Defender before', (i) => i.source === 'defender'],
 ];
 const VLABEL = { real: 'Real threat', unsure: 'Probably a threat', pua: 'Unwanted program', fp: 'False positive', test: 'Test file' };
 const ALABEL = { quarantine: 'Quarantine', delete: 'Delete', keep: 'Keep', allow: 'Keep & allow', keepq: 'Leave in quarantine', restore: 'Restore' };
@@ -2054,7 +2172,7 @@ async function openResults() {
   RES = await ff.scan.last();
   if (!RES) return toast('No scan results yet.');
   CHOICE = {};
-  FILTER = RES.items.some(RES_FILTERS[1][2]) ? 'todo' : 'all'; // open on what needs a decision
+  FILTER = 'all'; // show every new detection in this scan, then let the chips narrow it down
   for (const it of RES.items) if (it.actions.length && !it.done) CHOICE[it.id] = it.defaultAction;
   applying = false;
   $('#resApply').disabled = false;
@@ -2077,16 +2195,15 @@ function renderPlan() {
 function renderResults() {
   const r = RES;
   const c = r.counts || {};
-  const h = r.historyCounts || {};
-  const scanFound = r.items.filter((i) => i.source !== 'defender').length;
-  $('#resTitle').textContent = r.cancelled ? 'Scan stopped' : scanFound ? `${SCANNAME[r.type]} finished — ${scanFound} detection${scanFound === 1 ? '' : 's'}` : `${SCANNAME[r.type]} finished — no threats found`;
-  $('#resSub').textContent = `${r.filesChecked.toLocaleString()} file${r.filesChecked === 1 ? '' : 's'} checked in ${mins(r.durationSec)}${r.folder ? ` · ${r.folder}` : ''} · ${new Date(r.endedAt).toLocaleString()}${(r.notes || []).length ? ` · ${r.notes.join(' ')}` : ''}`;
+  const n = r.items.length;
+  const skipped = r.previouslyHandled || 0;
+  $('#resTitle').textContent = r.cancelled ? 'Scan stopped' : n ? `${SCANNAME[r.type]} finished — ${n} detection${n === 1 ? '' : 's'} to review` : `${SCANNAME[r.type]} finished — no new threats`;
+  $('#resSub').textContent = `${r.filesChecked.toLocaleString()} file${r.filesChecked === 1 ? '' : 's'} checked in ${mins(r.durationSec)}${r.folder ? ` · ${r.folder}` : ''} · ${new Date(r.endedAt).toLocaleString()}${skipped ? ` · ${skipped} already handled` : ''}${(r.notes || []).length ? ` · ${r.notes.join(' ')}` : ''}`;
   $('#resTiles').innerHTML = [
     ['real', (c.real || 0) + (c.unsure || 0), 'real threats'],
     ['fp', c.fp || 0, 'false positives'],
     ['pua', c.pua || 0, 'unwanted programs'],
     ['test', c.test || 0, 'test files'],
-    ['', r.items.filter((i) => i.source === 'defender').length, 'found by Defender before'],
   ]
     .map(([k, n, l]) => `<div class="tot ${k}"><b>${n}</b><span>${l}</span></div>`)
     .join('');
@@ -2097,7 +2214,7 @@ function renderResults() {
   const test = (RES_FILTERS.find((f) => f[0] === FILTER) || RES_FILTERS[0])[2];
   const shown = $('#resFilters').innerHTML ? r.items.filter(test) : r.items;
   if (!r.items.length) {
-    $('#resList').innerHTML = `<div class="res-empty"><b>All clear</b>Microsoft Defender’s engine found nothing in ${r.filesChecked.toLocaleString()} files, and Defender has no earlier detections on this PC.</div>`;
+    $('#resList').innerHTML = `<div class="res-empty"><b>${skipped ? 'No new threats' : 'All clear'}</b>Microsoft Defender found nothing new in ${r.filesChecked.toLocaleString()} files.${skipped ? ` ${skipped} detection${skipped === 1 ? '' : 's'} you already handled ${skipped === 1 ? 'is' : 'are'} not shown again.` : ''}</div>`;
   } else {
     $('#resList').innerHTML = shown
       .map((it) => {

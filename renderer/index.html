@@ -50,6 +50,10 @@
         <svg viewBox="0 0 24 24"><path d="M7 7h10a5 5 0 0 1 4.9 6l-.8 4a2.5 2.5 0 0 1-4.3 1.2L15 16H9l-1.8 2.2A2.5 2.5 0 0 1 2.9 17l-.8-4A5 5 0 0 1 7 7Zm.5 2.5v1.2H6.3v1.6h1.2v1.2h1.6v-1.2h1.2v-1.6H9.1V9.5Zm8.5 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>
         Controller
       </button>
+      <button class="nav-item" data-view="limiter">
+        <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9h2a7 7 0 0 1 14 0h2a9 9 0 0 0-9-9Zm0 4a5 5 0 0 0-5 5h2a3 3 0 0 1 6 0h2a5 5 0 0 0-5-5Zm-1 6.2V17l2.9 2 1.2-1.6-2.1-1.5v-2.7Z"/></svg>
+        FPS limiter
+      </button>
       <button class="nav-item" data-view="settings">
         <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.4 4.6-.1-2.2 2-1.6-2-3.4-2.4.8-1.9-1.1L15.5 3h-4l-.5 2.6-1.9 1.1-2.4-.8-2 3.4 2 1.6v2.2l-2 1.6 2 3.4 2.4-.8 1.9 1.1.5 2.6h4l.5-2.6 1.9-1.1 2.4.8 2-3.4z"/></svg>
         Settings
@@ -655,6 +659,63 @@
       </div>
     </section>
 
+    <!-- ================= FPS LIMITER ================= -->
+    <section class="view hidden" id="view-limiter">
+      <div class="settings-wrap">
+        <h1 class="page-title">FPS limiter</h1>
+        <p class="limiter-lead muted">One steady frame rate for games, menus, launchers and lobbies. FrameForge uses RivaTuner Statistics Server (RTSS), installs it automatically the first time, keeps it running and restores your cap if another tool changes it.</p>
+
+        <div class="limiter-hero panel">
+          <div class="set-text">
+            <span class="limiter-badge" id="limiterBadge">Off</span>
+            <h2 id="limiterTitle">A steady frame rate, everywhere</h2>
+            <p id="limiterSummary">Choose a target, then turn the limiter on. Everything RTSS can hook is capped — not just one game.</p>
+          </div>
+          <div class="limiter-control">
+            <label class="limiter-fps" for="limiterFps">Target FPS
+              <input class="select" id="limiterFps" type="number" min="20" max="1000" step="1" data-key="fpsLimit" />
+            </label>
+            <label class="switch big" title="FPS limiter">
+              <input type="checkbox" id="limiterOn" data-key="fpsLimitOn" aria-label="FPS limiter" /><span></span>
+            </label>
+          </div>
+        </div>
+
+        <section class="set-group">
+          <div class="set-head"><h2>Status</h2><button class="ghost small" id="limiterRefreshBtn">Check again</button></div>
+          <div class="set-row">
+            <div class="set-text"><h3>RivaTuner Statistics Server</h3><p>Installed automatically through Microsoft’s winget package manager when you turn the cap on.</p></div>
+            <b class="limiter-state" id="limiterInstalled" aria-live="polite">Checking…</b>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>RTSS background helper</h3><p>It must be running for games to receive the cap.</p></div>
+            <b class="limiter-state" id="limiterRunning" aria-live="polite">Checking…</b>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>Global frame cap</h3><p>The number RTSS is applying right now. FrameForge checks it every minute.</p></div>
+            <b class="limiter-state" id="limiterCap" aria-live="polite">Checking…</b>
+          </div>
+          <div class="set-row">
+            <div class="set-text"><h3>Game profiles RTSS knows</h3><p>Games RTSS has seen before get the same cap, unless you set your own limit for that game in RTSS. Your own caps are never overwritten.</p></div>
+            <b class="limiter-state" id="limiterProfiles" aria-live="polite">Checking…</b>
+          </div>
+          <div class="limiter-actions">
+            <button class="primary" id="limiterApplyBtn" disabled>Set up and apply</button>
+            <span class="muted" id="limiterHint">Turn the limiter on to get started.</span>
+          </div>
+        </section>
+
+        <section class="set-group">
+          <div class="set-head"><h2>What it covers</h2></div>
+          <div class="limiter-notes">
+            <p><b>Games, menus, launchers and lobbies.</b> RTSS applies the cap globally to every DirectX, Vulkan or OpenGL program it can hook, so it stays in force between matches and in lobby screens too.</p>
+            <p><b>One number, kept in place.</b> FrameForge starts RTSS, switches RTSS’s own frame limiter back on if it was disabled, and re-applies your number if RTSS or another tool changes it.</p>
+            <p class="muted">A small number of anti-cheat-protected games block every overlay and hook, RTSS included. Those games need their own in-game FPS cap; FrameForge can’t inject into a protected process.</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <section class="view hidden" id="view-settings">
       <div class="settings-wrap">
         <h1 class="page-title">Settings</h1>
@@ -767,14 +828,6 @@
               <p>Shows your in-game FPS and 1% lows on top of games running in borderless or windowed mode.</p>
             </div>
             <label class="switch"><input type="checkbox" data-key="fpsCounter" /><span></span></label>
-          </div>
-          <div class="set-row">
-            <div class="set-text">
-              <h3>FPS limiter</h3>
-              <p>Caps every game at the number you set. Uses RivaTuner Statistics Server (RTSS), the standard frame limiter; FrameForge installs it for you the first time, keeps it running and puts your number back if something changes it.</p>
-            </div>
-            <input type="number" class="select" data-key="fpsLimit" min="20" max="1000" step="1" style="width:84px" aria-label="FPS limit" />
-            <label class="switch"><input type="checkbox" data-key="fpsLimitOn" aria-label="FPS limiter" /><span></span></label>
           </div>
           <div class="set-row">
             <div class="set-text">

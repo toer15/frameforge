@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('ff', {
   resetProfile: () => ipcRenderer.invoke('profile:reset'),
   tweaks: () => ipcRenderer.invoke('tweaks:list'),
   controllers: { detect: () => ipcRenderer.invoke('controllers:detect') },
-  limiter: { status: () => ipcRenderer.invoke('limiter:status') },
+  limiter: { status: () => ipcRenderer.invoke('limiter:status'), apply: () => ipcRenderer.invoke('limiter:apply') },
   settings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (p) => ipcRenderer.invoke('settings:set', p),
   setAuto: (on) => ipcRenderer.invoke('auto:set', on),

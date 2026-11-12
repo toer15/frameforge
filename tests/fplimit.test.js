@@ -22,9 +22,25 @@ test('every RTSS game profile is found, and the Global template is never treated
   assert.deepEqual(fplimit._profileNames(path.join(dir, 'nope')), [], 'no Profiles folder: nothing to cap');
 });
 
-test('the RTSS bridge compiles and fails clearly when the DLL is missing', { skip: process.platform !== 'win32' || process.env.FRAMEFORGE_DEMO === '1', timeout: 60000 }, async () => {
+test('the RTSS bridge uses the SDK global profile and turns RTSS’s own limiter back on', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src/fplimit.js'), 'utf8');
+  assert.match(src, /load\(""\)/);
+  assert.match(src, /save\(""\)/);
+  assert.doesNotMatch(src, /load\("Global"\)/);
+  assert.doesNotMatch(src, /save\("Global"\)/);
+  assert.match(src, /setFlags\(0xFFFFFFFBu, 0\)/);
+  assert.match(src, /delegate uint GetFlagsFn\(\)/);
+  assert.match(src, /bits === 32/);
+});
+
+test('the 64-bit and 32-bit RTSS bridges compile and fail clearly when the DLL is missing', { skip: process.platform !== 'win32' || process.env.FRAMEFORGE_DEMO === '1', timeout: 60000 }, async () => {
   const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'ff-rtss-'));
-  const r = await fplimit._hooks(dir, -1);
-  assert.equal(r.ok, false);
-  assert.match(r.message, /Could not load RTSSHooks64.dll/);
+  const r64 = await fplimit._hooks(dir, -1);
+  assert.equal(r64.ok, false);
+  assert.match(r64.message, /Could not load RTSSHooks64.dll/);
+  const r32 = await fplimit._hooks(dir, -1, [], [], { bits: 32, flagsOnly: true });
+  assert.equal(r32.ok, false);
+  assert.match(r32.message, /Could not load RTSSHooks\.dll/);
 });

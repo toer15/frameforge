@@ -36,6 +36,15 @@ class Attempts {
   }
 }
 
+/**
+ * Is this problem really one FrameForge will fix by itself? `bg:false` means a click is needed, and a restart is
+ * only automatic when FrameForge's own changes are waiting for it (a Windows-update restart is not).
+ */
+function autoFixable(it, { autoRestart = false, pending = 0, admin = true } = {}) {
+  if (it.restartItem) return !!admin && !!autoRestart && pending > 0;
+  return !!admin && !!it.bg && !!it.strategies && it.strategies.length > 0;
+}
+
 /** Is this the right moment for a problem of this kind? ('game' any time, 'quiet' no game, 'idle' away from the PC) */
 function momentOk(it, { game, idleMin }) {
   if (!it.bg || !it.strategies || !it.strategies.length) return false;
@@ -55,6 +64,7 @@ const span = (ms) => {
 function whenFixed(it, c) {
   const now = c.now || Date.now();
   if (it.restartItem) {
+    if (!c.autoFix) return { kind: 'you', text: 'Waiting for you: “Fix problems by itself” is switched off. Restart here, or switch it on above.' };
     if (!c.autoRestart) return { kind: 'you', text: 'Waiting for you: restart when it suits you. FrameForge finishes by itself afterwards.' };
     if (!c.mayRestart) return { kind: 'you', text: 'Waiting for you: FrameForge already restarted this PC in the last 3 hours, so it won’t do it again by itself.' };
     return { kind: 'wait', text: 'FrameForge restarts by itself once you’ve been away for 20 minutes and no game is running — or press Restart now.' };
@@ -86,4 +96,4 @@ function whenFixed(it, c) {
   return { kind: 'soon', text: 'FrameForge is fixing this by itself — it starts within a minute.' };
 }
 
-module.exports = { Attempts, whenFixed, momentOk, delayAfter, IDLE_MIN, RETRY };
+module.exports = { Attempts, whenFixed, momentOk, autoFixable, delayAfter, IDLE_MIN, RETRY };

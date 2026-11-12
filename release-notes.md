@@ -1,21 +1,26 @@
-**The FPS limiter now really caps every game, and Fix mode really fixes**
+**The FPS limiter has its own tab, Fix mode only promises what it will really do, and scan results stay current**
 
-- **FPS limiter installs what it needs by itself.** RivaTuner Statistics Server (RTSS) is fetched from Microsoft's
-  winget store the first time you flip the limiter on. FrameForge now finds `winget.exe` even when it is not on
-  PATH (the usual reason the install quietly failed), waits for it, and keeps trying later instead of giving up.
-- **The cap now reaches games RTSS already knew.** Before, only RTSS's *Global* template got your number, and a game
-  with its own saved RTSS profile (often “no limit”) ignored it — so some games and lobbies ran uncapped. Now your
-  number is written to Global and to every game profile that has no limit of its own. A cap you set in RTSS yourself
-  is never touched, and switching the limiter off puts back exactly the profiles FrameForge changed.
-- **Fix mode no longer thinks it has no admin rights.** The old check also failed when the Windows “Server” service
-  was stopped, which made FrameForge skip every automatic fix in silence. It now asks Windows for the real answer.
-- **“Turn off Widgets” really turns off.** Windows can refuse the machine policy even to administrators (on the
-  owner's PC: “Access is denied”), and that single refusal kept the Fix list busy forever. That value is now
-  best-effort and the per-user switches do the job, so the item clears.
-- **A fix that keeps failing says so.** After three tries the Fix list repeats Windows' own reason and keeps trying
-  every few hours, instead of promising “Fixes itself” with nothing happening.
-- **Fixes may fetch the tools they need.** With “Fix problems by itself” on, Fix mode can download a missing helper
-  (PresentMon, LibreHardwareMonitor) as part of the fix.
-- **Virus scan results only show what's new.** When a scan finishes, the results window no longer repeats every
-  threat Defender ever recorded — including ones you already quarantined, deleted or allowed. Those stay gone, and
-  only new detections come up. Anything genuinely back on disk is still caught and shown.
+- **FPS limiter is now its own tab.** It moved out of Settings. The tab shows whether RTSS is installed, whether
+  its background helper is running, the cap RTSS is actually applying and how many game profiles are covered.
+  **Set up and apply** retries the whole setup; **Check again** refreshes the status.
+- **It installs what it needs by itself.** RivaTuner Statistics Server (RTSS) is fetched from Microsoft's winget
+  store the first time the limiter is switched on, and FrameForge waits for both RTSS.exe and its hook DLL before
+  applying the cap. If winget itself is missing, the tab says exactly what to install instead of failing silently.
+- **The cap now reaches the games that ignored it.** RTSS's SDK global profile is the unnamed profile, not the
+  “Global” template. Writing to the wrong one was why a game's own saved profile (often “no limit”) won. FrameForge
+  now writes the real global profile and every existing game profile that has no cap of its own. A cap you set in
+  RTSS is never overwritten, and switching the limiter off puts back exactly the profiles FrameForge changed.
+- **RTSS's own limiter is switched back on.** Some installs have the framerate limiter disabled in RTSS's hooks
+  flags, so the number is saved but nothing is capped. FrameForge clears that one flag, reads it back, and does the
+  same in RTSS's 32-bit hook context so 32-bit games and launchers are covered too.
+- **“Fixes itself” now means it really will.** The Fix tab no longer labels a click-only problem or a Windows-update
+  restart as automatic. The background fixer processes exactly the same set of problems the tab calls automatic,
+  and it no longer records “tried and failed” for problems it never actually ran. If automatic fixes are off, or
+  FrameForge doesn't have administrator rights, the card says it needs you instead of promising a fix that won't come.
+- **Virus scan results are only this scan.** The results popup no longer merges Defender's whole history, so threats
+  you handled last week cannot come back on every run. Detections you already quarantined, deleted, kept or allowed
+  are filtered out; a quarantined or deleted file that is active on disk again is shown again. Old unhandled threats
+  still appear, because they genuinely still need a decision.
+
+A small number of anti-cheat-protected games block every overlay and hook, RTSS included. Those games need their own
+in-game FPS cap — FrameForge can't inject into a protected process.

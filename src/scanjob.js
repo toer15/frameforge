@@ -364,9 +364,26 @@ function remember(items) {
   return seen;
 }
 /** Detections the user already dealt with (quarantined, deleted, kept & allowed, left in quarantine). */
-function handledKeys() {
+function handledMap() {
   const seen = readJson('scan-seen.json', {});
-  return new Set(Object.entries(seen).filter(([, v]) => v && v.handled).map(([k]) => k));
+  const out = {};
+  for (const [k, v] of Object.entries(seen)) if (v && v.handled) out[k] = { action: v.handled, status: v.status };
+  return out;
+}
+function handledKeys() {
+  return new Set(Object.keys(handledMap()));
+}
+/**
+ * Detections from this scan that are still worth showing. A handled file is hidden unless it is active again
+ * after a quarantine or delete — that means something restored it, so it must not stay hidden.
+ */
+function unseen(items, handled) {
+  if (!handled) return [...(items || [])];
+  return (items || []).filter((it) => {
+    const h = handled[keyOf(it)];
+    if (!h) return true;
+    return it.status === 'active' && !['keep', 'allow'].includes(h.action);
+  });
 }
 /**
  * Defender's history, minus what this scan already found (no duplicates) and minus everything the user already
@@ -380,6 +397,16 @@ function markHandled(it) {
   if (!it || !it.done) return;
   const seen = readJson('scan-seen.json', {});
   const k = keyOf(it);
+  // Restoring a file means it should be treated as new again on the next scan.
+  if (it.done === 'restore') {
+    if (seen[k]) {
+      delete seen[k].handled;
+      delete seen[k].handledAt;
+      delete seen[k].status;
+      writeJson('scan-seen.json', seen);
+    }
+    return;
+  }
   seen[k] = {
     ...(seen[k] || { verdict: it.verdict, threat: it.threat, file: it.file, at: it.detectedAt }),
     handled: it.done,
@@ -419,12 +446,13 @@ async function start(type, { folder = null, background = false } = {}) {
       }
       setPhase('analyze', 'Checking every detection: real threat or false positive?');
       const scanItems = await analyze([...job.detections.values()]);
-      // Everything Defender found before, too — but only what is still news. A detection the user already
-      // quarantined, deleted or allowed stays out, so the results only ever list new things.
-      const hist = onlyNew(await scanner.history().catch(() => []), job.detections, handledKeys()).map((h) => ({ ...h, source: 'defender' }));
-      const histItems = await analyze(hist);
-      const items = [...scanItems, ...histItems];
-      remember(items);
+      // Only this scan's detections. Old Defender history is not merged in: it came back on every scan even
+      // after the user handled it. Handled current detections are filtered too, so the popup only lists what is
+      // new or still genuinely active.
+      const handled = handledMap();
+      const items = unseen(scanItems, handled);
+      const previouslyHandled = scanItems.length - items.length;
+      remember(scanItems);
       const sec = Math.round((Date.now() - job.startedAt) / 1000);
       const scanSec = job.scanStart ? (Date.now() - job.scanStart) / 1000 : 0;
       if (!job.cancelled && job.filesTotal > 5000 && scanSec > 30 && !DEMO) {
@@ -446,8 +474,8 @@ async function start(type, { folder = null, background = false } = {}) {
         filesChecked: Math.min(job.filesDone, job.filesTotal),
         filesTotal: job.filesTotal,
         items,
-        counts: countsOf(scanItems),
-        historyCounts: countsOf(histItems),
+        counts: countsOf(items),
+        previouslyHandled,
         notes: job.notes,
         background,
         drives: job.drives || null, // full scan: every drive it went through
@@ -504,7 +532,7 @@ async function cancel() {
 }
 function summary(r) {
   const open = r.items.filter((i) => i.status === 'active' && ['real', 'unsure', 'pua', 'test'].includes(i.verdict) && !i.done).length;
-  return { type: r.type, cancelled: r.cancelled, durationSec: r.durationSec, filesChecked: r.filesChecked, counts: r.counts, historyCounts: r.historyCounts, found: r.items.length, open, endedAt: r.endedAt, background: r.background, drives: r.drives || null };
+  return { type: r.type, cancelled: r.cancelled, durationSec: r.durationSec, filesChecked: r.filesChecked, counts: r.counts, previouslyHandled: r.previouslyHandled || 0, found: r.items.length, open, endedAt: r.endedAt, background: r.background, drives: r.drives || null };
 }
 function last() {
   return readJson('scan-last.json', null);
@@ -549,7 +577,7 @@ function report(engine) {
   const c = r.counts || {};
   L.push(`This scan: ${(c.real || 0) + (c.unsure || 0)} threats · ${c.pua || 0} unwanted programs · ${c.fp || 0} false positives · ${c.test || 0} test files`);
   L.push('');
-  if (!r.items.length) L.push('No detections. Microsoft Defender found nothing and has no earlier detections on this PC.');
+  if (!r.items.length) L.push(r.previouslyHandled ? 'No new detections. Previously handled detections were skipped.' : 'No detections in this scan.');
   r.items.forEach((it, i) => {
     L.push(`${i + 1}. [${VERDICT_TEXT[it.verdict] || it.verdict}] ${it.threat}`);
     L.push(`   What it is: ${it.typeInfo}`);
@@ -558,7 +586,7 @@ function report(engine) {
     L.push(`   Status:     ${it.status}${it.running ? ' (running)' : ''}${it.done ? ` — you chose: ${it.done}${it.doneMessage ? ` (${it.doneMessage})` : ''}` : ''}`);
     L.push(`   Signed by:  ${it.signer || 'nobody / unknown'}   Size: ${it.size || 0} bytes`);
     if (it.sha256) L.push(`   SHA-256:    ${it.sha256}`);
-    L.push(`   Found:      ${it.source === 'defender' ? `by Defender on ${new Date(it.detectedAt).toLocaleDateString()}` : it.source === 'memory' ? 'by Defender’s memory check' : 'by this scan'}`);
+    L.push(`   Found:      ${it.source === 'memory' ? 'by Defender’s memory check' : 'by this scan'}`);
     for (const x of it.reasons) L.push(`     ${x}`);
     L.push('');
   });
@@ -620,4 +648,4 @@ async function apply(choices) {
   return { ok: results.every((x) => x.ok), results, reboot, summary: summary(r) };
 }
 
-module.exports = { init, start, cancel, pause: () => pause(false), resume: () => resume(false), autoPause, background: () => !!(job && job.background), history, report, snapshot: () => snapshot(), running: () => !!job, last, summary, estimates, totals, remember, apply, analyze, _keyOf: keyOf, _onlyNew: onlyNew };
+module.exports = { init, start, cancel, pause: () => pause(false), resume: () => resume(false), autoPause, background: () => !!(job && job.background), history, report, snapshot: () => snapshot(), running: () => !!job, last, summary, estimates, totals, remember, apply, analyze, _keyOf: keyOf, _onlyNew: onlyNew, _handledMap: handledMap, _unseen: unseen };
