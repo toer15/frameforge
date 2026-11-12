@@ -47,7 +47,8 @@ async function measure(label, secs = 10, at = {}) {
   const pdir = path.join(st.dir, 'Profiles');
   const showProf = (label) => {
     const names = fs.existsSync(pdir) ? fs.readdirSync(pdir) : [];
-    log(label, 'files:', names.join(', ') || '(none)', '|', names.filter((n) => /^global/i.test(n)).map((n) => n + ': ' + fs.readFileSync(path.join(pdir, n), 'utf8').split(/\r?\n/).filter((l) => /^\[Framerate|^Limit/i.test(l)).join(' ')).join(' ; '));
+    log(label, 'files:', names.join(', ') || '(none)', '|', names.filter((n) => /^global/i.test(n)).map((n) => n + ': ' + fs.readFileSync(path.join(pdir, n), 'utf8').split(/\r?\n/).filter((l) => /^\[|Limit|Hook|Detect/i.test(l)).join(' ')).join(' ; '));
+    log('  template Global:', fs.readFileSync(path.join(st.dir, 'ProfileTemplates', 'Global'), 'utf8').split(/\r?\n/).filter((l) => /^\[|Limit|Detect/i.test(l)).join(' ').slice(0, 500));
   };
   const base = await measure('RTSS never started, no limit');
   // Exactly what the app does on a fresh install: set the limit, which also starts RTSS.

@@ -121,18 +121,84 @@ async function apply(fps, { install = null } = {}) {
     dir = await installDir();
     if (!dir) return { ok: false, message: 'RTSS installed, but its files were not found.' };
   }
-  const r = await hooks(dir, want);
+  // RTSS only creates its Profiles folder the first time it runs, and nothing can be saved before that. So when a
+  // cap is wanted: start RTSS first, then write the number.
+  if (want) {
+    if (!(await startRtss(dir))) return { ok: false, message: 'RTSS is installed, but it would not start.' };
+    await profilesReady(dir);
+  } else if (!fs.existsSync(path.join(dir, 'Profiles'))) {
+    return { ok: true, limit: 0 }; // never used: there is no cap to remove
+  }
+  let r = await hooks(dir, want);
+  // What counts is the file RTSS reads its global profile from. If the number is not in it, write it there and
+  // tell RTSS to reload.
+  if (!r.ok || r.limit !== want || fileLimit(dir) !== want) {
+    writeFileLimit(dir, want);
+    r = await hooks(dir, want);
+    if (r.ok && r.limit !== want) r = await hooks(dir, -1);
+  }
   if (!r.ok) return r;
-  if (r.limit !== want) return { ok: false, message: `RTSS kept ${r.limit || 'no limit'} instead of ${want || 'no limit'} FPS.` };
-  if (want && !(await startRtss(dir))) return { ok: false, message: 'The limit is saved, but RTSS would not start.' };
+  if (r.limit !== want || fileLimit(dir) !== want) return { ok: false, message: `RTSS kept ${r.limit || 'no limit'} instead of ${want || 'no limit'} FPS.` };
   return { ok: true, limit: want };
+}
+
+/** Wait for RTSS to create its Profiles folder (first start); make it ourselves if it doesn't. */
+async function profilesReady(dir) {
+  const p = path.join(dir, 'Profiles');
+  for (let i = 0; i < 20 && !fs.existsSync(p); i++) await sleep(250);
+  try {
+    fs.mkdirSync(p, { recursive: true });
+  } catch {}
+}
+
+/** The cap in RTSS's global profile file (Profiles\Global, an INI file): [Framerate] Limit=N. 0 = none. */
+function fileLimit(dir) {
+  return parseLimit(readText(path.join(dir, 'Profiles', 'Global')));
+}
+function readText(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return '';
+  }
+}
+function parseLimit(text) {
+  const sec = /^\[Framerate\]\s*$([\s\S]*?)(?=^\[|(?![\s\S]))/im.exec(String(text || ''));
+  const m = sec && /^Limit\s*=\s*(\d+)\s*$/im.exec(sec[1]);
+  return m ? Number(m[1]) : 0;
+}
+/** The same INI text with [Framerate] Limit set to n; everything else is left exactly as it was. */
+function withLimit(text, n) {
+  const t = String(text || '');
+  const nl = /\r\n/.test(t) || !t ? '\r\n' : '\n';
+  const sec = /^\[Framerate\]\s*$/im.exec(t);
+  if (!sec) return `${t}${t && !/\n$/.test(t) ? nl : ''}[Framerate]${nl}Limit=${n}${nl}`;
+  const start = sec.index + sec[0].length;
+  const rest = t.slice(start);
+  const next = /^\[/m.exec(rest);
+  const body = next ? rest.slice(0, next.index) : rest;
+  const after = next ? rest.slice(next.index) : '';
+  const newBody = /^Limit\s*=.*$/im.test(body) ? body.replace(/^Limit\s*=.*$/im, `Limit=${n}`) : `${nl}Limit=${n}${body.startsWith('\n') || body.startsWith('\r') ? '' : nl}${body}`;
+  return t.slice(0, start) + newBody + after;
+}
+function writeFileLimit(dir, n) {
+  const file = path.join(dir, 'Profiles', 'Global');
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // A first profile starts from RTSS's own template, so every other default stays as RTSS ships it.
+    const base = fs.existsSync(file) ? readText(file) : readText(path.join(dir, 'ProfileTemplates', 'Global'));
+    fs.writeFileSync(file, withLimit(base, n));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** True when RTSS is not holding the limit the user chose (another tool changed it, or RTSS was closed). */
 async function drifted(fps) {
   const s = await status();
   if (!s.installed) return true;
-  return !s.running || s.limit !== clamp(fps);
+  return !s.running || s.limit !== clamp(fps) || fileLimit(s.dir) !== clamp(fps);
 }
 
-module.exports = { _hooks: hooks, apply, status, drifted, clamp, MIN, MAX, WINGET_ID };
+module.exports = { _hooks: hooks, _parseLimit: parseLimit, _withLimit: withLimit, apply, status, drifted, clamp, MIN, MAX, WINGET_ID };
