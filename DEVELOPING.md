@@ -227,6 +227,21 @@ over your mouse or keyboard — so you can keep using your PC while it works.
 - Not yet run on real hardware: the new registry tweaks (they use the same `registryTweak` path as the others),
   and Game Booster against a real anti-cheat game.
 
+## Fix mode by itself (1.14.1)
+
+- `src/bgfix.js` holds the rules, `backgroundFix()` in `main.js` applies them. A problem is tried when its moment is
+  right (`bg`: `game` any time, `quiet` no game, `idle` 5+ minutes away) and it is due: never tried, or 5 minutes
+  after the first failed attempt, 30 after the second, 6 hours after every later one. Fixed or vanished problems
+  are forgotten. Before 1.14.1 the wait was a flat 6 hours, it started even when the run was skipped because
+  something else was busy, and the immediate retry of a failed tweak also started it.
+- It runs at start (8 s), every 2 minutes, 6 s after Auto Mode finishes and when the Fix tab asks for its list. If
+  Auto Mode, a repair or another fix is running it comes back every 15 s (up to 20 times).
+- `whenFixed()` gives every item `when: { kind: 'soon' | 'wait' | 'you', text }`, shown under the problem. Items
+  with strategies but no `bg` (Windows protection, laptop on battery, threats, AMD driver app) are never changed
+  without a click, by design; the tab calls them “One click fixes it”, not “Fixes itself”.
+- `restartNeededFor()` asks the tweak's current definition, so a tweak marked `reboot: false` stops asking for a
+  restart even if an older version recorded one.
+
 ## Tweaks tab
 
 42 tweaks in five groups (input lag, CPU, graphics & games, network, Windows & background), each a switch

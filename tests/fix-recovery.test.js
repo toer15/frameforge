@@ -52,6 +52,7 @@ function testMain({ autoFix = true, hasAdmin = true, outcomes = [failure, succes
     './src/fps': { FpsReader: class {} },
     './src/sensors': { Sensors: class {} },
     './src/booster': { Booster: class {} },
+    './src/bgfix': require('../src/bgfix'),
     './src/optimizer': {
       TWEAKS: [t],
       planned: () => [t],
@@ -73,6 +74,8 @@ function testMain({ autoFix = true, hasAdmin = true, outcomes = [failure, succes
     require: (name) => deps[name] || {},
     __dirname: root,
     process: { env: {} },
+    setTimeout: () => 0, // work main.js schedules for later (the background fix a few seconds after a run) doesn't run here
+    clearTimeout() {},
     hasAdmin,
     windowMock: {
       isDestroyed: () => false,

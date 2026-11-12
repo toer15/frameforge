@@ -665,9 +665,9 @@ const NEW = [
     id: 'widgets_off',
     cat: 'windows',
     name: 'Turn off Widgets',
-    desc: 'The Widgets board (weather and news on the taskbar) keeps several web processes running all day. This switches Widgets off and removes its taskbar button. Takes effect after you sign out or restart.',
+    desc: 'The Widgets board (weather and news on the taskbar) keeps several web processes running all day. This switches Widgets off and removes its taskbar button. Takes effect the next time you sign in.',
     admin: true,
-    reboot: true,
+    reboot: false, // signing out is enough: never ask for (or do) a PC restart over this
     ...registryTweak([{ key: `${HKLM}\\SOFTWARE\\Policies\\Microsoft\\Dsh`, name: 'AllowNewsAndInterests', type: 'REG_DWORD', data: 0 }]),
   },
   {
@@ -686,8 +686,8 @@ const NEW = [
     id: 'start_web_off',
     cat: 'windows',
     name: 'Faster Start menu search',
-    desc: 'Start menu search normally sends everything you type to Bing and waits for web results. This keeps search to your own apps, files and settings, so results show up right away. Takes effect after you sign out or restart.',
-    reboot: true,
+    desc: 'Start menu search normally sends everything you type to Bing and waits for web results. This keeps search to your own apps, files and settings, so results show up right away. Takes effect the next time you sign in.',
+    reboot: false, // signing out is enough: never ask for (or do) a PC restart over this
     ...registryTweak([{ key: `${HKCU}\\Software\\Policies\\Microsoft\\Windows\\Explorer`, name: 'DisableSearchBoxSuggestions', type: 'REG_DWORD', data: 1 }]),
   },
   {

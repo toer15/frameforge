@@ -859,11 +859,15 @@ async function refreshFixOnce() {
   renderFixedNow();
   // A pending restart is a follow-up step, not a problem: it doesn't count toward the open problems.
   const open = items.filter((i) => i.id !== 'restart');
-  const auto = open.filter((i) => i.auto).length;
+  // "Fixes itself" is only said about problems the background really works on; the rest that FrameForge can do
+  // are one click away, and are counted as that.
+  const selfFix = (i) => i.auto && (!i.when || i.when.kind !== 'you');
+  const auto = open.filter(selfFix).length;
+  const click = open.filter((i) => i.auto && !selfFix(i)).length;
   const you = open.filter((i) => !i.auto).length;
   const restart = items.some((i) => i.id === 'restart');
   $('#fixCounts').innerHTML =
-    (open.length ? cnt(open.length, 'open', 'warn') + cnt(auto, 'fixable automatically', 'on') + cnt(you, you === 1 ? 'needs you' : 'need you') : '<span class="cnt on"><b>0</b>open — all good</span>') +
+    (open.length ? cnt(open.length, 'open', 'warn') + cnt(auto, auto === 1 ? 'fixes itself' : 'fix themselves', 'on') + (click ? cnt(click, click === 1 ? 'needs one click' : 'need one click') : '') + cnt(you, you === 1 ? 'needs you' : 'need you') : '<span class="cnt on"><b>0</b>open — all good</span>') +
     (restart ? '<span class="cnt"><b>1</b>restart pending</span>' : '');
   const badge = $('#fixBadge');
   badge.textContent = open.length;
@@ -871,8 +875,9 @@ async function refreshFixOnce() {
   $('#fixAllBtn').disabled = fixAllRunning || !items.length;
   $('#fixList').innerHTML = items.length
     ? items.map((it) => `<div class="fix-item ${it.level}" data-fix="${esc(it.id)}">
-        <h3>${esc(it.title)}${it.auto ? '<span class="tag rec">Can fix automatically</span>' : ''}${it.bios ? '<span class="tag bios">Fixed in the BIOS</span>' : ''}</h3>
+        <h3>${esc(it.title)}${it.auto ? `<span class="tag rec">${it.when && it.when.kind === 'you' ? 'One click fixes it' : 'Fixes itself'}</span>` : ''}${it.bios ? '<span class="tag bios">Fixed in the BIOS</span>' : ''}</h3>
         <p>${esc(it.body || '')}</p>
+        ${it.when ? `<p class="fix-when ${esc(it.when.kind)}">${esc(it.when.text)}</p>` : ''}
         ${it.details && it.details.length ? `<details><summary>What happened (${it.details.length})</summary><ul class="ch-exact">${it.details.map((d) => `<li><code>${esc(d)}</code></li>`).join('')}</ul></details>` : ''}
         ${it.manual && !it.auto ? `<details class="how"><summary>How to fix it</summary><ol class="fr-steps">${it.manual.map((m) => `<li>${esc(m)}</li>`).join('')}</ol></details>` : ''}
         <div class="fix-actions">

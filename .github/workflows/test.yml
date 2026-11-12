@@ -24,7 +24,7 @@ jobs:
 
       # Must pass: these cover what changes Windows itself.
       - name: Game Booster on real Windows, Fix Mode recovery, sensors
-        run: node --test tests/booster.test.js tests/frameplan.test.js tests/fix-recovery.test.js tests/sensors-performance.test.js
+        run: node --test tests/booster.test.js tests/frameplan.test.js tests/bgfix.test.js tests/fix-recovery.test.js tests/sensors-performance.test.js
 
       # The whole suite, including the demo-window tests. Shown for information; some need a desktop session.
       - name: Everything else

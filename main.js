@@ -28,6 +28,7 @@ const cleaner = require('./src/cleaner');
 const startupApps = require('./src/startup');
 const drives = require('./src/drives');
 const { Booster } = require('./src/booster');
+const bgfix = require('./src/bgfix');
 
 app.setAppUserModelId('com.twicytom.frameforge');
 
@@ -600,7 +601,7 @@ function tweakPhase(t, { recover = false, cancellable = false } = {}) {
       else if (r.status !== 'done') {
         r.details = [`First attempt: ${firstFailure}`, ...(r.details || [])];
         r.message = `Automatic retry did not finish. ${r.message}`;
-        bgTried.set(`step_${t.id}`, Date.now());
+        bgTried.record(`step_${t.id}`, false); // counts as the first attempt: Fix mode tries again in 5 minutes
       }
     }
     step({ id: t.id, name: t.name, status: r.status, message: r.message });
@@ -836,6 +837,7 @@ async function runAuto(on, { quiet = false } = {}) {
     busy = false;
     runState = null;
     detectExtra().then(() => send('fix:changed', true)).catch(() => {}); // re-check: Auto Mode may have fixed things
+    backgroundFixSoon('auto-mode', 6000); // and fix what the run left behind straight away, not at the next 2-minute check
     enforceAnimations('auto');
     rebuildTrayMenu();
     send('auto:done', { on: settings.get().autoMode, needsReboot, active: optimizer.activeCount(), quiet, stopped, unresolved });
@@ -1035,7 +1037,10 @@ async function detectExtra() {
 /** FrameForge changes made since Windows last started that need a restart. */
 function restartNeededFor() {
   const boot = Date.now() - os.uptime() * 1000;
-  return Object.values(changes.all()).filter((c) => c.reboot && c.at > boot).map((c) => c.name);
+  // The tweak's current definition decides: one that no longer needs a restart stops asking for it.
+  return Object.entries(changes.all())
+    .filter(([id, c]) => c.reboot && c.at > boot && ((tweakById(id) || { reboot: true }).reboot !== false))
+    .map(([, c]) => c.name);
 }
 
 /** How a problem reads once it's fixed (shown under "Fixed just now"). */
@@ -1207,8 +1212,15 @@ function fixList() {
   for (const it of shown) {
     it.auto = it.strategies.length > 0 || (it.restartItem && settings.get().autoRestart);
     it.fixedTitle = fixedTitleFor(it);
+    it.when = whenFixed(it);
   }
   return shown;
+}
+
+/** One sentence per problem: will FrameForge fix this by itself, and what is it waiting for? (src/bgfix.js) */
+function whenFixed(it) {
+  const s = settings.get();
+  return bgfix.whenFixed(it, { autoFix: s.autoFix, autoRestart: s.autoRestart, mayRestart: mayAutoRestart(), admin: admin || DEMO || !IS_WIN, game: gameRunning(), idleMin: idleMinutes(), attempt: bgTried.get(it.id) });
 }
 const held = new Map(); // problem id -> { until }: fixed, but the condition can't be checked until it changes
 
@@ -1708,30 +1720,55 @@ async function fixEverything({ silent = false, only = null, resumed = false } = 
 }
 
 /**
- * Fix mode on its own: after start and after every re-check (every 2 minutes) FrameForge fixes what it safely
- * can without asking. What's safe depends on what you're doing:
+ * Fix mode on its own: after start, after every re-check (every 2 minutes), when Auto Mode finishes and when the
+ * Fix tab is opened, FrameForge fixes what it safely can without asking. What's safe depends on what you're doing:
  *   'game'  – any time, even mid-game (e.g. cooling a hot graphics card — no flicker, no lag)
  *   'quiet' – not while a game runs (e.g. switching the display to its full refresh rate makes it blink once)
- *   'idle'  – only when you've been away for 10+ minutes (e.g. cleanup or Chris Titus — they keep the CPU busy)
- * Each problem is tried at most once every 6 hours, so a fix that doesn't work never runs in a loop.
+ *   'idle'  – only when you've been away for 5+ minutes (bgfix.IDLE_MIN) (e.g. cleanup or Chris Titus — they keep the CPU busy)
+ * A fix that doesn't work is retried after 5 minutes, then 30 minutes, then every 6 hours — so a passing hiccup
+ * is fixed quickly, and a fix that can't work never runs in a loop. A problem that goes away and comes back
+ * later starts fresh. An attempt only counts when something was actually tried.
  */
-const bgTried = new Map();
+const bgTried = new bgfix.Attempts();
 let bgRunning = false;
-async function backgroundFix(why = 'check') {
+let bgSoon = null;
+let bgRetry = null;
+/** Run the background fix in a moment (several callers at once become one run). */
+function backgroundFixSoon(why = 'check', ms = 4000) {
+  if (bgSoon) return;
+  bgSoon = setTimeout(() => {
+    bgSoon = null;
+    backgroundFix(why).catch(() => {});
+  }, ms);
+}
+async function backgroundFix(why = 'check', tries = 0) {
   const s = settings.get();
-  if (!s.autoFix || bgRunning || fixAllRunning || busy || fixBusy || restartTimer) return null;
+  if (!s.autoFix || restartTimer) return null;
   if (IS_WIN && !DEMO && !admin) return null;
+  if (bgRunning || fixAllRunning || busy || fixBusy) {
+    // Something else is running (Auto Mode at start-up, a repair): come back shortly rather than waiting for
+    // the next 2-minute check — or, at start-up, losing the first chance altogether.
+    if (!bgRetry && tries < 20) {
+      bgRetry = setTimeout(() => {
+        bgRetry = null;
+        backgroundFix(why, tries + 1).catch(() => {});
+      }, 15000);
+    }
+    return null;
+  }
   bgRunning = true;
   try {
     await detectExtra();
     const game = gameRunning();
     const idle = idleMinutes();
-    const ok = (it) => it.bg && it.strategies.length && (it.bg === 'game' || (it.bg === 'quiet' && !game) || (it.bg === 'idle' && !game && idle >= 10));
-    const now = Date.now();
-    const todo = fixList().filter((it) => ok(it) && !(now - (bgTried.get(it.id) || 0) < 6 * 60 * 60 * 1000));
+    const list = fixList();
+    bgTried.keepOnly(list.map((it) => it.id)); // gone: next time starts fresh
+    const todo = list.filter((it) => bgfix.momentOk(it, { game, idleMin: idle }) && bgTried.due(it.id));
     if (todo.length) {
-      todo.forEach((it) => bgTried.set(it.id, now));
       const r = await fixEverything({ silent: true, only: todo.map((i) => i.id) });
+      if (r && r.busy) return null; // nothing was tried: don't count it
+      const after = fixList();
+      for (const it of todo) bgTried.record(it.id, !after.some((x) => x.id === it.id));
       if (r && r.fixed) {
         const n = r.fixedTitles.length;
         if (Notification.isSupported() && windowHidden()) {
@@ -1744,6 +1781,7 @@ async function backgroundFix(why = 'check') {
         }
         send('fix:auto', { fixed: r.fixedTitles, why });
       }
+      send('fix:changed', true);
     }
     // A restart that FrameForge's own changes need: done while you're away (20+ min idle, no game running).
     const pending = restartNeededFor();
@@ -2049,6 +2087,7 @@ ipcMain.handle('anim:set', async (_e, on) => {
 ipcMain.handle('fix:list', async () => {
   if (Date.now() - extra.at > 30000) await detectExtra();
   const s = settings.get();
+  backgroundFixSoon('opened', 1500); // looking at the list is a good moment to work through it
   return { items: fixList(), repairs: Object.entries(fixes.REPAIRS).map(([id, r]) => ({ id, name: r.name, desc: r.desc, reboot: !!r.reboot })), busy: fixBusy || fixAllRunning, autoFix: s.autoFix, autoRestart: s.autoRestart, restart: restartInfo };
 });
 ipcMain.handle('fix:action', (_e, action) => runFixAction(action));

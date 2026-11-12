@@ -1,8 +1,7 @@
-**A faster PC while you play, and a new look**
+**Fix mode now really works through its list by itself**
 
-- **Game Booster.** While a game runs, FrameForge now gives the game High CPU priority and slows background browsers, launcher web views and file sync, then puts everything back when you close the game. Discord, OBS and music are never touched. The switch is on Home. (The old “priority for game processes” switch only saved a setting and never changed a process; this replaces it.)
-- **Biggest FPS gains for your PC.** Home now shows a short list made for the exact graphics card, processor and memory FrameForge finds: the frame generation your card has (NVIDIA Smooth Motion on RTX 40/50, AMD Fluid Motion Frames 2 on RX 6000 and newer), the right upscaler (DLSS, FSR, XeSS), RAM running below its rated speed, and a frame cap matched to your screen — each with where to click and what it realistically gives.
-- **9 new tweaks**: keep games on the fast cores of Intel 12th gen and newer processors, stop Edge and Chrome running after you close them, Widgets off, no promoted apps or ads, faster Start menu search, folders that open instantly, a fix for flicker and stutter in borderless games, and an optional Memory Integrity switch for a few percent more FPS (a security trade-off, off unless you choose it).
-- **Find tweaks fast**: a search box and On / Off / Recommended filters on the Tweaks tab.
-- **New look**: forged-steel design across every tab, live graphs for FPS and temperatures, CPU and GPU load bars.
-- **FrameForge itself is lighter**: the Home tab uses about a tenth of the processor time it did, and a hidden or minimized window updates every 5 seconds instead of every second.
+- **Quicker retries.** A fix that didn’t stick was only tried again after 6 hours. Now it is tried again after 5 minutes, then 30 minutes, then every 6 hours.
+- **No more lost attempts.** If FrameForge was busy at the moment of a check (for example Auto Mode running at start-up), the attempt was skipped and the 6-hour wait started anyway. Now it comes back 15 seconds later, and only real attempts count.
+- **Starts sooner.** Fixing begins right after Auto Mode finishes and whenever you open the Fix tab, not only at the 2-minute check. Clean-ups that keep the processor busy start after 5 minutes away instead of 10.
+- **Every problem says what it is waiting for**: fixing itself now, waiting for your game to close, waiting until you’re away, trying again in a few minutes, or needing a click from you. “Can fix automatically” used to be shown on problems FrameForge deliberately leaves to you (such as Windows protection settings); those now say “One click fixes it”.
+- **No restart request for small tweaks.** “Turn off Widgets” and “Faster Start menu search” from 1.14.0 no longer put “A restart is needed” in Fix mode; signing out is enough.
