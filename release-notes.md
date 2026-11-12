@@ -1,3 +1,11 @@
+**More common graphics cards get a proper FPS target**
+
+- **The recommender now recognises more cards.** RTX 3050 and 2060, RX 5700 XT and 6700 — including the non-XT
+  6800/6700 and 5600 XT variants — no longer fall through to generic advice, and RTX 4050 laptops are covered too.
+- **An unknown card no longer defaults to 60 FPS.** If FrameForge can't identify the GPU, the recommendation follows
+  the display's refresh rate instead: 141 FPS on a 144 Hz screen, 162 on a 165 Hz one. The card explains that a cap
+  doesn't force the GPU to reach it, and the target is still freely editable.
+
 **A recommended FPS target for your exact PC, plus one-click RTSS setup**
 
 - **The FPS limiter now recommends a target for your hardware.** It reads your graphics card and display refresh rate

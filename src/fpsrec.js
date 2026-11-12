@@ -7,9 +7,9 @@ function gpuClass(name = '') {
   const t = String(name).toLowerCase();
   if (!t || /no graphics|basic display|microsoft basic/.test(t)) return 'unknown';
   if (/intel.*(hd|uhd|iris)|radeon.*(graphics|vega)|\bvega\s*\d|apple m\d|qualcomm|adreno/.test(t)) return 'integrated';
-  if (/(rtx\s*(5090|5080|5070\s*ti|4090|4080|4070\s*ti|4070\s*super|3090|3080\s*ti)|rx\s*(7900\s*xtx|7900\s*xt|9070\s*xt))/.test(t)) return 'high';
-  if (/(rtx\s*(5070|4070|4060\s*ti|4060|3080|3070|3060\s*ti|3060|2080|2070|1080\s*ti|1080)|rx\s*(9070|9060\s*xt|7800\s*xt|7700\s*xt|7600|6800\s*xt|6700\s*xt|6600\s*xt|6600)|arc\s*(b580|a770|a750|a580))/.test(t)) return 'mid';
-  if (/(gtx\s*(1660|1650|1080|1070|1060|1050)|rx\s*(6500|6400|580|570|550|480)|arc\s*a380|\bmx\s*\d|quadro|tesla)/.test(t)) return 'low';
+  if (/(rtx\s*(5090|5080|5070\s*ti|4090|4080|4070\s*ti|4070\s*super|3090|3080\s*ti|2080\s*ti)|rx\s*(7900\s*xtx|7900\s*xt|7900\s*gre|9070\s*xt|6950\s*xt|6900\s*xt))/.test(t)) return 'high';
+  if (/(rtx\s*(5070|4070|4060\s*ti|4060|3080|3070|3060\s*ti|3060|2080|2070|2060|1080\s*ti|1080)|rx\s*(9070|9060\s*xt|7800\s*xt|7700\s*xt|7600|6800(?:\s*xt)?|6700(?:\s*xt)?|6600(?:\s*xt)?|5700(?:\s*xt)?|5600\s*xt)|arc\s*(b580|a770|a750|a580))/.test(t)) return 'mid';
+  if (/(rtx\s*(4050|3050)|gtx\s*(1660|1650|1080|1070|1060|1050)|rx\s*(6500|6400|580|570|550|480)|arc\s*a380|\bmx\s*\d|quadro|tesla)/.test(t)) return 'low';
   return 'unknown';
 }
 
@@ -29,7 +29,7 @@ function recommend(rig) {
   const hasRefresh = refreshHz >= 20;
   const hz = hasRefresh ? refreshHz : 60;
 
-  const ceiling = { high: hz, mid: 144, low: 75, integrated: 60, unknown: 60 }[klass];
+  const ceiling = { high: hz, mid: 144, low: 75, integrated: 60, unknown: hz }[klass];
   const base = Math.min(hz, ceiling);
   // At 100 Hz and above, staying a few frames under the refresh rate leaves
   // room for frame-time spikes and keeps VRR from hitting its ceiling.
@@ -47,7 +47,7 @@ function recommend(rig) {
   } else if (klass === 'high') {
     reason = `Your ${gpu} can drive this ${hz} Hz display, so ${fps} FPS is the sweet spot: just under the refresh rate, with room for frame-time spikes.`;
   } else {
-    reason = `FrameForge couldn’t identify your graphics card, so ${fps} FPS is a safe starting point for this ${hz} Hz display.`;
+    reason = `FrameForge couldn’t identify your graphics card, so this follows your ${hz} Hz display. Lower it if a game runs below the cap; a cap does not force the card to reach it.`;
   }
 
   return { fps, refreshHz: hasRefresh ? hz : null, gpuClass: klass, gpu, reason };
