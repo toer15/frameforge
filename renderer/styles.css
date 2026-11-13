@@ -135,6 +135,7 @@ button:disabled { opacity: 0.5; cursor: default; }
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .forge p { margin: 12px 0 0; font-size: 18px; color: var(--muted); font-weight: 600; max-width: 56ch; }
+.forge-restart { margin-top: 14px; }
 .forge.on p { color: var(--heat-hot); }
 .forge-glow {
   position: absolute; left: -10%; right: -10%; bottom: -120px; height: 200px;

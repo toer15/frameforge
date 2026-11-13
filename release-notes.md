@@ -1,3 +1,9 @@
+**FrameForge 1.17.7: restart control at the top**
+
+- Moved **Restart PC to finish** into the Home screen’s top Auto Mode card, beneath its status, so it appears where the restart action is needed.
+
+## Previous release
+
 **FrameForge 1.17.6: clearer FPS stability status**
 
 - The red FPS stability status now says “Not consistent.”
