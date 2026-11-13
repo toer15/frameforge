@@ -1,3 +1,9 @@
+**FrameForge 1.17.8: keep the driver app closed before restart**
+
+- Auto Mode skips opening AMD Software, the NVIDIA app or Intel Graphics Software while a PC restart is pending. You can open it manually after restarting.
+
+## Previous release
+
 **FrameForge 1.17.7: restart control at the top**
 
 - Moved **Restart PC to finish** into the Home screen’s top Auto Mode card, beneath its status, so it appears where the restart action is needed.

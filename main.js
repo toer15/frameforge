@@ -775,8 +775,13 @@ function vendorPhase() {
     }
     const v2 = rig.vendorApp;
     if (v2 && v2.installed && s.openVendorApp) {
-      if (!DEMO && v2.path) shell.openPath(v2.path);
-      step({ id: 'vendor_open', name: `Opened ${v2.name}`, status: 'done', message: 'Finish the driver tune-up checklist on the Home tab.' });
+      const restartPending = Object.values(changes.all()).some((change) => change.reboot && change.at > bootTime());
+      if (restartPending) {
+        step({ id: 'vendor_open', name: `Skipped opening ${v2.name}`, status: 'done', message: 'A PC restart is pending. Open the driver app manually after restarting if you still want to use it.' });
+      } else {
+        if (!DEMO && v2.path) shell.openPath(v2.path);
+        step({ id: 'vendor_open', name: `Opened ${v2.name}`, status: 'done', message: 'Finish the driver tune-up checklist on the Home tab.' });
+      }
     } else if (v2 && !v2.installed) {
       step({ id: 'vendor', name: `${v2.name} not found`, status: 'warn', message: 'Turn on “Download performance tools” in Settings so the assistant can get it.' });
     }
