@@ -54,6 +54,7 @@ function testMain({ autoFix = true, hasAdmin = true, outcomes = [failure, succes
     './src/sensors': { Sensors: class {} },
     './src/booster': { Booster: class {} },
     './src/bgfix': require('../src/bgfix'),
+    './renderer/overlay-core': require('../renderer/overlay-core'),
     './src/gamewatch': require('../src/gamewatch'),
     './src/optimizer': {
       TWEAKS: [t],

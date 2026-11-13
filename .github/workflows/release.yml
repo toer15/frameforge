@@ -45,7 +45,7 @@ jobs:
 
       - name: Check Fix Mode recovery, sensor performance and the Game Booster (on this real Windows machine)
         if: steps.check.outputs.skip != 'true'
-        run: node --test tests/fix-recovery.test.js tests/sensors-performance.test.js tests/booster.test.js tests/bgfix.test.js tests/gamewatch.test.js
+        run: node --test tests/fix-recovery.test.js tests/sensors-performance.test.js tests/booster.test.js tests/bgfix.test.js tests/gamewatch.test.js tests/overlay.test.js tests/sensors-extra.test.js
 
       - name: Build installer and publish release
         if: steps.check.outputs.skip != 'true'

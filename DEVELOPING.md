@@ -171,7 +171,40 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
   20–30 °C off. Each number on Home says where it came from.
 - With several graphics chips (e.g. Ryzen built-in graphics + a Radeon card) it reads the card with the
   most video memory.
-- Toggle the overlay in-game with **Ctrl+Shift+F** (changeable in Settings).
+- Toggle the overlay in-game with **Ctrl+Shift+F** (changeable on the FPS limiter tab).
+
+## The overlay and its studio (1.17.0)
+
+- **One renderer, three users.** `renderer/overlay-core.js` turns a `stats` message plus the `overlay*` settings into
+  an HTML string (`FFOverlay.html`). The overlay window (`renderer/overlay.html`), the live preview on the FPS
+  limiter tab and `tests/overlay.test.js` all call it, with `renderer/overlay.css` (every class starts `ffo-`).
+  `normalize()` is the single place that decides what a valid setting is; `settings:set` in `main.js` runs every
+  incoming `overlay*` value through it, so nothing invalid reaches `settings.json`.
+- **Styles**: `panel`, `list`, `bar`, `mini`. **Items** (`overlayItems`): fps, low, frametime, graph, cap, game,
+  gpuTemp, gpuLoad, vram, gpuPower, gpuFan, gpuClock, cpuTemp, cpuLoad, cpuPower, ram, meters, time. Look:
+  `overlayAccent` (#rrggbb), `overlayScale` (60–200 %), `overlayOpacity` (0–100 %, under 15 % draws text only),
+  `overlayFont` (orbitron | rajdhani | mono), `overlayCorner` (notch | round | square), `overlayMargin` (0–300 px),
+  `overlayPosition` (six spots). `fpsCounter` and `tempMonitor` still decide whether the FPS half and the hardware
+  half exist at all.
+- **No invented numbers.** `model()` adds a row only when its reading is a finite number, so a card that reports no
+  fan speed simply has no fan line. A fan at 0 RPM is a reading and is shown. With no game presenting, FPS is “—”.
+- **New readings.** `src/sensors.js` now also picks, for the main graphics card, `gpuPower`, `gpuFan`, `gpuClock`,
+  `gpuMemClock`, `vramUsed`, `vramTotal`, and `cpuPower`, from the same LibreHardwareMonitor query (the WMI filter
+  and the web-server flattening were widened; `nvidia-smi` adds memory and power as a fallback). `main.js` adds
+  `ramUsed` / `ramTotal` from Windows itself and `cap` (the limiter's number while it is on).
+- **Window.** The overlay page measures its drawing and sends `overlay:size`; `main.js` resizes the click-through
+  window to exactly that and places it (`placeOverlay`), then shows it. It is never animated and only redraws when a
+  `stats` message arrives.
+- **Studio** (`#overlayGroup` on the FPS limiter tab, `renderOverlayStudio()` in `renderer/app.js`). The FPS counter,
+  hardware readings and shortcut controls moved here from Settings (which keeps a button to this tab). Sliders and
+  the colour picker update the preview while dragging and save on release. The preview uses this PC's live readings;
+  only the FPS numbers are examples while no game is running. Chips for readings this PC doesn't report are shown
+  faded, and a hint offers PresentMon or LibreHardwareMonitor when one is missing.
+- Tests: `tests/overlay.test.js` (drawing rules), `tests/sensors-extra.test.js` (sensor picking; on Windows it also
+  parses the helper script with Windows PowerShell), `tests/overlay-ui.test.js` (the real app in demo mode: the
+  switches' new home, every control reaching the real overlay window, and the window fitting its content).
+- Not yet seen on real hardware: the extra sensor names on a physical NVIDIA, AMD and Intel card (they follow
+  LibreHardwareMonitor's naming), and the overlay over an actual game.
 
 ## Presets (the slideshow on Home)
 

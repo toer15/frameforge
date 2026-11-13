@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('ff', {
   openLink: (u) => ipcRenderer.invoke('link:open', u),
   restartPc: () => ipcRenderer.invoke('pc:restart'),
   toggleOverlay: () => ipcRenderer.invoke('overlay:toggle'),
+  overlaySize: (w, h) => ipcRenderer.send('overlay:size', w, h), // from the overlay window: how big its content is
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   installUpdate: () => ipcRenderer.invoke('update:install'),

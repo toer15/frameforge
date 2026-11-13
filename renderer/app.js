@@ -395,6 +395,7 @@ function showBooster(b) {
 }
 ff.onStats((s) => {
   lastStats = s;
+  if ($('#view-limiter') && !$('#view-limiter').classList.contains('hidden')) drawOverlayPreview(true);
   if (s.fpsEnabled && s.fps) {
     txt('#tFps', s.fps.fps);
     txt('#tFpsSub', `${s.fps.app} · 1% low ${s.fps.low1}`);
@@ -494,13 +495,160 @@ ff.onToolProgress(({ p }) => {
 });
 
 let overlayOn = true;
-$('#overlayBtn').onclick = async () => {
-  overlayOn = await ff.toggleOverlay();
-  $('#overlayBtn').textContent = overlayOn ? 'Hide overlay' : 'Show overlay';
-};
-ff.onOverlayShown((v) => {
+/** The show/hide button is on Home and on the FPS limiter tab: both always say the same thing. */
+function overlayButtons(v) {
   overlayOn = v;
-  $('#overlayBtn').textContent = v ? 'Hide overlay' : 'Show overlay';
+  for (const id of ['#overlayBtn', '#ovToggleBtn']) $(id).textContent = v ? 'Hide overlay' : 'Show overlay';
+}
+$('#overlayBtn').onclick = $('#ovToggleBtn').onclick = async () => overlayButtons(await ff.toggleOverlay());
+ff.onOverlayShown(overlayButtons);
+
+/* ---------- FPS limiter tab: the overlay, and how it looks ----------
+   The preview is drawn by the same code as the real overlay (renderer/overlay-core.js), from this PC's live
+   readings. Only the FPS numbers are examples while no game is running. */
+const ovState = FFOverlay.createState();
+let ovDraft = {}; // a slider or colour being dragged: shown at once, saved when it is let go
+let ovTick = 0;
+const OV_GROUPS = [
+  ['Frames', ['fps', 'low', 'frametime', 'graph', 'cap', 'game']],
+  ['Graphics card', ['gpuTemp', 'gpuLoad', 'vram', 'gpuPower', 'gpuFan', 'gpuClock']],
+  ['Processor and memory', ['cpuTemp', 'cpuLoad', 'cpuPower', 'ram']],
+  ['Extras', ['meters', 'time']],
+];
+const OV_READING = { gpuTemp: 'gpuTemp', gpuLoad: 'gpuLoad', vram: 'vramUsed', gpuPower: 'gpuPower', gpuFan: 'gpuFan', gpuClock: 'gpuClock', cpuTemp: 'cpuTemp', cpuLoad: 'cpuLoad', cpuPower: 'cpuPower', ram: 'ramUsed' };
+const ovSettings = () => ({ ...(S || {}), ...ovDraft });
+
+function ovPreviewStats() {
+  const live = lastStats || {};
+  const st = { ...live, fpsEnabled: !!(S && S.fpsCounter), tempEnabled: !!(S && S.tempMonitor), cap: S && S.fpsLimitOn ? S.fpsLimit : null };
+  let example = false;
+  if (st.fpsEnabled && !(live.fps && live.fps.fps > 0)) {
+    const f = 144 + Math.round(9 * Math.sin(ovTick / 2.3) + 4 * Math.sin(ovTick / 0.9));
+    st.fps = { fps: f, low1: f - 31, app: 'your game' };
+    example = true;
+  }
+  return { st, example };
+}
+
+function drawOverlayPreview(advance = false) {
+  if (!S || !$('#ovPreview')) return;
+  const { st, example } = ovPreviewStats();
+  if (example && ovState.hist.length < 30) {
+    // No game running: start the example graph with a minute of example frames, so it isn't an empty box.
+    ovState.hist = Array.from({ length: 45 }, (_, i) => 144 + Math.round(9 * Math.sin((ovTick - 45 + i) / 2.3) + 4 * Math.sin((ovTick - 45 + i) / 0.9)));
+  }
+  if (advance) {
+    ovTick++;
+    FFOverlay.push(ovState, st);
+  }
+  const cfg = ovSettings();
+  $('#ovPreview').innerHTML = FFOverlay.html(st, cfg, ovState);
+  const stage = $('#ovStage');
+  stage.dataset.pos = FFOverlay.POSITIONS.includes(cfg.overlayPosition) ? cfg.overlayPosition : 'top-left';
+  stage.style.setProperty('--ov-margin', `${Math.min(60, FFOverlay.normalize(cfg).overlayMargin)}px`);
+  // Tall overlays (List with everything on) get a taller stage instead of being cut off.
+  const hud = $('#ovPreview');
+  stage.style.minHeight = `${Math.max(340, hud.offsetHeight + 96)}px`;
+  // The overlay can only show what FrameForge can measure: say which free tool is missing, with the download.
+  const live = lastStats;
+  const need = !live ? null : st.fpsEnabled && !live.fpsReady ? 'presentmon' : st.tempEnabled && !live.sensorsReady ? 'lhm' : null;
+  const needs = $('#ovNeeds');
+  if (need !== (needs.dataset.tool || null)) {
+    needs.dataset.tool = need || '';
+    needs.innerHTML = !need
+      ? ''
+      : need === 'presentmon'
+        ? '<span>The FPS number, 1% low, frame time and graph need PresentMon, a free tool from Intel. Until it is installed the overlay shows “—” for FPS.</span><button class="primary small" data-install="presentmon">Download it</button>'
+        : '<span>Temperatures, power, fan speed and video memory come from LibreHardwareMonitor (free, open source). Without it the overlay can only show load and memory.</span><button class="primary small" data-install="lhm">Download it</button>';
+  }
+  needs.classList.toggle('hidden', !need);
+  const off = !st.fpsEnabled && !st.tempEnabled;
+  txt('#ovNote', off ? 'The overlay is off. Turn on the FPS counter or the hardware readings above to see it.' : !$('#ovPreview').firstChild ? 'Nothing is switched on under “What it shows”.' : example ? 'Live preview. No game is running, so the FPS numbers are examples; the rest is this PC right now.' : 'Live preview: exactly what sits on top of your game.');
+}
+
+function renderOverlayStudio() {
+  if (!S || !$('#ovItems')) return;
+  const cfg = FFOverlay.normalize(ovSettings());
+  const pos = FFOverlay.POSITIONS.includes(S.overlayPosition) ? S.overlayPosition : 'top-left';
+  $$('[data-ov]').forEach((group) => {
+    const cur = group.dataset.ov === 'overlayPosition' ? pos : cfg[group.dataset.ov];
+    group.querySelectorAll('[data-val]').forEach((b) => {
+      b.classList.toggle('on', b.dataset.val === cur);
+      b.setAttribute('aria-pressed', String(b.dataset.val === cur));
+    });
+  });
+  $$('[data-ov-range]').forEach((r) => {
+    const k = r.dataset.ovRange;
+    if (document.activeElement !== r) r.value = cfg[k];
+    txt(`[data-ov-out="${k}"]`, k === 'overlayMargin' ? `${cfg[k]} px` : `${cfg[k]}%`);
+  });
+  // What it shows: one chip per reading. A reading this PC's sensors don't report is marked, not hidden.
+  const live = lastStats || {};
+  const sensorsSeen = !!(S.tempMonitor && lastStats);
+  let missing = 0;
+  $('#ovItems').innerHTML = OV_GROUPS.map(([title, ids]) => {
+    const chips = ids
+      .map((id) => {
+        const it = FFOverlay.ITEMS.find((x) => x.id === id);
+        const on = cfg.overlayItems.includes(id);
+        const idle = (it.needs === 'fps' && !S.fpsCounter) || (it.needs === 'sensors' && !S.tempMonitor);
+        const na = !idle && sensorsSeen && OV_READING[id] && live[OV_READING[id]] == null;
+        if (na && on) missing++;
+        const tip = idle ? (it.needs === 'fps' ? 'Needs the FPS counter switched on' : 'Needs “Temperatures and hardware” switched on') : na ? 'This PC’s sensors don’t report this, so it stays off the overlay' : it.hint || '';
+        return `<button type="button" class="ov-chip${on ? ' on' : ''}${idle ? ' idle' : ''}${na ? ' na' : ''}" data-ov-item="${id}" aria-pressed="${on}" title="${esc(tip)}">${esc(it.label)}</button>`;
+      })
+      .join('');
+    return `<div class="ov-item-group"><span>${title}</span><div>${chips}</div></div>`;
+  }).join('');
+  txt('#ovItemsNote', missing ? `${missing} of the readings you picked ${missing === 1 ? 'is' : 'are'} not reported by this PC’s sensors (shown faded). ${missing === 1 ? 'It stays' : 'They stay'} off the overlay rather than showing a wrong number.` : '');
+  $('#ovSwatches').innerHTML =
+    FFOverlay.ACCENTS.map((c) => `<button type="button" class="ov-swatch${c === cfg.overlayAccent ? ' on' : ''}" data-ov-accent="${c}" style="--sw:${c}" title="${c}" aria-label="Accent ${c}" aria-pressed="${c === cfg.overlayAccent}"></button>`).join('') +
+    `<label class="ov-custom${FFOverlay.ACCENTS.includes(cfg.overlayAccent) ? '' : ' on'}" title="Pick any colour"><input type="color" id="ovColor" value="${cfg.overlayAccent}" aria-label="Custom accent colour" /><span>Custom</span></label>`;
+  drawOverlayPreview();
+}
+
+async function ovSave(patch) {
+  for (const k of Object.keys(patch)) delete ovDraft[k];
+  S = await ff.setSettings(patch);
+  if (S && S._error) {
+    toast(S._error, 8000);
+    delete S._error;
+  }
+  renderOverlayStudio();
+}
+$('#overlayGroup').addEventListener('click', (e) => {
+  const seg = e.target.closest('[data-ov] [data-val]');
+  if (seg) return void ovSave({ [seg.closest('[data-ov]').dataset.ov]: seg.dataset.val });
+  const chip = e.target.closest('[data-ov-item]');
+  if (chip) {
+    const cur = FFOverlay.normalize(S).overlayItems;
+    const id = chip.dataset.ovItem;
+    return void ovSave({ overlayItems: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
+  }
+  const sw = e.target.closest('[data-ov-accent]');
+  if (sw) return void ovSave({ overlayAccent: sw.dataset.ovAccent });
+});
+// Sliders and the colour picker: the preview follows while dragging; the choice is saved on release.
+$('#overlayGroup').addEventListener('input', (e) => {
+  const k = e.target.dataset.ovRange || (e.target.id === 'ovColor' ? 'overlayAccent' : null);
+  if (!k) return;
+  ovDraft[k] = e.target.dataset.ovRange ? Number(e.target.value) : e.target.value;
+  if (e.target.dataset.ovRange) txt(`[data-ov-out="${k}"]`, k === 'overlayMargin' ? `${e.target.value} px` : `${e.target.value}%`);
+  drawOverlayPreview();
+});
+$('#overlayGroup').addEventListener('change', (e) => {
+  if (e.target.dataset.ovRange) ovSave({ [e.target.dataset.ovRange]: Number(e.target.value) });
+  else if (e.target.id === 'ovColor') ovSave({ overlayAccent: e.target.value });
+});
+$('#ovResetBtn').onclick = async () => {
+  ovDraft = {};
+  await ovSave({ ...FFOverlay.DEFAULTS, overlayPosition: 'top-left' });
+  toast('The overlay is back to how it shipped.');
+};
+// Buttons anywhere that just take you to another tab.
+document.addEventListener('click', (e) => {
+  const go = e.target.closest('[data-goto]');
+  if (go) $(`.nav-item[data-view="${go.dataset.goto}"]`).click();
 });
 
 /* ---------- Choose parts dialog ---------- */
@@ -1712,6 +1860,7 @@ function renderSettings() {
   }).join('');
   $('#resetProfileBtn').classList.toggle('hidden', !S.tweaksCustomized);
   renderTools();
+  renderOverlayStudio();
 }
 
 async function renderTools() {
@@ -1767,6 +1916,7 @@ document.addEventListener('change', async (e) => {
     delete S._error;
     renderSettings();
   }
+  if (['fpsCounter', 'tempMonitor', 'fpsLimitOn', 'fpsLimit'].includes(k)) renderOverlayStudio(); // the preview shows what these switch on
   if (['aiProvider', 'aiModel', 'ollamaModel'].includes(k)) refreshAi();
   if (k === 'autoFix' || k === 'autoRestart') {
     renderSettings(); // the same switch is in Fix mode and in Settings
@@ -3027,7 +3177,7 @@ ff.clean.onProgress((p) => {
   const u = await ff.updateState();
   if (u) receiveUpdate(u);
   if (S.updateSource) $('#updSource').value = S.updateSource;
-  $('#overlayBtn').textContent = 'Hide overlay';
+  overlayButtons(true);
   const st = await ff.autoState();
   if (st && st.busy) {
     busy = true;

@@ -30,6 +30,7 @@ const startupApps = require('./src/startup');
 const drives = require('./src/drives');
 const { Booster } = require('./src/booster');
 const bgfix = require('./src/bgfix');
+const overlayCore = require('./renderer/overlay-core'); // the overlay's allowed settings, shared with the windows that draw it
 const { GameWatch, isDesktopApp } = require('./src/gamewatch');
 
 app.setAppUserModelId('com.twicytom.frameforge');
@@ -359,10 +360,11 @@ function placeOverlay() {
   if (!overlayWin) return;
   const { bounds } = screen.getPrimaryDisplay();
   const [w, h] = overlayWin.getSize();
-  const pos = settings.get().overlayPosition;
-  const m = 14;
-  const x = pos.endsWith('right') ? bounds.x + bounds.width - w - m : bounds.x + m;
-  const y = pos.startsWith('bottom') ? bounds.y + bounds.height - h - m - 48 : bounds.y + m;
+  const s = settings.get();
+  const pos = overlayCore.POSITIONS.includes(s.overlayPosition) ? s.overlayPosition : 'top-left';
+  const m = overlayCore.normalize(s).overlayMargin;
+  const x = pos.endsWith('right') ? bounds.x + bounds.width - w - m : pos.endsWith('center') ? bounds.x + (bounds.width - w) / 2 : bounds.x + m;
+  const y = pos.startsWith('bottom') ? bounds.y + bounds.height - h - m - 48 : bounds.y + m; // 48: stay clear of the taskbar
   overlayWin.setPosition(Math.round(x), Math.round(y));
 }
 
@@ -375,9 +377,9 @@ function applyOverlay() {
     return;
   }
   if (!overlayWin) {
-    overlayWin = new BrowserWindow({
-      width: 230,
-      height: 150,
+    const win = new BrowserWindow({
+      width: 280,
+      height: 320,
       frame: false,
       transparent: true,
       resizable: false,
@@ -389,15 +391,43 @@ function applyOverlay() {
       show: false,
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
     });
-    overlayWin.setAlwaysOnTop(true, 'screen-saver');
-    overlayWin.setIgnoreMouseEvents(true);
-    overlayWin.setVisibleOnAllWorkspaces(true);
-    overlayWin.loadFile(path.join(__dirname, 'renderer', 'overlay.html'));
-    overlayWin.once('ready-to-show', () => overlayWin && overlayWin.showInactive());
+    overlayWin = win;
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.setIgnoreMouseEvents(true);
+    win.setVisibleOnAllWorkspaces(true);
+    win.loadFile(path.join(__dirname, 'renderer', 'overlay.html'));
+    // Settings go in as soon as the page can take them; the window appears once it has reported its size (or after
+    // 2 seconds regardless), so it never flashes in the wrong place.
+    win.webContents.once('did-finish-load', () => {
+      if (overlayWin !== win || win.isDestroyed()) return;
+      win.webContents.send('overlay:config', settings.get());
+      if (lastStats) win.webContents.send('stats', lastStats);
+    });
+    setTimeout(() => {
+      if (overlayWin === win && !win.isDestroyed() && !win.isVisible()) win.showInactive();
+    }, 2000);
   }
   placeOverlay();
-  overlayWin.webContents.send('overlay:config', settings.get());
+  if (!overlayWin.webContents.isLoading()) overlayWin.webContents.send('overlay:config', settings.get());
 }
+
+// The overlay page reports how big its drawing is; the window is made to fit exactly, then put in its corner.
+ipcMain.on('overlay:size', (e, w, h) => {
+  if (!overlayWin || overlayWin.isDestroyed() || e.sender !== overlayWin.webContents) return;
+  const width = Math.max(1, Math.min(2400, Math.round(Number(w)) || 1));
+  const height = Math.max(1, Math.min(1400, Math.round(Number(h)) || 1));
+  const [cw, ch] = overlayWin.getSize();
+  if (cw !== width || ch !== height) {
+    // On Windows a window the user can't resize can still be resized by the app itself. A transparent window must
+    // never be switched to "resizable" there (it can stop being transparent), so that is only done elsewhere, where
+    // the window manager would otherwise ignore the new size (development on Linux).
+    if (!IS_WIN) overlayWin.setResizable(true);
+    overlayWin.setSize(width, height);
+    if (!IS_WIN) overlayWin.setResizable(false);
+  }
+  placeOverlay();
+  if (!overlayWin.isVisible() && width > 1 && height > 1) overlayWin.showInactive();
+});
 
 function toggleOverlay() {
   overlayShown = !overlayShown;
@@ -467,6 +497,10 @@ function telemetryTick() {
     tempEnabled: s.tempMonitor,
     fpsReady: DEMO || (tl.presentmon && admin),
     sensorsReady: tl.lhm,
+    // Memory in use, straight from Windows (no sensor program needed), and the limiter's number for the overlay.
+    ramTotal: Math.round((os.totalmem() / 1073741824) * 10) / 10,
+    ramUsed: Math.round(((os.totalmem() - os.freemem()) / 1073741824) * 10) / 10,
+    cap: s.fpsLimitOn ? s.fpsLimit : null,
   };
   trackLoad(stats);
   stats.boost = { ...booster.status(), enabled: boosterEnabled() };
@@ -2500,6 +2534,12 @@ ipcMain.handle('settings:set', async (_e, patch) => {
     if (key in patch) patch[key] = Math.max(0, Math.min(max, Math.round(Number(patch[key]) || 0)));
   }
   if ('scanSchedule' in patch) patch.autoScan = true; // the old on/off switch is replaced by the schedule menu
+  // Overlay look (FPS limiter tab): whatever arrives is brought into the allowed range before it is stored.
+  if (Object.keys(patch).some((k) => k in overlayCore.DEFAULTS)) {
+    const clean = overlayCore.normalize({ ...settings.get(), ...patch });
+    for (const k of Object.keys(overlayCore.DEFAULTS)) if (k in patch) patch[k] = clean[k];
+  }
+  if ('overlayPosition' in patch && !overlayCore.POSITIONS.includes(patch.overlayPosition)) patch.overlayPosition = 'top-left';
   const before = settings.get();
   const s = settings.set(patch);
   if ('autoCheckUpdates' in patch && updates) updates.settingsChanged();
@@ -2526,7 +2566,8 @@ ipcMain.handle('settings:set', async (_e, patch) => {
   }
   let hotkeyFailed = false;
   if ('overlayHotkey' in patch && patch.overlayHotkey !== before.overlayHotkey) hotkeyFailed = !registerHotkey();
-  if ('fpsCounter' in patch || 'tempMonitor' in patch || 'overlayPosition' in patch || 'windowsPerformanceMode' in patch) applyMonitoring();
+  if ('fpsCounter' in patch || 'tempMonitor' in patch || 'windowsPerformanceMode' in patch) applyMonitoring();
+  else if (Object.keys(patch).some((k) => k.startsWith('overlay') && k !== 'overlayHotkey')) applyOverlay(); // look or position changed: redraw, nothing restarted
   if (limiterError) return { ...settings.get(), _error: limiterError };
   if (patch.windowsPerformanceMode && sensors.warning && !hotkeyFailed) return { ...settings.get(), _warning: sensors.warning };
   return hotkeyFailed ? { ...settings.get(), _error: `“${s.overlayHotkey}” couldn’t be registered — another program is probably using it. Pick a different shortcut.` } : settings.get();

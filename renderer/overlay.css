@@ -1,0 +1,101 @@
+/* The in-game overlay. Used by the overlay window and by the live preview on the FPS limiter tab, so every class
+   starts with ffo- and nothing here touches the rest of the app.
+
+   It sits on top of a game, so: no animation, no blur, nothing that repaints between the once-a-second updates. */
+.ffo {
+  --ffo-accent: #ff6b2c;
+  --ffo-alpha: 0.8;
+  --ffo-text: #f2f5fa;
+  --ffo-dim: #9aa4b4;
+  --ffo-num: 'Orbitron', 'Rajdhani', sans-serif;
+  --ffo-body: 'Rajdhani', 'Segoe UI', sans-serif;
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  font: 700 15px/1.15 var(--ffo-body);
+  color: var(--ffo-text);
+  background: linear-gradient(180deg, rgba(20, 23, 29, var(--ffo-alpha)), rgba(9, 10, 13, var(--ffo-alpha)));
+  border-left: 3px solid var(--ffo-accent);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+}
+.ffo *, .ffo *::before, .ffo *::after { box-sizing: border-box; }
+.ffo i { font-style: normal; }
+.ffo b { font-weight: 700; }
+
+/* Numbers */
+.ffo-font-rajdhani { --ffo-num: 'Rajdhani', 'Segoe UI', sans-serif; }
+.ffo-font-mono { --ffo-num: Consolas, 'Cascadia Mono', 'Courier New', monospace; --ffo-body: Consolas, 'Cascadia Mono', 'Courier New', monospace; }
+.ffo-font-mono { font-size: 13px; }
+
+/* Corners */
+.ffo-corner-notch { clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); }
+.ffo-corner-round { border-radius: 9px; border-left-width: 0; box-shadow: inset 3px 0 0 var(--ffo-accent); }
+.ffo-corner-round.ffo-bar { border-radius: 8px; }
+
+/* Text only (background turned all the way down): a stronger outline keeps it readable on bright scenes. */
+.ffo-bare { border-left-color: transparent; box-shadow: none; text-shadow: 0 0 3px #000, 0 1px 3px #000, 0 0 8px rgba(0, 0, 0, 0.8); }
+
+/* The big number, shared by all three styles */
+.ffo-num { display: inline-flex; align-items: baseline; gap: 6px; }
+.ffo-num > b { font: 700 40px/0.95 var(--ffo-num); letter-spacing: 0.01em; color: #fff; }
+.ffo-num > span { font: 700 12px var(--ffo-body); letter-spacing: 0.16em; color: var(--ffo-accent); }
+.ffo-idle > b { color: var(--ffo-dim); }
+.ffo-v { font: 700 15px var(--ffo-num); color: var(--ffo-text); }
+.ffo-font-rajdhani .ffo-v { font-size: 17px; }
+.ffo-warm { color: #ffb347; }
+.ffo-hot { color: #ff4d6d; }
+.ffo-dim { color: #c3cad6; }
+
+/* ---------- Panel ---------- */
+.ffo-panel { min-width: 236px; padding: 11px 16px 12px 13px; }
+.ffo-top { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.ffo-panel .ffo-num > b { font-size: 44px; }
+.ffo-side { display: grid; gap: 3px; justify-items: end; }
+.ffo-side > span { display: flex; align-items: baseline; gap: 8px; }
+.ffo-side i, .ffo-k, .ffo-s > i, .ffo-minirows i { font: 700 11px var(--ffo-body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ffo-dim); }
+.ffo-side b { font: 700 14px var(--ffo-num); min-width: 34px; text-align: right; }
+.ffo-graph { display: block; width: 100%; height: 30px; margin-top: 8px; overflow: visible; }
+.ffo-graph-line { fill: none; stroke: var(--ffo-accent); stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.ffo-graph-fill { fill: var(--ffo-accent); opacity: 0.14; stroke: none; }
+.ffo-rows { display: grid; gap: 6px; }
+.ffo-top + .ffo-rows, .ffo-graph + .ffo-rows { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.13); }
+.ffo-row { display: grid; grid-template-columns: 44px 1fr 58px; align-items: center; gap: 8px; }
+.ffo-vals { display: flex; align-items: baseline; gap: 11px; }
+.ffo-meter { display: block; height: 4px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.ffo-meter > i { display: block; height: 100%; background: var(--ffo-accent); }
+.ffo-chips { display: flex; gap: 12px; margin: -2px 0 1px 52px; font: 700 13px var(--ffo-body); color: #c3cad6; letter-spacing: 0.02em; }
+.ffo-foot { display: flex; justify-content: space-between; gap: 14px; margin-top: 9px; padding-top: 7px; border-top: 1px solid rgba(255, 255, 255, 0.13); font: 700 12px var(--ffo-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ffo-dim); }
+
+/* ---------- Bar: one slim line ---------- */
+.ffo-bar.ffo { display: inline-flex; align-items: center; padding: 6px 16px 6px 12px; }
+.ffo-bar.ffo.ffo-corner-notch { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%); }
+.ffo-seg { display: flex; align-items: baseline; gap: 10px; padding: 0 12px; border-left: 1px solid rgba(255, 255, 255, 0.16); }
+.ffo-seg:first-child { padding-left: 0; border-left: 0; }
+.ffo-seg:last-child { padding-right: 0; }
+.ffo-bar .ffo-num > b { font-size: 24px; line-height: 1; }
+.ffo-bar .ffo-num > span { font-size: 11px; }
+.ffo-s { display: inline-flex; align-items: baseline; gap: 7px; }
+.ffo-s > b { font: 700 15px var(--ffo-num); }
+
+/* ---------- Mini: the number and the essentials ---------- */
+.ffo-mini { padding: 8px 14px 9px 11px; }
+.ffo-mini .ffo-num > b { font-size: 32px; }
+.ffo-minirows { display: grid; gap: 2px; margin-top: 5px; }
+.ffo-num + .ffo-minirows { padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.13); }
+.ffo-minirows > span { display: flex; align-items: baseline; gap: 8px; }
+.ffo-minirows i { min-width: 46px; }
+.ffo-minirows b { font: 700 14px var(--ffo-num); }
+
+/* ---------- List: one reading per line, label left, value right ---------- */
+.ffo-list { min-width: 214px; padding: 10px 15px 11px 13px; }
+.ffo-line { display: flex; align-items: baseline; justify-content: space-between; gap: 22px; padding: 2.5px 0; }
+.ffo-line > i { font: 700 12px var(--ffo-body); letter-spacing: 0.13em; text-transform: uppercase; color: var(--ffo-dim); }
+.ffo-line > b { text-align: right; }
+.ffo-line-fps > i { color: var(--ffo-accent); font-size: 13px; }
+.ffo-line-fps > b { font-size: 28px; line-height: 1; color: #fff; }
+.ffo-line-fps > b.ffo-idle { color: var(--ffo-dim); }
+.ffo-sep { margin-top: 5px; padding-top: 7px; border-top: 1px solid rgba(255, 255, 255, 0.13); }
+.ffo-list .ffo-graph { margin-top: 9px; height: 26px; }

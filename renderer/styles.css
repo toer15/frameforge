@@ -1304,3 +1304,74 @@ button.stop:hover:not(:disabled) { background: rgba(255, 77, 109, 0.15); }
 .limiter-notice { margin: 4px 4px 0; padding: 10px 12px; border-left: 3px solid var(--muted); background: #15181e; color: #c5cbd6; max-width: 92ch; }
 .limiter-notice.bad { border-color: #ff8ca1; color: #ffd0d8; background: rgba(255, 92, 122, 0.08); }
 .limiter-notice.ok { border-color: #35e08f; color: #bfffe0; background: rgba(53, 224, 143, 0.07); }
+
+/* ----- FPS limiter tab: overlay studio (1.17) ----- */
+.ov-studio { margin-top: 18px; padding: 18px 18px 20px; background: linear-gradient(180deg, #181b22, #121419); border: 1px solid #272c35; box-shadow: inset 0 1px 0 var(--plate-hi); }
+.ov-studio-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.ov-studio-head h3 { font: 700 19px var(--display); letter-spacing: 0.01em; }
+.ov-studio-head p { margin: 2px 0 0; }
+/* The stage: a stand-in game scene, so transparency, colour and position read the way they will in a game. */
+.ov-stage {
+  --ov-margin: 14px;
+  position: relative; height: 340px; overflow: hidden; border: 1px solid #2f3540;
+  background:
+    radial-gradient(90% 55% at 68% 64%, rgba(255, 150, 70, 0.34), transparent 62%),
+    linear-gradient(180deg, #0b1320 0%, #14263a 38%, #3b3038 58%, #6b4a3a 64%, #17120f 64.4%, #0b0908 100%);
+}
+.ov-stage::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 30%; height: 28%;
+  background: #0f1620; opacity: 0.92;
+  clip-path: polygon(0 100%, 0 62%, 9% 40%, 17% 58%, 27% 18%, 36% 52%, 44% 34%, 53% 60%, 63% 8%, 72% 50%, 80% 30%, 90% 56%, 100% 26%, 100% 100%);
+}
+.ov-stage::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 36%;
+  background: repeating-linear-gradient(90deg, transparent 0 46px, rgba(255, 255, 255, 0.035) 46px 47px), linear-gradient(180deg, rgba(255, 140, 60, 0.1), transparent 55%);
+}
+.ov-stage-hud { position: absolute; z-index: 2; line-height: 0; }
+.ov-stage-hud > .ffo { line-height: 1.15; }
+.ov-stage[data-pos^='top'] .ov-stage-hud { top: var(--ov-margin); }
+.ov-stage[data-pos^='bottom'] .ov-stage-hud { bottom: calc(var(--ov-margin) + 30px); }
+.ov-stage[data-pos$='left'] .ov-stage-hud { left: var(--ov-margin); }
+.ov-stage[data-pos$='right'] .ov-stage-hud { right: var(--ov-margin); }
+.ov-stage[data-pos$='center'] .ov-stage-hud { left: 50%; transform: translateX(-50%); }
+.ov-stage-note { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; margin: 0; padding: 6px 12px; background: rgba(6, 7, 9, 0.72); color: #b9c1cd; font-size: 14px; font-weight: 600; }
+
+.ov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 28px; margin-top: 20px; }
+.ov-field { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.ov-wide { grid-column: 1 / -1; }
+.ov-field h4 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0; font: 700 16px var(--body); color: var(--text); }
+.ov-field h4 b { font: 700 14px var(--display); color: var(--coolant); font-variant-numeric: tabular-nums; }
+.ov-field small { color: var(--muted); font-size: 13.5px; font-weight: 500; }
+.ov-seg button { padding: 9px 6px; background: #101216; border-color: #363c47; color: var(--muted); transition: color 0.15s, background 0.15s, border-color 0.15s; }
+.ov-seg button:hover { color: var(--text); }
+.ov-seg button.on { background: rgba(255, 107, 44, 0.14); border-color: var(--heat); color: #ffd9c2; position: relative; z-index: 1; }
+.ov-seg button.on + button { border-left: 0; }
+/* Position: a little screen with six spots */
+.ov-pos { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 34px 34px; gap: 22px 8px; padding: 8px; width: 210px; background: #0e1014; border: 1px solid #363c47; }
+.ov-pos button { background: #1b1f26; border: 1px solid #363c47; transition: background 0.15s, border-color 0.15s; }
+.ov-pos button:hover { border-color: #6a7585; }
+.ov-pos button.on { background: var(--heat); border-color: #ffc38a; box-shadow: 0 0 12px rgba(255, 107, 44, 0.5); }
+/* What it shows */
+.ov-items { display: grid; gap: 10px; }
+.ov-item-group { display: grid; grid-template-columns: 168px 1fr; align-items: start; gap: 10px; }
+.ov-item-group > span { padding-top: 6px; color: var(--muted); font-weight: 700; font-size: 14.5px; }
+.ov-item-group > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.ov-chip { padding: 5px 12px; background: #101216; border: 1px solid #363c47; color: var(--muted); font: 700 15px var(--body); transition: color 0.15s, background 0.15s, border-color 0.15s; }
+.ov-chip:hover { color: var(--text); border-color: #5a6473; }
+.ov-chip.on { background: rgba(63, 216, 255, 0.12); border-color: var(--coolant); color: #cdf3ff; }
+.ov-chip.idle { opacity: 0.55; }
+.ov-chip.na { opacity: 0.5; border-style: dashed; }
+/* Accent colour */
+.ov-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ov-swatch { width: 30px; height: 30px; background: var(--sw); border: 2px solid #0e1014; outline: 1px solid #363c47; transition: outline-color 0.15s, transform 0.1s; }
+.ov-swatch:hover { transform: translateY(-1px); }
+.ov-swatch.on { outline: 2px solid #fff; }
+.ov-custom { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 4px; border: 1px solid #363c47; background: #101216; color: var(--muted); font-weight: 700; font-size: 14.5px; cursor: pointer; }
+.ov-custom.on { border-color: #fff; color: var(--text); }
+.ov-custom input { width: 26px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; }
+.ov-field input[type='range'] { width: 100%; accent-color: var(--heat); }
+.ov-field .select { width: 100%; }
+@media (max-width: 1120px) {
+  .ov-grid { grid-template-columns: 1fr; }
+  .ov-item-group { grid-template-columns: 1fr; gap: 4px; }
+}

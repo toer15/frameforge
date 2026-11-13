@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="../node_modules/@fontsource/rajdhani/600.css" />
   <link rel="stylesheet" href="../node_modules/@fontsource/rajdhani/700.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="overlay.css" />
 </head>
 <body>
   <aside class="sidebar">
@@ -687,6 +688,113 @@
           <button class="ghost" id="limiterUseRecBtn" disabled>Use recommended</button>
         </div>
 
+        <section class="set-group" id="overlayGroup">
+          <div class="set-head"><h2>FPS counter and overlay</h2><button class="ghost small" id="ovToggleBtn">Hide overlay</button></div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>FPS counter</h3>
+              <p>Shows your in-game FPS and 1% lows on top of games running in borderless or windowed mode.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="fpsCounter" aria-label="FPS counter" /><span></span></label>
+          </div>
+          <div class="set-row">
+            <div class="set-text">
+              <h3>Temperatures and hardware</h3>
+              <p>Shows graphics card, processor and memory readings on the overlay, and temperatures on the Home tab.</p>
+            </div>
+            <label class="switch"><input type="checkbox" data-key="tempMonitor" aria-label="Temperatures and hardware" /><span></span></label>
+          </div>
+
+          <div class="ov-studio">
+            <div class="ov-studio-head">
+              <div><h3>Make the overlay yours</h3><p class="muted">Every change shows here and on the real overlay straight away.</p></div>
+              <button class="ghost small" id="ovResetBtn">Reset the look</button>
+            </div>
+            <div class="hint hidden" id="ovNeeds"></div>
+            <div class="ov-stage" id="ovStage" data-pos="top-left" aria-label="Overlay preview">
+              <div class="ov-stage-hud" id="ovPreview"></div>
+              <p class="ov-stage-note" id="ovNote"></p>
+            </div>
+
+            <div class="ov-grid">
+              <div class="ov-field">
+                <h4>Style</h4>
+                <div class="seg ov-seg" data-ov="overlayStyle" role="group" aria-label="Overlay style">
+                  <button type="button" data-val="panel">Panel</button>
+                  <button type="button" data-val="list">List</button>
+                  <button type="button" data-val="bar">Bar</button>
+                  <button type="button" data-val="mini">Mini</button>
+                </div>
+                <small>Panel groups everything with bars. List is one reading per line. Bar is a slim strip. Mini is the number and the essentials.</small>
+              </div>
+              <div class="ov-field">
+                <h4>Position on screen</h4>
+                <div class="ov-pos" data-ov="overlayPosition" role="group" aria-label="Overlay position">
+                  <button type="button" data-val="top-left" title="Top left" aria-label="Top left"></button>
+                  <button type="button" data-val="top-center" title="Top centre" aria-label="Top centre"></button>
+                  <button type="button" data-val="top-right" title="Top right" aria-label="Top right"></button>
+                  <button type="button" data-val="bottom-left" title="Bottom left" aria-label="Bottom left"></button>
+                  <button type="button" data-val="bottom-center" title="Bottom centre" aria-label="Bottom centre"></button>
+                  <button type="button" data-val="bottom-right" title="Bottom right" aria-label="Bottom right"></button>
+                </div>
+              </div>
+
+              <div class="ov-field ov-wide">
+                <h4>What it shows</h4>
+                <div class="ov-items" id="ovItems"></div>
+                <small id="ovItemsNote"></small>
+              </div>
+
+              <div class="ov-field">
+                <h4>Accent colour</h4>
+                <div class="ov-swatches" id="ovSwatches"></div>
+              </div>
+              <div class="ov-field">
+                <h4>Numbers</h4>
+                <div class="seg ov-seg" data-ov="overlayFont" role="group" aria-label="Number style">
+                  <button type="button" data-val="orbitron">Gaming</button>
+                  <button type="button" data-val="rajdhani">Clean</button>
+                  <button type="button" data-val="mono">Classic</button>
+                </div>
+              </div>
+
+              <div class="ov-field">
+                <h4><label for="ovScale">Size</label><b data-ov-out="overlayScale">100%</b></h4>
+                <input type="range" id="ovScale" min="60" max="200" step="5" data-ov-range="overlayScale" />
+              </div>
+              <div class="ov-field">
+                <h4><label for="ovOpacity">Background</label><b data-ov-out="overlayOpacity">80%</b></h4>
+                <input type="range" id="ovOpacity" min="0" max="100" step="5" data-ov-range="overlayOpacity" />
+                <small>All the way down leaves just the text.</small>
+              </div>
+
+              <div class="ov-field">
+                <h4>Corners</h4>
+                <div class="seg ov-seg" data-ov="overlayCorner" role="group" aria-label="Corner shape">
+                  <button type="button" data-val="notch">Notched</button>
+                  <button type="button" data-val="round">Rounded</button>
+                  <button type="button" data-val="square">Square</button>
+                </div>
+              </div>
+              <div class="ov-field">
+                <h4><label for="ovMargin">Distance from the edge</label><b data-ov-out="overlayMargin">14 px</b></h4>
+                <input type="range" id="ovMargin" min="0" max="120" step="2" data-ov-range="overlayMargin" />
+              </div>
+
+              <div class="ov-field">
+                <h4><label for="ovHotkey">Show or hide shortcut</label></h4>
+                <select data-key="overlayHotkey" class="select" id="ovHotkey">
+                  <option>Ctrl+Shift+F</option>
+                  <option>Ctrl+Shift+O</option>
+                  <option>Alt+F10</option>
+                  <option>Alt+Shift+F12</option>
+                </select>
+                <small>Works while you’re in a game.</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="set-group">
           <div class="set-head"><h2>Status</h2><button class="ghost small" id="limiterRefreshBtn">Check again</button></div>
           <div class="set-row">
@@ -832,35 +940,10 @@
           <div class="set-head"><h2>Overlay</h2></div>
           <div class="set-row">
             <div class="set-text">
-              <h3>FPS counter</h3>
-              <p>Shows your in-game FPS and 1% lows on top of games running in borderless or windowed mode.</p>
+              <h3>FPS counter and overlay settings have moved</h3>
+              <p>The FPS counter switch, the hardware readings and everything about how the overlay looks are now on the FPS limiter tab.</p>
             </div>
-            <label class="switch"><input type="checkbox" data-key="fpsCounter" /><span></span></label>
-          </div>
-          <div class="set-row">
-            <div class="set-text">
-              <h3>Temperature monitor</h3>
-              <p>Shows CPU and GPU temperature on the overlay and on the Home tab.</p>
-            </div>
-            <label class="switch"><input type="checkbox" data-key="tempMonitor" /><span></span></label>
-          </div>
-          <div class="set-row">
-            <div class="set-text"><h3>Overlay position</h3><p>Which corner of the screen the overlay sits in.</p></div>
-            <select data-key="overlayPosition" class="select">
-              <option value="top-left">Top left</option>
-              <option value="top-right">Top right</option>
-              <option value="bottom-left">Bottom left</option>
-              <option value="bottom-right">Bottom right</option>
-            </select>
-          </div>
-          <div class="set-row">
-            <div class="set-text"><h3>Show or hide overlay shortcut</h3><p>Works while you’re in a game.</p></div>
-            <select data-key="overlayHotkey" class="select">
-              <option>Ctrl+Shift+F</option>
-              <option>Ctrl+Shift+O</option>
-              <option>Alt+F10</option>
-              <option>Alt+Shift+F12</option>
-            </select>
+            <button class="ghost" data-goto="limiter">Open FPS limiter</button>
           </div>
         </section>
 
@@ -1120,6 +1203,7 @@
   </div>
 
   <div class="toast hidden" id="toast"></div>
+  <script src="overlay-core.js"></script>
   <script src="app.js"></script>
   <script src="controller.js"></script>
 </body>

@@ -18,7 +18,7 @@ const LHM_LOOP = `
 $ErrorActionPreference='SilentlyContinue'
 while($true){
   $s = Get-CimInstance -Namespace root/LibreHardwareMonitor -ClassName Sensor -ErrorAction SilentlyContinue |
-       Where-Object { $_.SensorType -eq 'Temperature' -or $_.SensorType -eq 'Load' -or ($_.SensorType -eq 'SmallData' -and $_.Name -like 'GPU Memory Total') } |
+       Where-Object { $t = $_.SensorType; $t -eq 'Temperature' -or $t -eq 'Load' -or $t -eq 'Power' -or (($t -eq 'Fan' -or $t -eq 'Clock') -and $_.Identifier -like '/gpu-*') -or ($t -eq 'SmallData' -and ($_.Name -like 'GPU Memory*' -or $_.Name -like 'D3D Dedicated Memory*')) } |
        Select-Object Name,SensorType,Value,Identifier
   if($s){ @{ok=$true; s=@($s)} | ConvertTo-Json -Compress -Depth 4 } else { '{"ok":false}' }
   Start-Sleep -Milliseconds 1000
@@ -44,7 +44,8 @@ const isDedicatedGpuId = (id) => /^\/gpu-(nvidia|amd)/i.test(id || '');
 function pickSensors(list) {
   const pick = (arr, prefs) => {
     for (const p of prefs) {
-      const f = arr.find((s) => p.test(s.Name) && Number.isFinite(s.Value) && (s.SensorType === 'Load' ? s.Value >= 0 : s.Value > 0));
+      // 0 is a real reading for a load and for a fan (fans stop at idle); for everything else it means "no sensor".
+      const f = arr.find((s) => p.test(s.Name) && Number.isFinite(s.Value) && (s.SensorType === 'Load' || s.SensorType === 'Fan' ? s.Value >= 0 : s.Value > 0));
       if (f) return Math.round(f.Value);
     }
     return null;
@@ -64,7 +65,19 @@ function pickSensors(list) {
   const mainGpu = keys[0];
   const gpuTemps = temps.filter((s) => gpuKey(s.Identifier) === mainGpu);
   const gpuLoads = loads.filter((s) => gpuKey(s.Identifier) === mainGpu);
+  // The extra readings the overlay can show. Each is optional: a card or driver that doesn't report one simply
+  // leaves it out, and the overlay hides that line instead of showing a made-up number.
+  const ofGpu = (type) => list.filter((s) => s.SensorType === type && gpuKey(s.Identifier) === mainGpu);
+  const mb = ofGpu('SmallData');
+  const vramTotal = pick(mb, [/^GPU Memory Total$/i]);
   return {
+    gpuPower: pick(ofGpu('Power'), [/^GPU Package$/i, /^GPU Power$/i, /^GPU PPT$/i, /^GPU Core$/i]), // watts
+    gpuFan: pick(ofGpu('Fan'), [/^GPU Fan$/i, /^GPU Fan 1$/i, /Fan/i]), // RPM (0 while the fans are stopped)
+    gpuClock: pick(ofGpu('Clock'), [/^GPU Core$/i]), // MHz
+    gpuMemClock: pick(ofGpu('Clock'), [/^GPU Memory$/i]), // MHz
+    vramUsed: pick(mb, [/^GPU Memory Used$/i, /^D3D Dedicated Memory Used$/i]), // MB
+    vramTotal,
+    cpuPower: pick(list.filter((s) => s.SensorType === 'Power' && isCpuId(s.Identifier)), [/^CPU Package$/i, /^Package$/i]), // watts
     // AMD: "Core (Tdie)" / "Core (Tctl/Tdie)" are the real die temperature; plain "Tctl" on older Ryzen has an offset.
     // Intel: "CPU Package" is what HWiNFO and Intel XTU show.
     cpuTemp: pick(temps.filter((s) => isCpuId(s.Identifier)), [/Tdie/i, /^CPU Package$/i, /Package/i, /Tctl/i, /Core Max/i, /Core Average/i]),
@@ -78,7 +91,16 @@ function pickSensors(list) {
 /** Flatten LibreHardwareMonitor's web server JSON (data.json) into the same list shape. */
 function flattenLhmJson(node, out = []) {
   if (!node) return out;
-  if (node.SensorId && node.Type && (node.Type === 'Temperature' || node.Type === 'Load' || (node.Type === 'SmallData' && /GPU Memory Total/i.test(node.Text)))) {
+  const gpu = /^\/gpu-/i.test(node.SensorId || '');
+  if (
+    node.SensorId &&
+    node.Type &&
+    (node.Type === 'Temperature' ||
+      node.Type === 'Load' ||
+      node.Type === 'Power' ||
+      ((node.Type === 'Fan' || node.Type === 'Clock') && gpu) ||
+      (node.Type === 'SmallData' && /^(GPU Memory|D3D Dedicated Memory)/i.test(node.Text)))
+  ) {
     const v = parseFloat(String(node.Value).replace(',', '.'));
     out.push({ Name: node.Text, SensorType: node.Type, Value: v, Identifier: node.SensorId });
   }
@@ -207,11 +229,13 @@ class Sensors {
       if (!active()) return;
       if (vendor === 'nvidia' && !fresh && Date.now() - this.nvAttemptAt >= nvidiaInterval) {
         this.nvAttemptAt = Date.now();
-        const r = await run('nvidia-smi', ['--query-gpu=temperature.gpu,utilization.gpu', '--format=csv,noheader,nounits'], { timeout: 4000 });
+        const r = await run('nvidia-smi', ['--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw', '--format=csv,noheader,nounits'], { timeout: 4000 });
         if (!active()) return;
         if (r.code === 0) {
-          const [t, u] = r.stdout.trim().split(/\r?\n/)[0].split(',').map((x) => parseFloat(x));
-          this.nv = { temp: Number.isFinite(t) ? t : null, load: Number.isFinite(u) ? u : null };
+          // A field the driver doesn't report comes back as "[N/A]": that one stays empty, the rest are used.
+          const [t, u, mu, mt, pw] = r.stdout.trim().split(/\r?\n/)[0].split(',').map((x) => parseFloat(x));
+          const num = (v) => (Number.isFinite(v) ? v : null);
+          this.nv = { temp: num(t), load: num(u), vramUsed: num(mu), vramTotal: num(mt), power: num(pw) != null ? Math.round(pw) : null };
           this.nvAt = Date.now();
         }
       }
@@ -235,7 +259,11 @@ class Sensors {
   read() {
     if (DEMO) {
       const w = (b, r) => Math.round(b + (Math.random() - 0.5) * r);
-      return { cpuTemp: w(63, 6), gpuTemp: w(71, 5), cpuLoad: w(38, 14), gpuLoad: w(94, 6), sources: { cpuTemp: 'LibreHardwareMonitor', gpuTemp: 'LibreHardwareMonitor' } };
+      return {
+        cpuTemp: w(63, 6), gpuTemp: w(71, 5), cpuLoad: w(38, 14), gpuLoad: w(94, 6),
+        gpuPower: w(214, 24), gpuFan: w(1640, 120), gpuClock: w(2480, 60), gpuMemClock: 2500, vramUsed: w(9300, 400), vramTotal: 20464, cpuPower: w(78, 14),
+        sources: { cpuTemp: 'LibreHardwareMonitor', gpuTemp: 'LibreHardwareMonitor' },
+      };
     }
     const l = Date.now() - this.lhmAt < this.freshMs ? this.lhm || {} : {};
     const nv = Date.now() - this.nvAt < Math.max(5000, this.performanceMode ? 12000 : 5000) ? this.nv || {} : {};
@@ -249,11 +277,23 @@ class Sensors {
     const [gpuTemp, gpuTempSrc] = val([nv.temp, 'NVIDIA driver'], [l.gpuTemp, 'LibreHardwareMonitor']);
     const [selectedCpuLoad, cpuLoadSrc] = val([l.cpuLoad, 'LibreHardwareMonitor'], [cpuLoad, 'Windows']);
     const [gpuLoad, gpuLoadSrc] = val([nv.load, 'NVIDIA driver'], [l.gpuLoad, 'LibreHardwareMonitor'], [winGpuLoad, 'Windows']);
+    const first = (...vs) => {
+      for (const v of vs) if (v != null) return v;
+      return null;
+    };
     return {
       cpuTemp,
       gpuTemp,
       cpuLoad: selectedCpuLoad,
       gpuLoad,
+      // Extras for the overlay; null when this PC's sensors don't report them.
+      gpuPower: first(l.gpuPower, nv.power),
+      gpuFan: first(l.gpuFan),
+      gpuClock: first(l.gpuClock),
+      gpuMemClock: first(l.gpuMemClock),
+      vramUsed: first(l.vramUsed, nv.vramUsed),
+      vramTotal: first(l.vramTotal, nv.vramTotal),
+      cpuPower: first(l.cpuPower),
       sources: { cpuTemp: cpuTempSrc, gpuTemp: gpuTempSrc, cpuLoad: cpuLoadSrc, gpuLoad: gpuLoadSrc },
     };
   }
@@ -273,4 +313,4 @@ class Sensors {
   }
 }
 
-module.exports = { Sensors, pickSensors, flattenLhmJson };
+module.exports = { Sensors, pickSensors, flattenLhmJson, _LHM_LOOP: LHM_LOOP };

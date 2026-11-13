@@ -181,8 +181,8 @@ function plan(rig, state = {}) {
       gain: 'No tearing, lowest delay',
       title: `Cap your frame rate at ${hz - 3} FPS`,
       body: `On a ${hz} Hz FreeSync or G-SYNC screen, holding the frame rate just under the refresh rate keeps every frame in the screen’s smooth range: no tearing, and no V-Sync delay. FrameForge’s FPS limiter does it for every game.`,
-      where: `Settings › Overlay › FPS limiter → ${hz - 3}`,
-      action: { type: 'goto', view: 'settings', label: 'Open the FPS limiter' },
+      where: `FPS limiter tab › Target FPS → ${hz - 3}`,
+      action: { type: 'goto', view: 'limiter', label: 'Open the FPS limiter' },
     });
   }
   return out;

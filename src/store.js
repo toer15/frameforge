@@ -49,8 +49,17 @@ const DEFAULT_SETTINGS = {
   fpsLimitProfiles: [], // RTSS app profiles FrameForge capped, so switching the limiter off restores exactly those
   setAside: {}, // Fix mode problems tried 3+ times and still there: { id: { n, at, message } } for honest wording
   tempMonitor: true,
-  overlayPosition: 'top-left',
+  overlayPosition: 'top-left', // top-left | top-center | top-right | bottom-left | bottom-center | bottom-right
   overlayHotkey: 'Ctrl+Shift+F',
+  // The overlay's look, set on the FPS limiter tab (renderer/overlay-core.js holds the allowed values).
+  overlayStyle: 'panel', // panel | list | bar | mini
+  overlayItems: ['fps', 'low', 'frametime', 'graph', 'cap', 'gpuTemp', 'gpuLoad', 'vram', 'gpuPower', 'gpuFan', 'cpuTemp', 'cpuLoad', 'ram', 'meters'],
+  overlayAccent: '#ff6b2c',
+  overlayScale: 100, // % of normal size (60-200)
+  overlayOpacity: 80, // % background darkness (0 = text only)
+  overlayFont: 'orbitron', // orbitron | rajdhani | mono
+  overlayCorner: 'notch', // notch | round | square
+  overlayMargin: 14, // px from the screen edge (0-300)
   autoCheckUpdates: true, // Settings > Auto update: automatic checks and foreground update popups
   updateSource: '', // 'owner/repo' on GitHub, or an https folder with latest.yml
   backgroundDownloadUpdates: true, // updates arrive ready to install
