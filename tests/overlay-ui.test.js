@@ -78,8 +78,19 @@ test('overlay studio on the FPS limiter tab drives the real overlay window', { s
     const ov = await attach('/overlay.html');
     assert.ok(ov, 'overlay window opened');
     const fits = 'JSON.stringify((() => { const r = document.getElementById("wrap").getBoundingClientRect(); return [Math.ceil(r.width) - innerWidth, Math.ceil(r.height) - innerHeight, r.width > 100, r.height > 30]; })())';
+    // On failure, say what the window and its content actually measured.
+    const mustFit = async (when) => {
+      let seen;
+      for (let i = 0; i < 200; i++) {
+        seen = await ov.evaluate(fits);
+        if (seen === '[0,0,true,true]') return;
+        await delay(50);
+      }
+      const detail = await ov.evaluate('JSON.stringify((() => { const r = document.getElementById("wrap").getBoundingClientRect(); return { content: [r.width, r.height], inner: [innerWidth, innerHeight], outer: [outerWidth, outerHeight], dpr: devicePixelRatio }; })())');
+      assert.fail(`${when}: the overlay window does not fit its drawing: ${detail}`);
+    };
     await ov.waitFor('!!document.querySelector(".ffo-panel .ffo-num b") && /^\\d+$/.test(document.querySelector(".ffo-panel .ffo-num b").textContent)');
-    await ov.waitFor(`${fits} === "[0,0,true,true]"`);
+    await mustFit('FPS only');
     await app.waitFor('!!document.querySelector("#ovPreview .ffo-panel")');
     assert.equal(await ov.evaluate('!!document.querySelector(".ffo-rows")'), false, 'hardware readings are off, so only FPS shows');
 
@@ -89,7 +100,7 @@ test('overlay studio on the FPS limiter tab drives the real overlay window', { s
     await app.evaluate('document.querySelector(\'[data-ov=overlayStyle] [data-val=list]\').click()');
     await app.waitFor('S.overlayStyle === "list" && !!document.querySelector("#ovPreview .ffo-list")');
     await ov.waitFor('document.querySelectorAll(".ffo-list .ffo-line").length >= 8');
-    await ov.waitFor(`${fits} === "[0,0,true,true]"`);
+    await mustFit('List style');
     const lines = await ov.evaluate('[...document.querySelectorAll(".ffo-line i")].map((e) => e.textContent).join("|")');
     assert.match(lines, /^FPS\|1% low\|Frame time\|GPU temp\|GPU load\|GPU memory\|GPU power\|GPU fan\|CPU temp\|CPU load\|RAM$/);
 
@@ -107,7 +118,7 @@ test('overlay studio on the FPS limiter tab drives the real overlay window', { s
     await app.evaluate('(() => { const r = document.querySelector("[data-ov-range=overlayScale]"); r.value = "150"; r.dispatchEvent(new Event("input", { bubbles: true })); r.dispatchEvent(new Event("change", { bubbles: true })); })()');
     await app.waitFor('S.overlayAccent === "#3fd8ff" && S.overlayCorner === "round" && S.overlayPosition === "bottom-right" && S.overlayScale === 150');
     await ov.waitFor('(() => { const e = document.querySelector(".ffo"); return !!e && e.classList.contains("ffo-corner-round") && e.style.getPropertyValue("--ffo-accent") === "#3fd8ff" && e.style.zoom === "1.5"; })()');
-    await ov.waitFor(`${fits} === "[0,0,true,true]"`);
+    await mustFit('150% size');
     assert.equal(await app.evaluate('document.querySelector("#ovStage").dataset.pos'), 'bottom-right');
     assert.equal(await app.evaluate('document.querySelector("[data-ov-out=overlayScale]").textContent'), '150%');
 
