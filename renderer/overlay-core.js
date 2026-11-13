@@ -128,7 +128,7 @@
   function stabilityModel(samples, fps) {
     const valid = (samples || []).filter(Boolean).slice(-40);
     const last = valid[valid.length - 1];
-    if (!fps || !last) return { waiting: true, consistent: false, label: 'Waiting for game', samples: valid };
+    if (!fps || !last) return { waiting: true, consistent: false, label: 'No game', samples: valid };
     return { waiting: false, consistent: last.steady, label: valid.length < 5 ? 'Measuring' : last.steady ? 'Consistent' : 'Changing', samples: valid };
   }
 
