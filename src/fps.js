@@ -36,9 +36,14 @@ class FpsReader {
   }
 
   onLine(line) {
-    const parts = line.split(',');
-    if (parts[0] === 'Application') {
-      const idx = (n) => parts.indexOf(n);
+    // PresentMon's CSV may carry a UTF-8 BOM and quoted/whitespace-padded column names.
+    // Normalize fields before looking up the header so the FPS stream doesn't silently stay empty.
+    const parts = line
+      .replace(/^\uFEFF/, '')
+      .split(',')
+      .map((part) => part.trim().replace(/^"(.*)"$/, '$1'));
+    if (parts[0] && parts[0].toLowerCase() === 'application') {
+      const idx = (n) => parts.findIndex((part) => part.toLowerCase() === n.toLowerCase());
       this.cols = {
         app: 0,
         ms: idx('MsBetweenPresents') >= 0 ? idx('MsBetweenPresents') : idx('MsBetweenDisplayChange'),

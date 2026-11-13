@@ -1,5 +1,4 @@
-**FrameForge 1.17.1: live FPS, including capped games**
+**FrameForge 1.17.2: fix blank live FPS**
 
-- The Home FPS reading and in-game overlay update four times per second using PresentMon's measured frame timings.
-- Capped games show their actual observed FPS, not the limiter's target value.
-- The one-second rolling measurement keeps the live reading stable; the overlay's one-minute FPS graph remains sampled once per second.
+- The FPS reader now normalizes PresentMon CSV headers before parsing, including UTF-8 markers, quotes and whitespace.
+- This prevents valid game-frame samples from being dropped, leaving a dash instead of the measured FPS.
