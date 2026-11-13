@@ -132,6 +132,7 @@ contextBridge.exposeInMainWorld('ff', {
   },
   onRig: on('rig'),
   onStats: on('stats'),
+  onFps: on('fps'),
   onBoost: on('boost'),
   onStep: on('auto:step'),
   onBusy: on('auto:busy'),

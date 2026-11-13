@@ -42,6 +42,12 @@
       FFOverlay.push(state, s);
       draw();
     });
+    // Update the live FPS number more often while keeping the one-minute graph at 1 Hz.
+    window.ff.onFps((fps) => {
+      if (!last) return;
+      last = { ...last, ...fps };
+      draw();
+    });
     window.ff.onOverlayConfig((s) => {
       cfg = s || {};
       draw();

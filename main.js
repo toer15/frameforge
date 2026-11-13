@@ -110,6 +110,8 @@ async function boot() {
   applyMonitoring();
   registerHotkey();
   setInterval(telemetryTick, 1000);
+  // Keep game FPS responsive without polling the slower hardware sensors more often.
+  setInterval(liveFpsTick, 250);
   detectExtra().then(() => send('fix:changed', true)).catch(() => {});
   setInterval(() => detectExtra().then(() => {
     send('fix:changed', true);
@@ -517,6 +519,17 @@ function telemetryTick() {
   const watching = mainWin && !mainWin.isDestroyed() && mainWin.isVisible() && !mainWin.isMinimized();
   if (watching || statsTick % 5 === 0) send('stats', stats);
   if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.send('stats', stats);
+}
+
+function liveFpsTick() {
+  if (!lastStats) return;
+  const s = settings.get();
+  const f = !s.fpsCounter ? null : DEMO ? lastStats.fps : fps.read();
+  const update = { fps: f, fpsEnabled: !!s.fpsCounter, fpsReady: lastStats.fpsReady };
+  lastStats = { ...lastStats, ...update };
+  const watching = mainWin && !mainWin.isDestroyed() && mainWin.isVisible() && !mainWin.isMinimized();
+  if (watching) send('fps', update);
+  if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.send('fps', update);
 }
 
 // ---------- Heat and gaming, measured over time (one hot second isn't a problem; a hot minute is) ----------

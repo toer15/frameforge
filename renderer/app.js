@@ -393,16 +393,20 @@ function showBooster(b) {
   txt('#boosterState', msg);
   box.title = on ? 'Game Booster is on' : 'Game Booster is off';
 }
-ff.onStats((s) => {
-  lastStats = s;
-  if ($('#view-limiter') && !$('#view-limiter').classList.contains('hidden')) drawOverlayPreview(true);
+function showFps(s) {
   if (s.fpsEnabled && s.fps) {
     txt('#tFps', s.fps.fps);
-    txt('#tFpsSub', `${s.fps.app} · 1% low ${s.fps.low1}`);
+    txt('#tFpsSub', `${s.fps.app} · LIVE · 1% low ${s.fps.low1}`);
   } else {
     txt('#tFps', null);
     txt('#tFpsSub', !s.fpsEnabled ? 'FPS counter is off' : !s.fpsReady ? 'Needs the FPS engine' : 'Start a game to see FPS');
   }
+}
+ff.onFps(showFps);
+ff.onStats((s) => {
+  lastStats = s;
+  if ($('#view-limiter') && !$('#view-limiter').classList.contains('hidden')) drawOverlayPreview(true);
+  showFps(s);
   const showT = s.tempEnabled;
   txt('#tCpuT', showT ? s.cpuTemp : null);
   txt('#tGpuT', showT ? s.gpuTemp : null);
