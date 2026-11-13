@@ -583,6 +583,7 @@ ff.onFps((fps) => {
 function renderOverlayStudio() {
   if (!S || !$('#ovItems')) return;
   const cfg = FFOverlay.normalize(ovSettings());
+  $('#fpsStabilityToggle').checked = cfg.overlayItems.includes('stability');
   const pos = FFOverlay.POSITIONS.includes(S.overlayPosition) ? S.overlayPosition : 'top-left';
   $$('[data-ov]').forEach((group) => {
     const cur = group.dataset.ov === 'overlayPosition' ? pos : cfg[group.dataset.ov];
@@ -620,6 +621,14 @@ function renderOverlayStudio() {
     `<label class="ov-custom${FFOverlay.ACCENTS.includes(cfg.overlayAccent) ? '' : ' on'}" title="Pick any colour"><input type="color" id="ovColor" value="${cfg.overlayAccent}" aria-label="Custom accent colour" /><span>Custom</span></label>`;
   drawOverlayPreview();
 }
+
+$('#fpsStabilityToggle').addEventListener('change', (e) => {
+  const current = FFOverlay.normalize(S).overlayItems;
+  const items = e.target.checked
+    ? current.includes('stability') ? current : [...current, 'stability']
+    : current.filter((id) => id !== 'stability');
+  ovSave({ overlayItems: items });
+});
 
 async function ovSave(patch) {
   for (const k of Object.keys(patch)) delete ovDraft[k];

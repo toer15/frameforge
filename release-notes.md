@@ -1,3 +1,9 @@
+**FrameForge 1.17.5: FPS stability switch**
+
+- Added a direct FPS stability graph switch to the FPS limiter tab. It stays in sync with the overlay’s “What it shows” option.
+
+## Previous release
+
 **FrameForge 1.17.4: live FPS stability**
 
 - Added an optional FPS stability box to the overlay. Turn it on or off with the **FPS stability** chip under FPS limiter → What it shows → Frames.
