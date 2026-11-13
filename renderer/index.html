@@ -100,6 +100,19 @@
         <div class="forge-glow"></div>
       </div>
 
+      <div class="panel presets" id="presets">
+        <div class="panel-head">
+          <h2>Your goal</h2>
+          <span class="muted head-note" id="presetHint">Auto Mode tunes the whole PC for the goal you pick.</span>
+        </div>
+        <div class="carousel" id="carousel" tabindex="0" aria-roledescription="carousel" aria-label="Presets">
+          <button class="car-btn" id="carPrev" aria-label="Previous preset"><svg viewBox="0 0 24 24"><path d="M15 4 7 12l8 8"/></svg></button>
+          <div class="car-viewport"><div class="car-track" id="carTrack"></div></div>
+          <button class="car-btn" id="carNext" aria-label="Next preset"><svg viewBox="0 0 24 24"><path d="m9 4 8 8-8 8"/></svg></button>
+        </div>
+        <div class="car-dots" id="carDots" role="tablist"></div>
+      </div>
+
       <div class="telemetry panel" id="telemetry">
         <div class="tele fps">
           <div class="tele-val"><span id="tFps">—</span><small>FPS</small></div>
@@ -146,19 +159,6 @@
         </div>
         <p class="muted plan-lead">Picked for the parts FrameForge found in this PC, biggest first. Most of these live in your graphics driver app or in each game, because that is where the large gains are.</p>
         <ol class="plan-list" id="planList"></ol>
-      </div>
-
-      <div class="panel presets" id="presets">
-        <div class="panel-head">
-          <h2>Your goal</h2>
-          <span class="muted head-note" id="presetHint">Auto Mode tunes the whole PC for the goal you pick.</span>
-        </div>
-        <div class="carousel" id="carousel" tabindex="0" aria-roledescription="carousel" aria-label="Presets">
-          <button class="car-btn" id="carPrev" aria-label="Previous preset"><svg viewBox="0 0 24 24"><path d="M15 4 7 12l8 8"/></svg></button>
-          <div class="car-viewport"><div class="car-track" id="carTrack"></div></div>
-          <button class="car-btn" id="carNext" aria-label="Next preset"><svg viewBox="0 0 24 24"><path d="m9 4 8 8-8 8"/></svg></button>
-        </div>
-        <div class="car-dots" id="carDots" role="tablist"></div>
       </div>
 
       <div class="panel changes" id="changesPanel">
