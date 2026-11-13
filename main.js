@@ -356,16 +356,22 @@ function overlayWanted() {
   return (s.fpsCounter || s.tempMonitor) && overlayShown;
 }
 
-function placeOverlay() {
-  if (!overlayWin) return;
+/** Where the overlay's top-left corner goes for a drawing of this size. */
+function overlaySpot(w, h) {
   const { bounds } = screen.getPrimaryDisplay();
-  const [w, h] = overlayWin.getSize();
   const s = settings.get();
   const pos = overlayCore.POSITIONS.includes(s.overlayPosition) ? s.overlayPosition : 'top-left';
   const m = overlayCore.normalize(s).overlayMargin;
   const x = pos.endsWith('right') ? bounds.x + bounds.width - w - m : pos.endsWith('center') ? bounds.x + (bounds.width - w) / 2 : bounds.x + m;
   const y = pos.startsWith('bottom') ? bounds.y + bounds.height - h - m - 48 : bounds.y + m; // 48: stay clear of the taskbar
-  overlayWin.setPosition(Math.round(x), Math.round(y));
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+function placeOverlay() {
+  if (!overlayWin) return;
+  const [w, h] = overlayWin.getSize();
+  const { x, y } = overlaySpot(w, h);
+  overlayWin.setPosition(x, y);
 }
 
 function applyOverlay() {
@@ -416,16 +422,13 @@ ipcMain.on('overlay:size', (e, w, h) => {
   if (!overlayWin || overlayWin.isDestroyed() || e.sender !== overlayWin.webContents) return;
   const width = Math.max(1, Math.min(2400, Math.round(Number(w)) || 1));
   const height = Math.max(1, Math.min(1400, Math.round(Number(h)) || 1));
-  const [cw, ch] = overlayWin.getSize();
-  if (cw !== width || ch !== height) {
-    // On Windows a window the user can't resize can still be resized by the app itself. A transparent window must
-    // never be switched to "resizable" there (it can stop being transparent), so that is only done elsewhere, where
-    // the window manager would otherwise ignore the new size (development on Linux).
-    if (!IS_WIN) overlayWin.setResizable(true);
-    overlayWin.setSize(width, height);
-    if (!IS_WIN) overlayWin.setResizable(false);
-  }
-  placeOverlay();
+  // Size and position in one setBounds call. Measured on Windows: on a transparent window the user can't resize,
+  // setSize() can grow it but never shrinks it below the size it was created with; setBounds() does both and the
+  // window stays transparent. Elsewhere (development on Linux) the window manager only accepts a new size while
+  // the window counts as resizable.
+  if (!IS_WIN) overlayWin.setResizable(true);
+  overlayWin.setBounds({ ...overlaySpot(width, height), width, height });
+  if (!IS_WIN) overlayWin.setResizable(false);
   if (!overlayWin.isVisible() && width > 1 && height > 1) overlayWin.showInactive();
 });
 
