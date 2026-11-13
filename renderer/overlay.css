@@ -60,6 +60,18 @@
 .ffo-graph { display: block; width: 100%; height: 30px; margin-top: 8px; overflow: visible; }
 .ffo-graph-line { fill: none; stroke: var(--ffo-accent); stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .ffo-graph-fill { fill: var(--ffo-accent); opacity: 0.14; stroke: none; }
+.ffo-stability { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(255, 255, 255, 0.13); }
+.ffo-stability-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ffo-stability-head > i { font: 700 10px var(--ffo-body); letter-spacing: 0.13em; text-transform: uppercase; color: var(--ffo-dim); }
+.ffo-stability-head > b { min-width: 74px; text-align: right; font: 700 10px var(--ffo-body); letter-spacing: 0.06em; text-transform: uppercase; }
+.ffo-stability .ffo-stable { color: #57e389; }
+.ffo-stability .ffo-unstable { color: #ff4d6d; }
+.ffo-stability .ffo-stability-wait { color: var(--ffo-dim); }
+.ffo-stability svg { display: block; width: 100%; height: 22px; margin-top: 4px; overflow: visible; }
+.ffo-stability-reference { fill: none; stroke: #57e389; stroke-width: 1.2; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; }
+.ffo-stability-live { fill: none; stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ffo-stability-live.ffo-stable { stroke: #57e389; }
+.ffo-stability-live.ffo-unstable { stroke: #ff4d6d; }
 .ffo-rows { display: grid; gap: 6px; }
 .ffo-top + .ffo-rows, .ffo-graph + .ffo-rows { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.13); }
 .ffo-row { display: grid; grid-template-columns: 44px 1fr 58px; align-items: center; gap: 8px; }
@@ -70,8 +82,9 @@
 .ffo-foot { display: flex; justify-content: space-between; gap: 14px; margin-top: 9px; padding-top: 7px; border-top: 1px solid rgba(255, 255, 255, 0.13); font: 700 12px var(--ffo-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ffo-dim); }
 
 /* ---------- Bar: one slim line ---------- */
-.ffo-bar.ffo { display: inline-flex; align-items: center; padding: 6px 16px 6px 12px; }
+.ffo-bar.ffo { display: inline-flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px 16px 6px 12px; }
 .ffo-bar.ffo.ffo-corner-notch { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%); }
+.ffo-bar-content { display: flex; align-items: center; }
 .ffo-seg { display: flex; align-items: baseline; gap: 10px; padding: 0 12px; border-left: 1px solid rgba(255, 255, 255, 0.16); }
 .ffo-seg:first-child { padding-left: 0; border-left: 0; }
 .ffo-seg:last-child { padding-right: 0; }
@@ -88,6 +101,7 @@
 .ffo-minirows > span { display: flex; align-items: baseline; gap: 8px; }
 .ffo-minirows i { min-width: 46px; }
 .ffo-minirows b { font: 700 14px var(--ffo-num); }
+.ffo-mini .ffo-stability { margin-top: 6px; padding-top: 5px; }
 
 /* ---------- List: one reading per line, label left, value right ---------- */
 .ffo-list { min-width: 214px; padding: 10px 15px 11px 13px; }
@@ -99,3 +113,4 @@
 .ffo-line-fps > b.ffo-idle { color: var(--ffo-dim); }
 .ffo-sep { margin-top: 5px; padding-top: 7px; border-top: 1px solid rgba(255, 255, 255, 0.13); }
 .ffo-list .ffo-graph { margin-top: 9px; height: 26px; }
+.ffo-list .ffo-stability { margin-top: 8px; }

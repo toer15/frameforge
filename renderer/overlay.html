@@ -46,6 +46,7 @@
     window.ff.onFps((fps) => {
       if (!last) return;
       last = { ...last, ...fps };
+      FFOverlay.pushStability(state, last);
       draw();
     });
     window.ff.onOverlayConfig((s) => {

@@ -180,12 +180,13 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
   limiter tab and `tests/overlay.test.js` all call it, with `renderer/overlay.css` (every class starts `ffo-`).
   `normalize()` is the single place that decides what a valid setting is; `settings:set` in `main.js` runs every
   incoming `overlay*` value through it, so nothing invalid reaches `settings.json`.
-- **Styles**: `panel`, `list`, `bar`, `mini`. **Items** (`overlayItems`): fps, low, frametime, graph, cap, game,
+- **Styles**: `panel`, `list`, `bar`, `mini`. **Items** (`overlayItems`): fps, low, frametime, graph, stability, cap, game,
   gpuTemp, gpuLoad, vram, gpuPower, gpuFan, gpuClock, cpuTemp, cpuLoad, cpuPower, ram, meters, time. Look:
   `overlayAccent` (#rrggbb), `overlayScale` (60–200 %), `overlayOpacity` (0–100 %, under 15 % draws text only),
   `overlayFont` (orbitron | rajdhani | mono), `overlayCorner` (notch | round | square), `overlayMargin` (0–300 px),
   `overlayPosition` (six spots). `fpsCounter` and `tempMonitor` still decide whether the FPS half and the hardware
   half exist at all.
+- **FPS stability** is an optional `overlayItems` toggle. Its short live trace compares FPS with the recent median; it is green within 5% (or 3 FPS) and red beyond that tolerance.
 - **No invented numbers.** `model()` adds a row only when its reading is a finite number, so a card that reports no
   fan speed simply has no fan line. A fan at 0 RPM is a reading and is shown. With no game presenting, FPS is “—”.
 - **New readings.** `src/sensors.js` now also picks, for the main graphics card, `gpuPower`, `gpuFan`, `gpuClock`,

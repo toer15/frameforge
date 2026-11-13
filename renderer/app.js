@@ -514,7 +514,7 @@ const ovState = FFOverlay.createState();
 let ovDraft = {}; // a slider or colour being dragged: shown at once, saved when it is let go
 let ovTick = 0;
 const OV_GROUPS = [
-  ['Frames', ['fps', 'low', 'frametime', 'graph', 'cap', 'game']],
+  ['Frames', ['fps', 'low', 'frametime', 'graph', 'stability', 'cap', 'game']],
   ['Graphics card', ['gpuTemp', 'gpuLoad', 'vram', 'gpuPower', 'gpuFan', 'gpuClock']],
   ['Processor and memory', ['cpuTemp', 'cpuLoad', 'cpuPower', 'ram']],
   ['Extras', ['meters', 'time']],
@@ -569,6 +569,16 @@ function drawOverlayPreview(advance = false) {
   const off = !st.fpsEnabled && !st.tempEnabled;
   txt('#ovNote', off ? 'The overlay is off. Turn on the FPS counter or the hardware readings above to see it.' : !$('#ovPreview').firstChild ? 'Nothing is switched on under “What it shows”.' : example ? 'Live preview. No game is running, so the FPS numbers are examples; the rest is this PC right now.' : 'Live preview: exactly what sits on top of your game.');
 }
+
+// Keep the studio preview's stability line in step with the overlay's 4 Hz FPS updates.
+ff.onFps((fps) => {
+  if (!lastStats) return;
+  lastStats = { ...lastStats, ...fps };
+  if ($('#view-limiter') && !$('#view-limiter').classList.contains('hidden')) {
+    FFOverlay.pushStability(ovState, lastStats);
+    drawOverlayPreview();
+  }
+});
 
 function renderOverlayStudio() {
   if (!S || !$('#ovItems')) return;

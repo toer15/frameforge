@@ -13,6 +13,7 @@
     { id: 'low', label: '1% low', needs: 'fps', hint: 'The slowest 1% of frames — what stutter feels like' },
     { id: 'frametime', label: 'Frame time', needs: 'fps', hint: 'Milliseconds per frame' },
     { id: 'graph', label: 'FPS graph', needs: 'fps', hint: 'The last minute as a line' },
+    { id: 'stability', label: 'FPS stability', needs: 'fps', hint: 'A live line against your recent FPS baseline; green is steady, red is a change' },
     { id: 'cap', label: 'FPS cap', needs: 'fps', hint: 'Your limiter’s number, while the limiter is on' },
     { id: 'game', label: 'Game name', needs: 'fps', hint: 'Which program is being measured' },
     { id: 'gpuTemp', label: 'GPU temperature', needs: 'sensors' },
@@ -81,8 +82,26 @@
     if (state.hist.length > 60) state.hist.shift();
     return state;
   }
+  /** Keep forty live FPS samples (about ten seconds at the reader's 4 Hz update rate). */
+  function pushStability(state, stats) {
+    const f = stats && stats.fpsEnabled && stats.fps && Number(stats.fps.fps) > 0 ? Number(stats.fps.fps) : null;
+    if (!state.stability) state.stability = [];
+    if (f == null) {
+      state.stability = [];
+    } else {
+      const app = String(stats.fps.app || '').toLowerCase();
+      if (state.stability.length && state.stability[state.stability.length - 1].app !== app) state.stability = [];
+      const recent = state.stability.slice(-19).map((sample) => sample.fps).sort((a, b) => a - b);
+      const mid = Math.floor(recent.length / 2);
+      const reference = recent.length ? (recent.length % 2 ? recent[mid] : (recent[mid - 1] + recent[mid]) / 2) : f;
+      const steady = Math.abs(f - reference) <= Math.max(3, reference * 0.05);
+      state.stability.push({ fps: f, reference, steady, app });
+    }
+    if (state.stability.length > 40) state.stability.splice(0, state.stability.length - 40);
+    return state;
+  }
   function createState() {
-    return { hist: [] };
+    return { hist: [], stability: [] };
   }
 
   function graph(hist) {
@@ -106,8 +125,40 @@
     return `<svg class="ffo-graph" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><polygon class="ffo-graph-fill" points="${first},24 ${pts.join(' ')} ${lastX},24"/><polyline class="ffo-graph-line" points="${pts.join(' ')}"/></svg>`;
   }
 
+  function stabilityModel(samples, fps) {
+    const valid = (samples || []).filter(Boolean).slice(-40);
+    const last = valid[valid.length - 1];
+    if (!fps || !last) return { waiting: true, consistent: false, label: 'Waiting for game', samples: valid };
+    return { waiting: false, consistent: last.steady, label: valid.length < 5 ? 'Measuring' : last.steady ? 'Consistent' : 'Changing', samples: valid };
+  }
+
+  function stabilityBox(s) {
+    if (!s) return '';
+    const values = s.samples.flatMap((v) => [v.fps, v.reference]);
+    const loValue = values.length ? Math.min(...values) : 0;
+    const hiValue = values.length ? Math.max(...values) : 1;
+    const pad = Math.max(4, (hiValue - loValue) * 0.25);
+    const lo = loValue - pad;
+    const span = Math.max(1, hiValue - loValue + pad * 2);
+    const y = (v) => (22 - ((v - lo) / span) * 20).toFixed(1);
+    const point = (i, v, n) => `${(n > 1 ? (i * 100) / (n - 1) : 50).toFixed(1)},${y(v)}`;
+    const refPoints = s.samples.map((v, i, a) => point(i, v.reference, a.length)).join(' ');
+    const lines = s.samples.slice(1).map((v, j) => {
+      const a = s.samples[j];
+      const n = s.samples.length;
+      const x1 = n > 1 ? (j * 100) / (n - 1) : 50;
+      const x2 = n > 1 ? ((j + 1) * 100) / (n - 1) : 50;
+      return `<line class="ffo-stability-live ${v.steady ? 'ffo-stable' : 'ffo-unstable'}" x1="${x1.toFixed(1)}" y1="${y(a.fps)}" x2="${x2.toFixed(1)}" y2="${y(v.fps)}"/>`;
+    }).join('');
+    const status = s.waiting ? 'ffo-stability-wait' : s.consistent ? 'ffo-stable' : 'ffo-unstable';
+    const svg = s.samples.length
+      ? `<svg viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="FPS stability line; green is the recent baseline, red marks a change"><polyline class="ffo-stability-reference" points="${refPoints}"/>${lines}</svg>`
+      : '<svg viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"></svg>';
+    return `<div class="ffo-stability"><div class="ffo-stability-head"><i>FPS stability</i><b class="${status}">${esc(s.label)}</b></div>${svg}</div>`;
+  }
+
   /** The readings as display-ready pieces, shared by every style. `on(id)`: is this item switched on and available? */
-  function model(stats, cfg, opts) {
+  function model(stats, cfg, opts, state) {
     const s = stats || {};
     const want = new Set(cfg.overlayItems);
     const fpsOn = !!s.fpsEnabled;
@@ -117,12 +168,13 @@
     const m = { fps: null, side: [], rows: [], lines: [], foot: [] };
     const line = (g, k, v, cls) => m.lines.push({ g, k, v, cls: cls || '' });
     const meters = on('meters');
-    if (fpsOn && (on('fps') || on('low') || on('frametime') || on('cap') || on('graph'))) {
+    if (fpsOn && (on('fps') || on('low') || on('frametime') || on('cap') || on('graph') || on('stability'))) {
       m.fps = { show: on('fps'), value: f ? String(f.fps) : '—', idle: !f };
       if (f && on('low') && has(f.low1)) m.side.push(['1% low', String(f.low1)]);
       if (f && on('frametime')) m.side.push(['Frame', `${(1000 / f.fps).toFixed(1)} ms`]);
       if (on('cap') && has(s.cap) && s.cap > 0) m.side.push(['Cap', String(s.cap)]);
       m.graph = on('graph');
+      m.stability = on('stability') ? stabilityModel(state && state.stability, f) : null;
       if (m.fps.show) line('fps', 'FPS', m.fps.value, m.fps.idle ? ' ffo-idle' : '');
       for (const [k, v] of m.side) line('fps', k === 'Frame' ? 'Frame time' : k === 'Cap' ? 'FPS cap' : k, v);
     }
@@ -191,6 +243,7 @@
       const side = m.side.map(([k, v]) => `<span><i>${esc(k)}</i><b>${esc(v)}</b></span>`).join('');
       if (m.fps.show || side) out += `<div class="ffo-top">${m.fps.show ? `<div class="ffo-num${m.fps.idle ? ' ffo-idle' : ''}"><b>${esc(m.fps.value)}</b><span>FPS</span></div>` : ''}${side ? `<div class="ffo-side">${side}</div>` : ''}</div>`;
       if (m.graph) out += graph(state.hist);
+      if (m.stability) out += stabilityBox(m.stability);
     }
     if (m.rows.length) {
       out += `<div class="ffo-rows">${m.rows
@@ -213,6 +266,7 @@
       prev = l.g;
     }
     if (out && m.fps && m.graph) out += graph(state.hist);
+    if (m.stability) out += stabilityBox(m.stability);
     return out;
   }
 
@@ -226,7 +280,8 @@
       seg.push(`<span class="ffo-s"><i>${r.k}</i>${r.vals.map((v) => `<b class="ffo-v${v.cls}">${esc(v.t)}</b>`).join('')}${r.chips.map((c) => `<b class="ffo-v ffo-dim">${esc(c)}</b>`).join('')}</span>`);
     }
     for (const t of m.foot) seg.push(`<span class="ffo-s"><b class="ffo-v ffo-dim">${esc(t)}</b></span>`);
-    return seg.filter(Boolean).map((x) => `<div class="ffo-seg">${x}</div>`).join('');
+    const content = seg.filter(Boolean).map((x) => `<div class="ffo-seg">${x}</div>`).join('');
+    return `<div class="ffo-bar-content">${content}</div>${m.stability ? stabilityBox(m.stability) : ''}`;
   }
 
   function mini(m) {
@@ -237,6 +292,7 @@
     for (const r of m.rows) if (r.vals.length) small.push(`<span><i>${r.k}</i>${r.vals.map((v) => `<b class="ffo-v${v.cls}">${esc(v.t)}</b>`).join('')}</span>`);
     for (const t of m.foot) small.push(`<span><b>${esc(t)}</b></span>`);
     if (small.length) out += `<div class="ffo-minirows">${small.join('')}</div>`;
+    if (m.stability) out += stabilityBox(m.stability);
     return out;
   }
 
@@ -248,8 +304,8 @@
    */
   function html(stats, settings, state, opts) {
     const cfg = normalize(settings);
-    const m = model(stats, cfg, opts);
     const st = state || createState();
+    const m = model(stats, cfg, opts, st);
     const inner = cfg.overlayStyle === 'bar' ? bar(m) : cfg.overlayStyle === 'mini' ? mini(m) : cfg.overlayStyle === 'list' ? list(m, st) : panel(m, st);
     if (!inner) return '';
     const style = `--ffo-accent:${cfg.overlayAccent};--ffo-alpha:${(cfg.overlayOpacity / 100).toFixed(2)};zoom:${(cfg.overlayScale / 100).toFixed(2)}`;
@@ -262,5 +318,5 @@
     cpuTemp: 63, gpuTemp: 71, cpuLoad: 38, gpuLoad: 94, gpuPower: 214, gpuFan: 1640, gpuClock: 2480, vramUsed: 9300, vramTotal: 20464, cpuPower: 78, ramUsed: 14.2, ramTotal: 32,
   };
 
-  return { ITEMS, STYLES, FONTS, CORNERS, POSITIONS, ACCENTS, DEFAULTS, SAMPLE, normalize, html, push, createState, model };
+  return { ITEMS, STYLES, FONTS, CORNERS, POSITIONS, ACCENTS, DEFAULTS, SAMPLE, normalize, html, push, pushStability, createState, model };
 });
