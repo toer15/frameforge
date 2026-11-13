@@ -1460,7 +1460,7 @@ async function runFixAction(action) {
       send('goto', arg);
       return { ok: true };
     case 'scan_results':
-      send('goto', 'scan');
+      send('goto', 'clean');
       send('scan:showResults', true);
       return { ok: true };
     case 'quarantine_real': {
@@ -1897,7 +1897,7 @@ function onScanFinished(r) {
     });
     n.on('click', () => {
       showMain();
-      send('goto', 'scan');
+      send('goto', 'clean');
       send('scan:showResults', true);
     });
     n.show();

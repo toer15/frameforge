@@ -1983,8 +1983,8 @@ async function refreshScan(refresh = false) {
   if (SCAN.running) showScanRun(SCAN.running);
   else hideScanRun();
   const open = SCAN.last ? SCAN.last.open : 0;
-  $('#scanBadge').textContent = open;
-  $('#scanBadge').classList.toggle('hidden', !open);
+  const badge = $('#scanBadge');
+  if (badge) { badge.textContent = open; badge.classList.toggle('hidden', !open); }
   renderProtBanner();
   loadDrives();
 }
