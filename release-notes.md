@@ -1,3 +1,9 @@
+**FrameForge 1.17.6: clearer FPS stability status**
+
+- The red FPS stability status now says “Not consistent.”
+
+## Previous release
+
 **FrameForge 1.17.5: FPS stability switch**
 
 - Added a direct FPS stability graph switch to the FPS limiter tab. It stays in sync with the overlay’s “What it shows” option.
