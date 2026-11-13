@@ -13,7 +13,8 @@ const DESKTOP_APPS = new Set(['chrome.exe', 'msedge.exe', 'firefox.exe', 'opera.
 class FpsReader {
   constructor() {
     this.proc = null;
-    this.frames = new Map(); // app -> [{t, ms}]
+    this.frames = new Map(); // app -> rolling frame-time buffer
+    this.low1Cache = new Map(); // app -> { at, value }; low-1% is slower-changing than live FPS
     this.cols = null;
   }
 
@@ -62,11 +63,17 @@ class FpsReader {
   /** Store one frame time. Keeps ~10 seconds of frames per app (measured in frame time, not arrival time). */
   push(app, ms, now, name = app) {
     let rec = this.frames.get(app);
-    if (!rec) this.frames.set(app, (rec = { ms: [], sum: 0, last: 0, name }));
+    if (!rec) this.frames.set(app, (rec = { ms: [], head: 0, sum: 0, last: 0, name }));
     rec.ms.push(ms);
     rec.sum += ms;
     rec.last = now;
-    while (rec.sum > 10000 && rec.ms.length > 1) rec.sum -= rec.ms.shift();
+    // Drop old frames by advancing a cursor. Array.shift() moves every remaining frame on every new frame.
+    while (rec.sum > 10000 && rec.ms.length - rec.head > 1) rec.sum -= rec.ms[rec.head++];
+    // Compact occasionally so the discarded prefix doesn't accumulate for a long-running game.
+    if (rec.head >= 512 && rec.head * 2 >= rec.ms.length) {
+      rec.ms = rec.ms.slice(rec.head);
+      rec.head = 0;
+    }
   }
 
   /**
@@ -79,28 +86,36 @@ class FpsReader {
     for (const [app, rec] of this.frames) {
       if (now - rec.last > 2000) {
         this.frames.delete(app); // stopped rendering (closed or minimized)
+        this.low1Cache.delete(app);
         continue;
       }
-      const score = rec.ms.length + (DESKTOP_APPS.has(app) ? 0 : 1e6);
+      const score = rec.ms.length - rec.head + (DESKTOP_APPS.has(app) ? 0 : 1e6);
       if (!best || score > best.score) best = { app, rec, score };
     }
     if (!best) return null;
     const arr = best.rec.ms;
+    const head = best.rec.head;
     let sum = 0;
     let n = 0;
-    for (let i = arr.length - 1; i >= 0 && sum < 1000; i--) {
+    for (let i = arr.length - 1; i >= head && sum < 1000; i--) {
       sum += arr[i];
       n++;
     }
     const fps = (n * 1000) / sum;
-    // 1% low = FPS of the average of the slowest 1% of frames (what reviewers and CapFrameX call "1% low").
-    const sorted = [...arr].sort((a, b) => b - a);
-    const worst = sorted.slice(0, Math.max(1, Math.round(sorted.length / 100)));
-    const worstAvg = worst.reduce((a, b) => a + b, 0) / worst.length;
+    // Recompute the 10-second 1% low once a second; the live FPS above still refreshes every 250 ms.
+    let low1 = this.low1Cache.get(best.app);
+    if (!low1 || now - low1.at >= 1000) {
+      // 1% low = FPS of the average of the slowest 1% of frames (what reviewers and CapFrameX call "1% low").
+      const sorted = arr.slice(head).sort((a, b) => b - a);
+      const worst = sorted.slice(0, Math.max(1, Math.round(sorted.length / 100)));
+      const worstAvg = worst.reduce((a, b) => a + b, 0) / worst.length;
+      low1 = { at: now, value: Math.round(Math.min(fps, 1000 / worstAvg)) };
+      this.low1Cache.set(best.app, low1);
+    }
     return {
       app: best.rec.name.replace(/\.exe$/i, ''),
       fps: Math.round(fps),
-      low1: Math.round(Math.min(fps, 1000 / worstAvg)),
+      low1: Math.min(Math.round(fps), low1.value),
       frametime: Math.round((sum / n) * 10) / 10,
     };
   }
@@ -111,6 +126,7 @@ class FpsReader {
       this.proc = null;
     }
     this.frames.clear();
+    this.low1Cache.clear();
     if (exe) await run(exe, ['--terminate_existing_session', '--session_name', SESSION]);
   }
 

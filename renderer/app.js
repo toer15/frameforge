@@ -3183,7 +3183,10 @@ ff.clean.onProgress((p) => {
   await refreshAi();
   await loadChatHistory();
   await refreshFix();
-  setInterval(refreshFix, 15000); // temperatures and tools can change
+  setInterval(() => {
+    if (document.hasFocus()) refreshFix();
+  }, 15000); // the Fix view is not visible while a game or another app has focus
+  window.addEventListener('focus', () => refreshFix().catch(() => {}));
   refreshScan().catch(() => {});
   refreshAnim().catch(() => {});
   slide = Math.max(0, PRESETS.findIndex((p) => p.id === S.preset));

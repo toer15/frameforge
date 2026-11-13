@@ -1,3 +1,10 @@
+**FrameForge 1.17.9: lower background overhead**
+
+- Frame timing now trims old samples without shifting the full frame array, and refreshes the 1% low once per second while live FPS stays at four updates per second.
+- The Home screen pauses its periodic Fix-list refresh while FrameForge is unfocused, then refreshes as soon as it regains focus.
+
+## Previous release
+
 **FrameForge 1.17.8: keep the driver app closed before restart**
 
 - Auto Mode skips opening AMD Software, the NVIDIA app or Intel Graphics Software while a PC restart is pending. You can open it manually after restarting.

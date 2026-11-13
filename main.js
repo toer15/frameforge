@@ -491,7 +491,9 @@ function telemetryTick() {
       demoFps = Math.max(110, Math.min(165, demoFps + Math.round((Math.random() - 0.5) * 10)));
       f = { app: 'eldenring', fps: demoFps, low1: demoFps - 31 };
     } else {
-      f = fps.read();
+      // liveFpsTick already refreshes the frame stream four times per second.
+      // Reuse that result instead of sorting the frame window again in this slower sensor tick.
+      f = lastStats ? lastStats.fps : fps.read();
     }
   }
   const tl = tools.status();
