@@ -1,3 +1,14 @@
+**FrameForge 1.18.0: live FPS everywhere, hardware that always detects right**
+
+- The FPS counter now shows live FPS in lobbies, menus and loading screens as well as in matches. It no longer waits for a match to be recognised as “a game”: every app that presents frames is measured.
+- The game you are actually playing wins over browsers, Steam/Epic/EA/Ubisoft/Battle.net launchers and Discord, and a live app beats one that stopped drawing — alt-tabbing no longer freezes the counter on old numbers.
+- The last real reading is held for five seconds across a lobby → match switch or a loading screen, marked “last reading” on Home; after that the counter shows a dash instead of a stale number.
+- PresentMon is restarted by FrameForge if it exits, instead of leaving FPS blank until the app is restarted.
+- Hardware detection was rebuilt on Windows’ own WMI: CPU, every graphics chip, 64-bit VRAM, display resolution and current refresh rate, RAM type/speed/sticks, Windows release and motherboard, in about 1.5 seconds instead of ten. Dedicated cards are never mistaken for integrated graphics, and PCs where the old sensor library returned no graphics or display data now still show their full rig.
+- CPU and GPU names are cleaned of ®/™ clutter, and the FPS limiter recommendation uses the real current refresh rate.
+
+## Previous release
+
 **FrameForge 1.17.9: lower background overhead**
 
 - Frame timing now trims old samples without shifting the full frame array, and refreshes the 1% low once per second while live FPS stays at four updates per second.

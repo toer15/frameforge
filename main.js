@@ -468,7 +468,7 @@ function applyMonitoring() {
   if (!DEMO) {
     if (s.tempMonitor && tools.status().lhm) tools.startLhm();
     const pm = tools.presentMonPath();
-    if (s.fpsCounter && pm && admin) fps.start(pm);
+    if (s.fpsCounter && pm && admin) fps.ensure(pm);
     else if (!s.fpsCounter && fps.running) fps.stop(pm);
   }
   applyOverlay();
@@ -481,6 +481,13 @@ let lastRunLog = [];
 let runQuiet = false;
 function telemetryTick() {
   const s = settings.get();
+  // If PresentMon exited (driver update, ETW session reset), start it again instead of leaving the
+  // FPS counter blank until FrameForge is restarted. ensure() backs off, so a PresentMon that cannot
+  // run is not spawned every second.
+  if (!DEMO && s.fpsCounter && admin) {
+    const pm = tools.presentMonPath();
+    if (pm) fps.ensure(pm);
+  }
   const t = sensors.read();
   // Test hooks: pretend a part runs hot (demo / test runs only).
   if (DEMO && process.env.FRAMEFORGE_FAKE_GPU_TEMP) t.gpuTemp = Number(process.env.FRAMEFORGE_FAKE_GPU_TEMP);
@@ -503,6 +510,7 @@ function telemetryTick() {
     fpsEnabled: s.fpsCounter,
     tempEnabled: s.tempMonitor,
     fpsReady: DEMO || (tl.presentmon && admin),
+    fpsError: DEMO ? null : fps.lastError,
     sensorsReady: tl.lhm,
     // Memory in use, straight from Windows (no sensor program needed), and the limiter's number for the overlay.
     ramTotal: Math.round((os.totalmem() / 1073741824) * 10) / 10,
@@ -527,7 +535,7 @@ function liveFpsTick() {
   if (!lastStats) return;
   const s = settings.get();
   const f = !s.fpsCounter ? null : DEMO ? lastStats.fps : fps.read();
-  const update = { fps: f, fpsEnabled: !!s.fpsCounter, fpsReady: lastStats.fpsReady };
+  const update = { fps: f, fpsEnabled: !!s.fpsCounter, fpsReady: lastStats.fpsReady, fpsError: lastStats.fpsError || null };
   lastStats = { ...lastStats, ...update };
   const watching = mainWin && !mainWin.isDestroyed() && mainWin.isVisible() && !mainWin.isMinimized();
   if (watching) send('fps', update);

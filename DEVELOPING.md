@@ -163,14 +163,33 @@ review, `procs` (skipped while that app runs), `perFile` + `method: 'trash'` for
 
 - **FPS**: uses PresentMon by Intel (open source). Works with DirectX, Vulkan and OpenGL. The overlay shows
   on top of games in *borderless* or *windowed* mode — not exclusive fullscreen.
+- **Everywhere, always live**: menus, lobbies and matches all present frames, so all of them are
+  measured; the counter no longer waits for `gamewatch` to call something a game. The app that is actually
+  drawing wins: a game beats browsers, launchers and Discord, and a live app beats one that stopped presenting
+  (so alt-tabbing does not freeze the number). `FpsReader.read()` marks a reading `live: false` when its last
+  frame is more than 1.2 s old and holds that last real reading for 5 s across a loading screen or a lobby →
+  match switch; after that it returns null (a dash) instead of inventing a number.
+- **Self-healing engine**: `telemetryTick()` calls `fps.ensure()` every second while the counter is on, so a
+  PresentMon that exited (driver update, ETW session reset) starts again without restarting FrameForge.
+  `FpsReader` restarts with 4→8→16→30 s backoff, resets it once frames flow, ignores a stop it made itself,
+  and keeps PresentMon's stderr in `lastError` (shown by Home as “The FPS engine stopped — retrying”).
 - **FPS math**: counted from the frame times themselves over the last second (the same method as
   RTSS / MSI Afterburner). 1% low = the slowest 1% of frames over the last 10 seconds.
+- **Hardware detection**: one Windows WMI pass (`Win32_Processor`, `Win32_VideoController`,
+  `Win32_PhysicalMemory`, `Win32_OperatingSystem`, `Win32_BaseBoard`, the display mode and the graphics
+  driver's 64-bit `HardwareInformation.qwMemorySize`) is the primary source — about 1.6 s, the data Task
+  Manager shows. `systeminformation` is only started when WMI is broken or a class is empty; it serializes its
+  own PowerShell calls, so it is the slow fallback. Every call is time-boxed, `scan()` always returns a complete
+  rig, and names are cleaned (`Intel(R)`/`(TM)`/`GenuineIntel`). CPU threads and base clock, RAM type/speed/
+  sticks, display resolution/refresh, Windows build (`24H2`…) and laptop/desktop all come from the same pass.
 - **Temperatures**: only real sensors. NVIDIA GPU temps come straight from the NVIDIA driver. CPU temps
   and AMD GPU temps come from LibreHardwareMonitor (AMD: Tdie/Tctl die sensor, Intel: CPU Package).
   Windows' own "thermal zone" reading is deliberately not used — it's a motherboard sensor that is often
   20–30 °C off. Each number on Home says where it came from.
-- With several graphics chips (e.g. Ryzen built-in graphics + a Radeon card) it reads the card with the
-  most video memory.
+- With several graphics chips (e.g. Ryzen built-in graphics + a Radeon card) a dedicated card always beats
+  processor graphics (Intel Arc A/B counts as dedicated, Iris/UHD and “Intel Arc Graphics” as integrated),
+  then the card with the most video memory. WMI's 32-bit `AdapterRAM` is never used for VRAM (it wraps at 4 GB);
+  the driver registry's 64-bit value is. Tests: `tests/fps.test.js`, `tests/hardware.test.js`.
 - Toggle the overlay in-game with **Ctrl+Shift+F** (changeable on the FPS limiter tab).
 
 ## The overlay and its studio (1.17.0)

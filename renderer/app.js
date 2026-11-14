@@ -396,10 +396,11 @@ function showBooster(b) {
 function showFps(s) {
   if (s.fpsEnabled && s.fps) {
     txt('#tFps', s.fps.fps);
-    txt('#tFpsSub', `${s.fps.app} · LIVE · 1% low ${s.fps.low1}`);
+    // The reader holds the last real reading for a few seconds across loading screens, so don't call that LIVE.
+    txt('#tFpsSub', `${s.fps.app} · ${s.fps.live === false ? 'last reading' : 'LIVE'} · 1% low ${s.fps.low1}`);
   } else {
     txt('#tFps', null);
-    txt('#tFpsSub', !s.fpsEnabled ? 'FPS counter is off' : !s.fpsReady ? 'Needs the FPS engine' : 'Start a game to see FPS');
+    txt('#tFpsSub', !s.fpsEnabled ? 'FPS counter is off' : !s.fpsReady ? 'Needs the FPS engine' : s.fpsError ? 'The FPS engine stopped — retrying' : 'Waiting for frames — menus and lobbies count');
   }
 }
 ff.onFps(showFps);
